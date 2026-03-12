@@ -17,25 +17,7 @@ A tiny pixel-art crab called **Chawd** lives in your MacBook's notch. It appears
 
 ---
 
-## What You Get
-
-🦀 **Session Pill** — A seamless black pill extends your notch. Chawd on the left, timer on the right.
-
-✨ **Chawd Gimmicks** — The crab randomly waves, bounces, dances, dozes off, sparkles, and looks around.
-
-🔔 **Smart Notifications** — Notch expands when Claude asks a question, needs permission, or finishes a task.
-
-👆 **Click to Focus** — Tap the pill or notification to jump to your terminal.
-
-⚙️ **Menu Bar Controls** — Toggle everything from the ✦ icon in your menu bar.
-
----
-
 ## Install
-
-> **Requirements:** macOS 14+, [Claude Code](https://docs.anthropic.com/en/docs/claude-code) installed, and `jq` (`brew install jq`)
-
-### 3 commands. That's it.
 
 ```bash
 git clone https://github.com/deepshal99/notch-so-good.git
@@ -43,101 +25,113 @@ cd notch-so-good
 bash install.sh
 ```
 
-The installer builds the app, puts it in `/Applications`, sets up Claude Code hooks, and enables launch-at-login. Chawd will be waiting at your notch.
+That's it. The script handles everything:
 
-> **First time on macOS?** If macOS blocks the app, go to **System Settings → Privacy & Security** and click **Open Anyway**.
+| Step | What it does |
+|------|-------------|
+| 1 | Checks dependencies (Swift, jq, python3) |
+| 2 | Builds the app from source |
+| 3 | Installs to `/Applications` |
+| 4 | Sets up Claude Code hooks in `~/.claude/settings.json` |
+| 5 | Enables launch-at-login |
+| 6 | Launches the app |
+
+### Requirements
+
+| Requirement | How to get it |
+|------------|---------------|
+| **macOS 14+** (Sonoma or later) | MacBook with a notch recommended |
+| **Xcode Command Line Tools** | `xcode-select --install` |
+| **jq** | `brew install jq` |
+| **Claude Code** | [docs.anthropic.com/en/docs/claude-code](https://docs.anthropic.com/en/docs/claude-code) |
+
+> **python3** is also needed (pre-installed on macOS).
+
+### First launch note
+
+macOS may block the app since it's not signed. If that happens:
+
+**System Settings → Privacy & Security → scroll down → click "Open Anyway"**
+
+You only need to do this once.
+
+---
+
+## What You Get
+
+**Session Pill** — A seamless black pill extends your notch whenever Claude is working. Chawd on the left, live timer on the right. Hover to expand and see active sessions.
+
+**Chawd Gimmicks** — The crab randomly waves, bounces, dances, dozes off, sparkles, and looks around. Hover and it does an excited hop.
+
+**Smart Notifications** — The notch expands when Claude asks a question, needs permission, or finishes a task. Click anywhere on it to jump to your terminal.
+
+**Multi-Session** — Running multiple Claude sessions? Hover the pill to see all of them. Each session has its own arrow to focus that specific terminal.
+
+**Menu Bar** — Click the ✦ icon to toggle sounds, pill visibility, and notification types.
 
 ---
 
 ## How It Works
 
-Notch So Good plugs into [Claude Code hooks](https://docs.anthropic.com/en/docs/claude-code/hooks) — shell commands that fire on session lifecycle events:
+Notch So Good plugs into [Claude Code hooks](https://docs.anthropic.com/en/docs/claude-code/hooks):
 
 ```
- You start Claude Code
-        │
-        ▼
-  ┌─────────────┐     notchsogood://session_start
+  You start Claude Code
+         │
+         ▼
+  ┌──────────────┐     notchsogood://session_start
   │ SessionStart │ ──────────────────────────────── 🦀 Chawd pill appears
-  └─────────────┘
-        │
-        ▼  Claude is working...
-        │
-  ┌─────────────┐     notchsogood://notify?type=permission
-  │  Notify Hook │ ──────────────────────────────── 🔔 Notch expands
-  └─────────────┘
-        │
-        ▼  Claude finishes
-        │
-  ┌─────────────┐     notchsogood://notify?type=complete
-  │  Stop Hook   │ ──────────────────────────────── ✅ Done! Pill fades
-  └─────────────┘
+  └──────────────┘
+         │
+         ▼  Claude is working...
+         │
+  ┌──────────────┐     notchsogood://notify?type=permission
+  │ Notification │ ──────────────────────────────── 🔔 Notch expands
+  └──────────────┘
+         │
+         ▼  Claude finishes
+         │
+  ┌──────────────┐     notchsogood://notify?type=complete
+  │     Stop     │ ──────────────────────────────── ✅ Done! Pill fades
+  └──────────────┘
 ```
 
-The hooks send `notchsogood://` URLs. The app catches them and shows the right UI. No server, no background process polling — just URL scheme callbacks.
+No server, no polling — just URL scheme callbacks between Claude Code and the app.
 
 ---
 
-## Menu Bar
+## Update
 
-Click the **✦** icon in your menu bar to:
+```bash
+cd notch-so-good
+git pull
+bash install.sh
+```
 
-| Toggle | What it does |
-|--------|-------------|
-| Sound Effects | Notification sounds on/off |
-| Session Pill | Show/hide the Chawd pill |
-| Task Complete | Notify when Claude finishes |
-| Questions | Notify when Claude asks something |
-| Permissions | Notify when Claude needs approval |
+## Uninstall
 
-There are also preview buttons to test each notification type.
+```bash
+cd notch-so-good
+bash uninstall.sh
+```
+
+Or manually:
+```bash
+rm -rf "/Applications/Notch So Good.app"
+rm -f ~/Library/LaunchAgents/com.notchsogood.app.plist
+# Edit ~/.claude/settings.json and remove SessionStart, Notification, Stop hooks
+```
 
 ---
 
 ## Macs Without a Notch
 
-On Macs without a physical notch, notifications appear centered below the menu bar. The session pill is designed for notch Macs only.
-
----
-
-## Uninstall
-
-```bash
-# Remove the app
-rm -rf "/Applications/Notch So Good.app"
-
-# Remove auto-launch
-rm -f ~/Library/LaunchAgents/com.notchsogood.app.plist
-
-# Remove Claude Code hooks (edit manually)
-# Open ~/.claude/settings.json and delete the SessionStart, Notification, and Stop entries under "hooks"
-```
-
----
-
-## Project Structure
-
-```
-NotchSoGood/
-├── App/            SwiftUI app entry, URL handler, notification manager
-├── Views/          Session pill, notification view, Chawd mascot, menu bar
-├── Windows/        NSPanel controller, notch geometry detection
-├── Audio/          System sound playback
-├── Utilities/      Terminal focus, notch measurement
-└── Info.plist      Bundle config + notchsogood:// URL scheme
-
-HookInstaller/
-└── install-hooks.sh    Claude Code hook installer
-
-install.sh              One-command build + install + hooks + launch
-```
+Notifications appear centered below the menu bar. The session pill is designed for notch MacBooks.
 
 ---
 
 ## Contributing
 
 PRs welcome. The crab demands more gimmicks.
-
----
 
 <sub>Built with 🦀 by [deepshal99](https://github.com/deepshal99) and Claude</sub>
