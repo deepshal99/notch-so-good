@@ -8,26 +8,28 @@ struct SessionPillView: View {
     let notchWidth: CGFloat
     let notchHeight: CGFloat
     let onTap: (String?) -> Void
+    @ObservedObject var hoverMonitor: PillHoverMonitor
 
     @State private var appeared = false
-    @State private var hovered = false
+    private var hovered: Bool { hoverMonitor.isHovered }
 
     // Collapsed: small wings
-    private let wingCollapsed: CGFloat = 44
+    private let wingCollapsed: CGFloat = 56
     // Expanded: wider wings for session detail
     private let wingExpanded: CGFloat = 110
     // Drop-down height below the notch on hover
     private var dropHeight: CGFloat {
-        let baseHeight: CGFloat = 16 // padding
+        let topPad: CGFloat = 4
+        let bottomPad: CGFloat = 10
         let rowHeight: CGFloat = 36
         let count = CGFloat(min(sessions.count, 4))
-        return baseHeight + (rowHeight * max(count, 1))
+        return topPad + bottomPad + (rowHeight * max(count, 1))
     }
 
     private var wing: CGFloat { hovered ? wingExpanded : wingCollapsed }
     private var pillWidth: CGFloat { notchWidth + (wing * 2) }
     private var maxWidth: CGFloat { notchWidth + (wingExpanded * 2) }
-    private var maxHeight: CGFloat { notchHeight + 16 + (36 * 4) + 6 } // max possible
+    private var maxHeight: CGFloat { notchHeight + 16 + (36 * 4) + 6 }
     private var pillTotalHeight: CGFloat { hovered ? (notchHeight + dropHeight) : notchHeight }
 
     var body: some View {
@@ -66,6 +68,7 @@ struct SessionPillView: View {
                         Text(elapsed)
                             .font(.system(size: hovered ? 11 : 10, weight: .semibold, design: .monospaced))
                             .foregroundColor(.white.opacity(0.7))
+                            .fixedSize(horizontal: true, vertical: false)
                     }
                     .padding(.trailing, 6)
                     .frame(width: wing)
@@ -76,24 +79,22 @@ struct SessionPillView: View {
                 // === EXPANDED SESSION LIST ===
                 if hovered {
                     expandedContent
-                        .frame(width: pillWidth - 20)
-                        .padding(.top, notchHeight + 6)
-                        .transition(.opacity.combined(with: .move(edge: .top)))
+                        .padding(.top, notchHeight + 4)
+                        .padding(.horizontal, 10)
+                        .padding(.bottom, 10)
+                        .frame(width: pillWidth, alignment: .top)
+                        .transition(.opacity.combined(with: .offset(y: -4)))
                 }
             }
             .frame(width: pillWidth, height: pillTotalHeight, alignment: .top)
             .contentShape(pillShape)
+            .onTapGesture {
+                onTap(sessions.first?.id)
+            }
             .scaleEffect(x: appeared ? 1 : 0.68, y: 1, anchor: .center)
+            .animation(.spring(response: 0.4, dampingFraction: 0.78), value: hovered)
         }
         .frame(width: maxWidth, height: maxHeight, alignment: .top)
-        .onTapGesture {
-            onTap(sessions.first?.id)
-        }
-        .onHover { h in
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
-                hovered = h
-            }
-        }
         .onAppear {
             withAnimation(.spring(response: 0.45, dampingFraction: 0.75)) {
                 appeared = true
@@ -116,24 +117,17 @@ struct SessionPillView: View {
     // MARK: - Expanded content
 
     private var expandedContent: some View {
-        VStack(spacing: 0) {
+        VStack(spacing: 2) {
             ForEach(Array(sessions.prefix(4).enumerated()), id: \.offset) { index, session in
-                if index > 0 {
-                    Divider()
-                        .background(Color.white.opacity(0.06))
-                        .padding(.horizontal, 4)
-                }
                 sessionRow(session: session)
             }
             if sessions.count > 4 {
-                HStack {
-                    Text("+\(sessions.count - 4) more")
-                        .font(.system(size: 9, weight: .medium))
-                        .foregroundColor(.white.opacity(0.3))
-                    Spacer()
-                }
-                .padding(.horizontal, 10)
-                .padding(.top, 4)
+                Text("+\(sessions.count - 4) more")
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundColor(.white.opacity(0.3))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 6)
+                    .padding(.top, 2)
             }
         }
     }
@@ -142,18 +136,16 @@ struct SessionPillView: View {
         Button {
             onTap(session.id)
         } label: {
-            HStack(spacing: 10) {
-                // Green dot
+            HStack(spacing: 8) {
                 Circle()
                     .fill(Color(hex: "4ADE80"))
                     .frame(width: 5, height: 5)
 
-                // Session info
                 VStack(alignment: .leading, spacing: 1) {
                     let secs = Int(Date().timeIntervalSince(session.startTime))
                     let label = session.id.isEmpty || session.id == "test-session"
                         ? "Claude Session"
-                        : String(session.id.prefix(16)) + (session.id.count > 16 ? "…" : "")
+                        : String(session.id.prefix(12)) + (session.id.count > 12 ? "…" : "")
 
                     Text(label)
                         .font(.system(size: 10, weight: .medium))
@@ -165,19 +157,16 @@ struct SessionPillView: View {
                         .foregroundColor(.white.opacity(0.35))
                 }
 
-                Spacer()
+                Spacer(minLength: 4)
 
-                // Arrow
                 Image(systemName: "arrow.up.right")
-                    .font(.system(size: 8, weight: .bold))
+                    .font(.system(size: 7, weight: .bold))
                     .foregroundColor(.white.opacity(0.3))
-                    .frame(width: 22, height: 22)
-                    .background(
-                        Circle().fill(.white.opacity(0.07))
-                    )
+                    .frame(width: 18, height: 18)
+                    .background(Circle().fill(.white.opacity(0.07)))
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 7)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
             .contentShape(Rectangle())
         }
         .buttonStyle(SessionRowButtonStyle())

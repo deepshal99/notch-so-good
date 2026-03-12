@@ -7,13 +7,14 @@ class NotchWindowController {
     private var dismissTimer: Timer?
     private var isDismissing = false
     private var hasPillSession = false
+    private let pillHoverMonitor = PillHoverMonitor()
 
-    // Pill sizing constants (must match SessionPillView max)
+    // Pill sizing constants (must match SessionPillView)
     private let wingExpanded: CGFloat = 110
-    private let maxDropHeight: CGFloat = 160  // 4 rows * 36 + padding
-    private let pillPeekBelow: CGFloat = 6
+    private let wingCollapsed: CGFloat = 56
+    private let maxDropHeight: CGFloat = 160
 
-    // MARK: - Session Pill (persistent minimized widget)
+    // MARK: - Session Pill
 
     func showSessionPill(sessions: [(id: String, startTime: Date)], primaryStartTime: Date) {
         hasPillSession = true
@@ -24,23 +25,41 @@ class NotchWindowController {
         let notchW = geo?.notchWidth ?? 185
         let notchH = geo?.notchHeight ?? 32
 
-        // Always use max expanded size — SwiftUI handles visual sizing
+        // Panel stays at max size for smooth SwiftUI animations
+        // Must match SessionPillView's maxWidth/maxHeight
         let maxWidth = notchW + (wingExpanded * 2)
-        let maxHeight = notchH + maxDropHeight + pillPeekBelow
+        let maxHeight = notchH + 16 + (36 * 4) + 6
 
-        let frame = calculateFrame(
-            panelWidth: maxWidth,
-            panelHeight: maxHeight,
-            hasNotch: hasNotch,
-            geo: geo
-        )
+        let panelFrame = calculateFrame(panelWidth: maxWidth, panelHeight: maxHeight, hasNotch: hasNotch, geo: geo)
 
         if pillPanel == nil {
-            pillPanel = NotchPanel(contentRect: frame)
+            pillPanel = NotchPanel(contentRect: panelFrame)
             pillPanel?.level = .statusBar + 1
         } else {
-            pillPanel?.setFrame(frame, display: true)
+            pillPanel?.setFrame(panelFrame, display: true)
         }
+
+        // Compute pill screen rects for hover detection
+        let collapsedW = notchW + (wingCollapsed * 2)
+        let expandedW = maxWidth
+        let dropHeight: CGFloat = 16 + (36 * CGFloat(min(sessions.count, 4)))
+        let expandedH = notchH + dropHeight
+        let centerX = panelFrame.origin.x + maxWidth / 2
+
+        pillHoverMonitor.collapsedScreenRect = NSRect(
+            x: centerX - collapsedW / 2,
+            y: panelFrame.maxY - notchH,
+            width: collapsedW,
+            height: notchH
+        )
+        pillHoverMonitor.expandedScreenRect = NSRect(
+            x: centerX - expandedW / 2,
+            y: panelFrame.maxY - expandedH,
+            width: expandedW,
+            height: expandedH
+        )
+
+        pillHoverMonitor.stop()
 
         let pillView = SessionPillView(
             sessions: sessions,
@@ -49,7 +68,8 @@ class NotchWindowController {
             notchHeight: notchH,
             onTap: { sessionId in
                 TerminalLauncher.focusClaudeCode(sessionId: sessionId, sourceBundleId: nil)
-            }
+            },
+            hoverMonitor: pillHoverMonitor
         )
 
         let container = VStack(spacing: 0) {
@@ -63,10 +83,13 @@ class NotchWindowController {
         pillPanel?.contentView = hostingView
         pillPanel?.alphaValue = 1.0
         pillPanel?.orderFrontRegardless()
+
+        pillHoverMonitor.start(panel: pillPanel!)
     }
 
     func hideSessionPill() {
         hasPillSession = false
+        pillHoverMonitor.stop()
 
         NSAnimationContext.runAnimationGroup({ context in
             context.duration = 0.3
@@ -106,7 +129,7 @@ class NotchWindowController {
 
         if panel == nil {
             panel = NotchPanel(contentRect: frame)
-            panel?.level = .statusBar + 2  // Above the pill panel
+            panel?.level = .statusBar + 2
             panel?.onCancel = { [weak self] in self?.dismiss() }
         } else {
             panel?.setFrame(frame, display: true)
