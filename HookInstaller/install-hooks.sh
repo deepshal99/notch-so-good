@@ -54,16 +54,16 @@ UPDATED=$(jq \
   --argjson start "$START_HOOK" \
   --argjson notif "$NOTIFICATION_HOOK" \
   --argjson stop "$STOP_HOOK" \
-  '.hooks = (.hooks // {}) | .hooks.Start = $start | .hooks.Notification = $notif | .hooks.Stop = $stop' \
+  '.hooks = (.hooks // {}) | .hooks.SessionStart = $start | .hooks.Notification = $notif | .hooks.Stop = $stop' \
   "$SETTINGS_FILE")
 
 echo "$UPDATED" > "$SETTINGS_FILE"
 
 echo "✓ Claude Code hooks installed successfully!"
 echo "  Settings: $SETTINGS_FILE"
-echo "  Hooks added: Start, Notification, Stop"
+echo "  Hooks added: SessionStart, Notification, Stop"
 echo ""
-echo "  Start  → Shows mini Chawd pill at the notch"
+echo "  SessionStart → Shows mini Chawd pill at the notch"
 echo "  Notify → Expands to show notification"
 echo "  Stop   → Shows completion, then pill dismisses"
 echo ""

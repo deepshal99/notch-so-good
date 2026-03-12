@@ -58,7 +58,7 @@ Notch So Good plugs into [Claude Code hooks](https://docs.anthropic.com/en/docs/
         │
         ▼
   ┌─────────────┐     notchsogood://session_start
-  │  Start Hook  │ ──────────────────────────────── 🦀 Chawd pill appears
+  │ SessionStart │ ──────────────────────────────── 🦀 Chawd pill appears
   └─────────────┘
         │
         ▼  Claude is working...
@@ -110,7 +110,7 @@ rm -rf "/Applications/Notch So Good.app"
 rm -f ~/Library/LaunchAgents/com.notchsogood.app.plist
 
 # Remove Claude Code hooks (edit manually)
-# Open ~/.claude/settings.json and delete the Start, Notification, and Stop entries under "hooks"
+# Open ~/.claude/settings.json and delete the SessionStart, Notification, and Stop entries under "hooks"
 ```
 
 ---

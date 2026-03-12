@@ -131,12 +131,12 @@ HOOKEOF
       --argjson start "$START_HOOK" \
       --argjson notif "$NOTIFICATION_HOOK" \
       --argjson stop "$STOP_HOOK" \
-      '.hooks = (.hooks // {}) | .hooks.Start = $start | .hooks.Notification = $notif | .hooks.Stop = $stop' \
+      '.hooks = (.hooks // {}) | .hooks.SessionStart = $start | .hooks.Notification = $notif | .hooks.Stop = $stop' \
       "$SETTINGS_FILE")
 
     echo "$UPDATED" > "$SETTINGS_FILE"
 
-    echo -e "  ${GREEN}✓${RESET} Start hook  ${DIM}→ Chawd pill appears${RESET}"
+    echo -e "  ${GREEN}✓${RESET} SessionStart hook  ${DIM}→ Chawd pill appears${RESET}"
     echo -e "  ${GREEN}✓${RESET} Notify hook ${DIM}→ Notch expands with notification${RESET}"
     echo -e "  ${GREEN}✓${RESET} Stop hook   ${DIM}→ Completion + pill fades${RESET}"
 fi
