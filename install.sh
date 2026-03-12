@@ -4,52 +4,85 @@ set -e
 
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 APP_NAME="Notch So Good"
-BUNDLE_NAME="NotchSoGood.app"
+BUNDLE_NAME="Notch So Good.app"
 INSTALL_DIR="/Applications"
 
-echo "🦀 Building Notch So Good..."
+# Colors
+BOLD='\033[1m'
+DIM='\033[2m'
+GREEN='\033[0;32m'
+CYAN='\033[0;36m'
+YELLOW='\033[0;33m'
+RED='\033[0;31m'
+RESET='\033[0m'
+
+echo ""
+echo -e "${BOLD}  ┌──────────────────────────────────────────┐${RESET}"
+echo -e "${BOLD}  │  🦀  N O T C H   S O   G O O D          │${RESET}"
+echo -e "${BOLD}  │      Dynamic Island for Claude Code      │${RESET}"
+echo -e "${BOLD}  └──────────────────────────────────────────┘${RESET}"
 echo ""
 
-cd "$PROJECT_DIR"
+# Check dependencies
+echo -e "  ${DIM}Checking dependencies...${RESET}"
 
-# 1. Build release binary
-swift build -c release 2>&1 | tail -5
+if ! command -v swift &> /dev/null; then
+    echo -e "  ${RED}✗${RESET} Swift not found. Install Xcode Command Line Tools:"
+    echo -e "    ${DIM}xcode-select --install${RESET}"
+    exit 1
+fi
+echo -e "  ${GREEN}✓${RESET} Swift"
+
+if ! command -v jq &> /dev/null; then
+    echo -e "  ${RED}✗${RESET} jq not found. Install with:"
+    echo -e "    ${DIM}brew install jq${RESET}"
+    exit 1
+fi
+echo -e "  ${GREEN}✓${RESET} jq"
+
+if ! command -v python3 &> /dev/null; then
+    echo -e "  ${RED}✗${RESET} python3 not found"
+    exit 1
+fi
+echo -e "  ${GREEN}✓${RESET} python3"
+echo ""
+
+# 1. Build
+echo -e "  ${CYAN}Building...${RESET}"
+cd "$PROJECT_DIR"
+swift build -c release 2>&1 | grep -E "Build complete|error:" | while read -r line; do
+    echo -e "  ${DIM}$line${RESET}"
+done
 
 BINARY="$PROJECT_DIR/.build/arm64-apple-macosx/release/NotchSoGood"
 if [ ! -f "$BINARY" ]; then
-    # Try generic release path
     BINARY="$PROJECT_DIR/.build/release/NotchSoGood"
 fi
-
 if [ ! -f "$BINARY" ]; then
-    echo "❌ Build failed — binary not found"
+    echo -e "  ${RED}✗ Build failed${RESET}"
     exit 1
 fi
-
+echo -e "  ${GREEN}✓${RESET} Built release binary"
 echo ""
-echo "✓ Build successful"
 
 # 2. Assemble .app bundle
+echo -e "  ${CYAN}Assembling app...${RESET}"
+
 APP_BUNDLE="$PROJECT_DIR/$BUNDLE_NAME"
 rm -rf "$APP_BUNDLE"
 mkdir -p "$APP_BUNDLE/Contents/MacOS"
 mkdir -p "$APP_BUNDLE/Contents/Resources"
 
-# Copy binary
 cp "$BINARY" "$APP_BUNDLE/Contents/MacOS/NotchSoGood"
-
-# Copy Info.plist
 cp "$PROJECT_DIR/NotchSoGood/Info.plist" "$APP_BUNDLE/Contents/Info.plist"
-
-# Copy hook installer script into Resources
 cp "$PROJECT_DIR/HookInstaller/install-hooks.sh" "$APP_BUNDLE/Contents/Resources/install-hooks.sh"
 chmod +x "$APP_BUNDLE/Contents/Resources/install-hooks.sh"
 
-echo "✓ App bundle assembled"
+echo -e "  ${GREEN}✓${RESET} App bundle ready"
 
-# 3. Kill existing instance if running
+# 3. Kill existing instance
 if pgrep -x "NotchSoGood" > /dev/null 2>&1; then
-    echo "  Stopping existing instance..."
+    echo -e "  ${DIM}Stopping existing instance...${RESET}"
     killall "NotchSoGood" 2>/dev/null || true
     sleep 1
 fi
@@ -59,23 +92,59 @@ if [ -d "$INSTALL_DIR/$BUNDLE_NAME" ]; then
     rm -rf "$INSTALL_DIR/$BUNDLE_NAME"
 fi
 cp -R "$APP_BUNDLE" "$INSTALL_DIR/$BUNDLE_NAME"
-echo "✓ Installed to $INSTALL_DIR/$BUNDLE_NAME"
+echo -e "  ${GREEN}✓${RESET} Installed to /Applications"
 
-# 5. Register the URL scheme by launching once
-echo "✓ Registering notchsogood:// URL scheme..."
+# 5. Register URL scheme
 /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -R "$INSTALL_DIR/$BUNDLE_NAME" 2>/dev/null || true
+echo -e "  ${GREEN}✓${RESET} Registered notchsogood:// URL scheme"
+echo ""
 
 # 6. Install Claude Code hooks
+echo -e "  ${CYAN}Installing Claude Code hooks...${RESET}"
+
+SETTINGS_FILE="$HOME/.claude/settings.json"
+mkdir -p "$HOME/.claude"
+
+if [ ! -f "$SETTINGS_FILE" ]; then
+    echo '{}' > "$SETTINGS_FILE"
+fi
+
+if ! jq empty "$SETTINGS_FILE" 2>/dev/null; then
+    echo -e "  ${RED}✗${RESET} $SETTINGS_FILE is not valid JSON — skipping hooks"
+    echo -e "    ${DIM}Fix the file manually, then run: bash HookInstaller/install-hooks.sh${RESET}"
+else
+    cp "$SETTINGS_FILE" "$SETTINGS_FILE.backup.$(date +%s)"
+
+    read -r -d '' START_HOOK << 'HOOKEOF' || true
+[{"matcher":"","hooks":[{"type":"command","command":"INPUT=$(cat); SID=$(echo \"$INPUT\" | jq -r '.session_id // empty'); open \"notchsogood://session_start?session_id=$SID\"","timeout":5000}]}]
+HOOKEOF
+
+    read -r -d '' NOTIFICATION_HOOK << 'HOOKEOF' || true
+[{"matcher":"","hooks":[{"type":"command","command":"INPUT=$(cat); TYPE=$(echo \"$INPUT\" | jq -r '.notification_type // \"general\"'); MSG=$(echo \"$INPUT\" | jq -r '.message // \"Claude needs attention\"' | head -c 200 | python3 -c 'import sys,urllib.parse; print(urllib.parse.quote(sys.stdin.read().strip()))'); TITLE=$(echo \"$INPUT\" | jq -r '.title // empty' | python3 -c 'import sys,urllib.parse; print(urllib.parse.quote(sys.stdin.read().strip()))'); SID=$(echo \"$INPUT\" | jq -r '.session_id // empty'); NTYPE=\"general\"; case \"$TYPE\" in permission_prompt) NTYPE=\"permission\";; idle_prompt) NTYPE=\"question\";; esac; open \"notchsogood://notify?type=$NTYPE&message=$MSG&title=$TITLE&session_id=$SID\"","timeout":5000}]}]
+HOOKEOF
+
+    read -r -d '' STOP_HOOK << 'HOOKEOF' || true
+[{"matcher":"","hooks":[{"type":"command","command":"INPUT=$(cat); MSG=$(echo \"$INPUT\" | jq -r '.last_assistant_message // \"Task completed\"' | head -c 200 | python3 -c 'import sys,urllib.parse; print(urllib.parse.quote(sys.stdin.read().strip()))'); SID=$(echo \"$INPUT\" | jq -r '.session_id // empty'); open \"notchsogood://notify?type=complete&message=$MSG&session_id=$SID\"","timeout":5000}]}]
+HOOKEOF
+
+    UPDATED=$(jq \
+      --argjson start "$START_HOOK" \
+      --argjson notif "$NOTIFICATION_HOOK" \
+      --argjson stop "$STOP_HOOK" \
+      '.hooks = (.hooks // {}) | .hooks.Start = $start | .hooks.Notification = $notif | .hooks.Stop = $stop' \
+      "$SETTINGS_FILE")
+
+    echo "$UPDATED" > "$SETTINGS_FILE"
+
+    echo -e "  ${GREEN}✓${RESET} Start hook  ${DIM}→ Chawd pill appears${RESET}"
+    echo -e "  ${GREEN}✓${RESET} Notify hook ${DIM}→ Notch expands with notification${RESET}"
+    echo -e "  ${GREEN}✓${RESET} Stop hook   ${DIM}→ Completion + pill fades${RESET}"
+fi
 echo ""
-echo "Installing Claude Code hooks..."
-bash "$PROJECT_DIR/HookInstaller/install-hooks.sh"
 
-# 7. Set up Launch at Login via launchd
-PLIST_NAME="com.notchsogood.app.plist"
-LAUNCH_AGENTS_DIR="$HOME/Library/LaunchAgents"
-PLIST_PATH="$LAUNCH_AGENTS_DIR/$PLIST_NAME"
-
-mkdir -p "$LAUNCH_AGENTS_DIR"
+# 7. Launch at Login
+PLIST_PATH="$HOME/Library/LaunchAgents/com.notchsogood.app.plist"
+mkdir -p "$HOME/Library/LaunchAgents"
 
 cat > "$PLIST_PATH" << PLISTEOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -98,28 +167,28 @@ cat > "$PLIST_PATH" << PLISTEOF
 </plist>
 PLISTEOF
 
-# Load the launch agent (unload first if exists)
 launchctl unload "$PLIST_PATH" 2>/dev/null || true
 launchctl load "$PLIST_PATH" 2>/dev/null || true
+echo -e "  ${GREEN}✓${RESET} Launch at Login enabled"
 
+# 8. Launch
 echo ""
-echo "✓ Launch at Login enabled"
-
-# 8. Launch the app
-echo ""
-echo "🚀 Launching Notch So Good..."
+echo -e "  ${CYAN}Launching...${RESET}"
 open "$INSTALL_DIR/$BUNDLE_NAME"
+sleep 1
 
+# Done!
 echo ""
-echo "═══════════════════════════════════════════"
-echo "  ✅ Notch So Good is installed and running!"
-echo "═══════════════════════════════════════════"
-echo ""
-echo "  📍 App:    $INSTALL_DIR/$BUNDLE_NAME"
-echo "  🔗 Hooks:  ~/.claude/settings.json"
-echo "  🔄 Login:  Auto-starts on login"
-echo "  🦀 Menu:   Look for the ✦ icon in your menu bar"
-echo ""
-echo "  The Chawd pill will appear at your notch"
-echo "  whenever a Claude Code session is active."
+echo -e "${BOLD}  ┌──────────────────────────────────────────┐${RESET}"
+echo -e "${BOLD}  │                                          │${RESET}"
+echo -e "${BOLD}  │   ${GREEN}✅  Notch So Good is ready!${RESET}${BOLD}              │${RESET}"
+echo -e "${BOLD}  │                                          │${RESET}"
+echo -e "${BOLD}  │${RESET}   🦀 Chawd is waiting at your notch.     ${BOLD}│${RESET}"
+echo -e "${BOLD}  │${RESET}   Start a Claude Code session to          ${BOLD}│${RESET}"
+echo -e "${BOLD}  │${RESET}   see the little crab in action.          ${BOLD}│${RESET}"
+echo -e "${BOLD}  │                                          │${RESET}"
+echo -e "${BOLD}  │${RESET}   ${DIM}✦ Menu bar icon for settings${RESET}            ${BOLD}│${RESET}"
+echo -e "${BOLD}  │${RESET}   ${DIM}👆 Click the pill to focus terminal${RESET}     ${BOLD}│${RESET}"
+echo -e "${BOLD}  │                                          │${RESET}"
+echo -e "${BOLD}  └──────────────────────────────────────────┘${RESET}"
 echo ""
