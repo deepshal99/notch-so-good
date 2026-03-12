@@ -31,9 +31,10 @@ struct NotchNotificationView: View {
                         glowBorder(width: currentWidth, height: currentHeight)
                     }
 
-                    // === MAIN BACKGROUND ===
+                    // === MAIN BACKGROUND — also the tap target ===
                     islandShape
                         .fill(Color.black)
+                        .contentShape(islandShape)
 
                     // === CONTENT ===
                     if expanded {
@@ -41,14 +42,16 @@ struct NotchNotificationView: View {
                             .padding(.top, hasNotch ? notchHeight + 10 : 12)
                             .padding(.horizontal, 20)
                             .padding(.bottom, 16)
+                            .allowsHitTesting(false)
                     }
                 }
                 .frame(width: currentWidth, height: currentHeight)
+                .contentShape(islandShape)
+                .onTapGesture(perform: onTap)
                 .shadow(color: .black.opacity(0.5), radius: expanded ? 16 : 6, y: expanded ? 6 : 2)
             }
             .frame(width: fullWidth, height: fullHeight, alignment: .top)
         }
-        .onTapGesture(perform: onTap)
         .onAppear(perform: animateIn)
     }
 
@@ -150,10 +153,6 @@ struct NotchNotificationView: View {
             }
 
             Spacer(minLength: 0)
-        }
-        .scaleEffect(hovered ? 1.015 : 1.0)
-        .onHover { h in
-            withAnimation(.easeOut(duration: 0.2)) { hovered = h }
         }
     }
 

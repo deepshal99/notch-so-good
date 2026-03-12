@@ -5,15 +5,18 @@ class NotchWindowController {
     private var panel: NotchPanel?
     private var pillPanel: NotchPanel?
     private var dismissTimer: Timer?
-    private var pillSessionId: String?
-    private var pillStartTime: Date?
     private var isDismissing = false
+    private var hasPillSession = false
+
+    // Pill sizing constants (must match SessionPillView max)
+    private let wingExpanded: CGFloat = 110
+    private let maxDropHeight: CGFloat = 160  // 4 rows * 36 + padding
+    private let pillPeekBelow: CGFloat = 6
 
     // MARK: - Session Pill (persistent minimized widget)
 
-    func showSessionPill(sessionId: String?, startTime: Date) {
-        pillSessionId = sessionId
-        pillStartTime = startTime
+    func showSessionPill(sessions: [(id: String, startTime: Date)], primaryStartTime: Date) {
+        hasPillSession = true
 
         let hasNotch = NotchGeometry.hasNotch
         let geo = NotchGeometry.calculate()
@@ -21,16 +24,13 @@ class NotchWindowController {
         let notchW = geo?.notchWidth ?? 185
         let notchH = geo?.notchHeight ?? 32
 
-        // Wing extension on each side of the notch
-        let wingExtension: CGFloat = 44
-        // Panel: notch width + both wings, extends a few pt below the notch so macOS renders it
-        let pillPanelWidth: CGFloat = notchW + (wingExtension * 2)
-        let pillPeekBelow: CGFloat = 6
-        let pillPanelHeight: CGFloat = notchH + pillPeekBelow
+        // Always use max expanded size — SwiftUI handles visual sizing
+        let maxWidth = notchW + (wingExpanded * 2)
+        let maxHeight = notchH + maxDropHeight + pillPeekBelow
 
         let frame = calculateFrame(
-            panelWidth: pillPanelWidth,
-            panelHeight: pillPanelHeight,
+            panelWidth: maxWidth,
+            panelHeight: maxHeight,
             hasNotch: hasNotch,
             geo: geo
         )
@@ -42,22 +42,23 @@ class NotchWindowController {
             pillPanel?.setFrame(frame, display: true)
         }
 
-        let pillView = VStack(spacing: 0) {
-            SessionPillView(
-                sessionId: sessionId,
-                startTime: startTime,
-                notchWidth: notchW,
-                notchHeight: notchH,
-                onTap: {
-                    TerminalLauncher.focusClaudeCode(sessionId: sessionId, sourceBundleId: nil)
-                }
-            )
-            .frame(width: pillPanelWidth, height: notchH)
+        let pillView = SessionPillView(
+            sessions: sessions,
+            primaryStartTime: primaryStartTime,
+            notchWidth: notchW,
+            notchHeight: notchH,
+            onTap: { sessionId in
+                TerminalLauncher.focusClaudeCode(sessionId: sessionId, sourceBundleId: nil)
+            }
+        )
+
+        let container = VStack(spacing: 0) {
+            pillView
             Spacer(minLength: 0)
         }
-        .frame(width: pillPanelWidth, height: pillPanelHeight)
+        .frame(width: maxWidth, height: maxHeight)
 
-        let hostingView = NSHostingView(rootView: AnyView(pillView))
+        let hostingView = NSHostingView(rootView: AnyView(container))
         hostingView.layer?.backgroundColor = .clear
         pillPanel?.contentView = hostingView
         pillPanel?.alphaValue = 1.0
@@ -65,8 +66,7 @@ class NotchWindowController {
     }
 
     func hideSessionPill() {
-        pillSessionId = nil
-        pillStartTime = nil
+        hasPillSession = false
 
         NSAnimationContext.runAnimationGroup({ context in
             context.duration = 0.3
@@ -87,11 +87,6 @@ class NotchWindowController {
     func showNotification(_ notification: NotchNotification) {
         dismissTimer?.invalidate()
 
-        // Temporarily hide pill while notification is showing
-        if isShowingPill {
-            pillPanel?.orderOut(nil)
-        }
-
         let hasNotch = NotchGeometry.hasNotch
         let geo = NotchGeometry.calculate()
 
@@ -111,6 +106,7 @@ class NotchWindowController {
 
         if panel == nil {
             panel = NotchPanel(contentRect: frame)
+            panel?.level = .statusBar + 2  // Above the pill panel
             panel?.onCancel = { [weak self] in self?.dismiss() }
         } else {
             panel?.setFrame(frame, display: true)
@@ -158,11 +154,6 @@ class NotchWindowController {
             self?.panel?.orderOut(nil)
             self?.panel?.alphaValue = 1.0
             self?.isDismissing = false
-
-            // Restore pill if session is still active
-            if let sid = self?.pillSessionId, let startTime = self?.pillStartTime {
-                self?.showSessionPill(sessionId: sid, startTime: startTime)
-            }
         })
     }
 
@@ -173,10 +164,8 @@ class NotchWindowController {
             let y = geo.screenTopY - panelHeight
             return NSRect(x: x, y: y, width: panelWidth, height: panelHeight)
         } else {
-            // No notch — position just below the menu bar, centered on screen
             let fallback = NotchGeometry.fallbackOrigin()
             let x = fallback.x - panelWidth / 2
-            // fallback.y is already screenTop - menubarHeight
             let y = fallback.y - panelHeight
             return NSRect(x: x, y: y, width: panelWidth, height: panelHeight)
         }

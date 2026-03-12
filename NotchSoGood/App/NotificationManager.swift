@@ -24,17 +24,20 @@ class NotificationManager: ObservableObject {
             UserDefaults.standard.set(showSessionPill, forKey: "showSessionPill")
             if !showSessionPill {
                 windowController.hideSessionPill()
-            } else if activeSessionId != nil, let startTime = sessionStartTime {
-                windowController.showSessionPill(sessionId: activeSessionId, startTime: startTime)
+            } else if hasActiveSession {
+                refreshPill()
             }
         }
     }
 
-    // Active session tracking
-    @Published var activeSessionId: String?
-    @Published var sessionStartTime: Date?
+    // Active session tracking — supports multiple concurrent sessions
+    struct SessionInfo: Identifiable {
+        let id: String
+        let startTime: Date
+    }
+    @Published var activeSessions: [SessionInfo] = []
 
-    private var endSessionWorkItem: DispatchWorkItem?
+    private var endSessionWorkItems: [String: DispatchWorkItem] = [:]
     let windowController = NotchWindowController()
 
     init() {
@@ -70,27 +73,49 @@ class NotificationManager: ObservableObject {
     func startSession(sessionId: String?) {
         guard showSessionPill else { return }
 
-        // Cancel any pending end-session from a previous completion
-        endSessionWorkItem?.cancel()
-        endSessionWorkItem = nil
+        let sid = sessionId ?? UUID().uuidString
 
-        activeSessionId = sessionId
-        sessionStartTime = Date()
-        windowController.showSessionPill(sessionId: sessionId, startTime: sessionStartTime!)
+        // Cancel any pending end for this session
+        endSessionWorkItems[sid]?.cancel()
+        endSessionWorkItems.removeValue(forKey: sid)
+
+        // Don't add duplicate
+        if activeSessions.contains(where: { $0.id == sid }) { return }
+
+        activeSessions.append(SessionInfo(id: sid, startTime: Date()))
+        refreshPill()
     }
 
     func endSession(sessionId: String?) {
-        // End matching session, or any session if no ID given
-        if sessionId == nil || sessionId == activeSessionId || activeSessionId == nil {
-            activeSessionId = nil
-            sessionStartTime = nil
+        if let sid = sessionId {
+            activeSessions.removeAll { $0.id == sid }
+            endSessionWorkItems.removeValue(forKey: sid)
+        } else {
+            // No ID — end all sessions
+            activeSessions.removeAll()
+            endSessionWorkItems.removeAll()
+        }
+
+        if activeSessions.isEmpty {
             windowController.hideSessionPill()
+        } else {
+            refreshPill()
         }
     }
 
-    var hasActiveSession: Bool {
-        activeSessionId != nil
+    private func refreshPill() {
+        guard let first = activeSessions.first else { return }
+        windowController.showSessionPill(sessions: activeSessions.map { (id: $0.id, startTime: $0.startTime) },
+                                          primaryStartTime: first.startTime)
     }
+
+    var hasActiveSession: Bool {
+        !activeSessions.isEmpty
+    }
+
+    // Back-compat helpers
+    var activeSessionId: String? { activeSessions.first?.id }
+    var sessionStartTime: Date? { activeSessions.first?.startTime }
 
     // MARK: - Notifications
 
@@ -114,12 +139,12 @@ class NotificationManager: ObservableObject {
         windowController.showNotification(notification)
 
         // End session on completion (cancellable if a new session starts)
-        if notification.type == .complete {
-            endSessionWorkItem?.cancel()
+        if notification.type == .complete, let sid = notification.sessionId {
+            endSessionWorkItems[sid]?.cancel()
             let workItem = DispatchWorkItem { [weak self] in
-                self?.endSession(sessionId: notification.sessionId)
+                self?.endSession(sessionId: sid)
             }
-            endSessionWorkItem = workItem
+            endSessionWorkItems[sid] = workItem
             DispatchQueue.main.asyncAfter(deadline: .now() + 5.5, execute: workItem)
         }
     }
@@ -149,11 +174,12 @@ class NotificationManager: ObservableObject {
 
         // Auto-end test session after complete (cancellable)
         if type == .complete {
-            endSessionWorkItem?.cancel()
+            let sid = "test-session"
+            endSessionWorkItems[sid]?.cancel()
             let workItem = DispatchWorkItem { [weak self] in
-                self?.endSession(sessionId: "test-session")
+                self?.endSession(sessionId: sid)
             }
-            endSessionWorkItem = workItem
+            endSessionWorkItems[sid] = workItem
             DispatchQueue.main.asyncAfter(deadline: .now() + 5.5, execute: workItem)
         }
     }

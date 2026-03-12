@@ -1,78 +1,96 @@
 import SwiftUI
 
 /// A Dynamic Island pill that extends the notch left and right while Claude is active.
-/// Left wing: tiny Chawd mascot. Right wing: elapsed timer. Same height as the physical notch.
+/// On hover, it expands fluidly to show session details.
 struct SessionPillView: View {
-    let sessionId: String?
-    let startTime: Date
+    let sessions: [(id: String, startTime: Date)]
+    let primaryStartTime: Date
     let notchWidth: CGFloat
     let notchHeight: CGFloat
-    let onTap: () -> Void
+    let onTap: (String?) -> Void
 
     @State private var appeared = false
     @State private var hovered = false
-    @State private var elapsedText = "0s"
 
-    // How far the pill extends beyond the notch on each side
-    private let wingExtension: CGFloat = 44
+    // Collapsed: small wings
+    private let wingCollapsed: CGFloat = 44
+    // Expanded: wider wings for session detail
+    private let wingExpanded: CGFloat = 110
+    // Drop-down height below the notch on hover
+    private var dropHeight: CGFloat {
+        let baseHeight: CGFloat = 16 // padding
+        let rowHeight: CGFloat = 36
+        let count = CGFloat(min(sessions.count, 4))
+        return baseHeight + (rowHeight * max(count, 1))
+    }
 
-    private var totalWidth: CGFloat { notchWidth + (wingExtension * 2) }
+    private var wing: CGFloat { hovered ? wingExpanded : wingCollapsed }
+    private var pillWidth: CGFloat { notchWidth + (wing * 2) }
+    private var maxWidth: CGFloat { notchWidth + (wingExpanded * 2) }
+    private var maxHeight: CGFloat { notchHeight + 16 + (36 * 4) + 6 } // max possible
+    private var pillTotalHeight: CGFloat { hovered ? (notchHeight + dropHeight) : notchHeight }
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
-            let seconds = Int(context.date.timeIntervalSince(startTime))
+            let seconds = Int(context.date.timeIntervalSince(primaryStartTime))
             let elapsed = formatElapsed(seconds)
 
-            ZStack {
-                // === SINGLE CONTINUOUS BLACK PILL — spans the full width ===
-                UnevenRoundedRectangle(
-                    topLeadingRadius: 0,
-                    bottomLeadingRadius: notchHeight / 2,
-                    bottomTrailingRadius: notchHeight / 2,
-                    topTrailingRadius: 0,
-                    style: .continuous
-                )
-                .fill(Color.black)
-                .frame(width: totalWidth, height: notchHeight)
+            ZStack(alignment: .top) {
+                // === BLACK PILL SHAPE ===
+                pillShape
+                    .fill(Color.black)
+                    .frame(width: pillWidth, height: pillTotalHeight)
 
-                // === CONTENT — left and right, center stays empty over notch ===
+                // === WING CONTENT ===
                 HStack(spacing: 0) {
-                    // Left wing content — Mascot
+                    // Left wing — Mascot
                     HStack(spacing: 0) {
                         Spacer(minLength: 0)
-                        MiniChawdView()
+                        MiniChawdView(excited: hovered)
                             .frame(width: 20, height: 20)
                         Spacer(minLength: 0)
                     }
-                    .frame(width: wingExtension)
+                    .frame(width: wing)
                     .opacity(appeared ? 1 : 0)
 
-                    // Center — empty, the physical notch sits here
                     Spacer()
                         .frame(width: notchWidth)
 
-                    // Right wing content — Timer
+                    // Right wing — Timer
                     HStack(spacing: 5) {
                         Circle()
                             .fill(Color(hex: "4ADE80"))
-                            .frame(width: 4, height: 4)
+                            .frame(width: hovered ? 5 : 4, height: hovered ? 5 : 4)
                             .modifier(PulseModifier())
 
                         Text(elapsed)
-                            .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                            .font(.system(size: hovered ? 11 : 10, weight: .semibold, design: .monospaced))
                             .foregroundColor(.white.opacity(0.7))
                     }
-                    .frame(width: wingExtension)
+                    .padding(.trailing, 6)
+                    .frame(width: wing)
                     .opacity(appeared ? 1 : 0)
                 }
-                .frame(width: totalWidth, height: notchHeight)
+                .frame(width: pillWidth, height: notchHeight)
+
+                // === EXPANDED SESSION LIST ===
+                if hovered {
+                    expandedContent
+                        .frame(width: pillWidth - 20)
+                        .padding(.top, notchHeight + 6)
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                }
             }
-            .frame(width: totalWidth, height: notchHeight)
+            .frame(width: pillWidth, height: pillTotalHeight, alignment: .top)
+            .contentShape(pillShape)
             .scaleEffect(x: appeared ? 1 : 0.68, y: 1, anchor: .center)
         }
-        .onTapGesture(perform: onTap)
+        .frame(width: maxWidth, height: maxHeight, alignment: .top)
+        .onTapGesture {
+            onTap(sessions.first?.id)
+        }
         .onHover { h in
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
                 hovered = h
             }
         }
@@ -82,6 +100,90 @@ struct SessionPillView: View {
             }
         }
     }
+
+    // MARK: - Pill shape
+
+    private var pillShape: some Shape {
+        UnevenRoundedRectangle(
+            topLeadingRadius: 0,
+            bottomLeadingRadius: hovered ? 18 : notchHeight / 2,
+            bottomTrailingRadius: hovered ? 18 : notchHeight / 2,
+            topTrailingRadius: 0,
+            style: .continuous
+        )
+    }
+
+    // MARK: - Expanded content
+
+    private var expandedContent: some View {
+        VStack(spacing: 0) {
+            ForEach(Array(sessions.prefix(4).enumerated()), id: \.offset) { index, session in
+                if index > 0 {
+                    Divider()
+                        .background(Color.white.opacity(0.06))
+                        .padding(.horizontal, 4)
+                }
+                sessionRow(session: session)
+            }
+            if sessions.count > 4 {
+                HStack {
+                    Text("+\(sessions.count - 4) more")
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundColor(.white.opacity(0.3))
+                    Spacer()
+                }
+                .padding(.horizontal, 10)
+                .padding(.top, 4)
+            }
+        }
+    }
+
+    private func sessionRow(session: (id: String, startTime: Date)) -> some View {
+        Button {
+            onTap(session.id)
+        } label: {
+            HStack(spacing: 10) {
+                // Green dot
+                Circle()
+                    .fill(Color(hex: "4ADE80"))
+                    .frame(width: 5, height: 5)
+
+                // Session info
+                VStack(alignment: .leading, spacing: 1) {
+                    let secs = Int(Date().timeIntervalSince(session.startTime))
+                    let label = session.id.isEmpty || session.id == "test-session"
+                        ? "Claude Session"
+                        : String(session.id.prefix(16)) + (session.id.count > 16 ? "…" : "")
+
+                    Text(label)
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(.white.opacity(0.8))
+                        .lineLimit(1)
+
+                    Text(formatElapsed(secs))
+                        .font(.system(size: 9, weight: .regular, design: .monospaced))
+                        .foregroundColor(.white.opacity(0.35))
+                }
+
+                Spacer()
+
+                // Arrow
+                Image(systemName: "arrow.up.right")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundColor(.white.opacity(0.3))
+                    .frame(width: 22, height: 22)
+                    .background(
+                        Circle().fill(.white.opacity(0.07))
+                    )
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(SessionRowButtonStyle())
+    }
+
+    // MARK: - Format
 
     private func formatElapsed(_ seconds: Int) -> String {
         if seconds < 60 {
@@ -96,9 +198,29 @@ struct SessionPillView: View {
     }
 }
 
+// MARK: - Session row button style (subtle highlight on hover)
+
+private struct SessionRowButtonStyle: ButtonStyle {
+    @State private var isHovered = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(.white.opacity(isHovered ? 0.06 : 0))
+            )
+            .scaleEffect(configuration.isPressed ? 0.97 : 1.0)
+            .onHover { h in
+                withAnimation(.easeOut(duration: 0.15)) { isHovered = h }
+            }
+    }
+}
+
 // MARK: - Mini Chawd — a tiny pixel-art crab for the pill
 
 struct MiniChawdView: View {
+    var excited: Bool = false
+
     @State private var breathe = false
     @State private var blink = false
     @State private var blinkTimer: Timer?
@@ -106,6 +228,10 @@ struct MiniChawdView: View {
     @State private var gimmickTimer: Timer?
     @State private var danceTick = false
     @State private var waveTick = false
+    @State private var jumpOffset: CGFloat = 0
+    @State private var squashStretch: CGFloat = 1.0  // <1 = squash, >1 = stretch
+    @State private var legTuck: CGFloat = 0  // legs tuck up mid-air
+    @State private var hopTimer: Timer?
 
     private let skin = Color(hex: "C4896C")
     private let skinLight = Color(hex: "D49A7C")
@@ -123,27 +249,20 @@ struct MiniChawdView: View {
             let ox = (size.width - totalW) / 2
             let oy = (size.height - totalH) / 2
 
-            // Left arm stub — waves during .wave gimmick
             let armY: CGFloat = gimmick == .wave ? (waveTick ? -2 : 0) : 1.5
             let armH: CGFloat = gimmick == .wave ? 2.5 : 3
             px_fill(ctx, ox: ox, oy: oy, px: px,
                     x: 0, y: armY, w: 2, h: armH, color: skin)
 
-            // Main body
             px_fill(ctx, ox: ox, oy: oy, px: px,
                     x: 2, y: 0, w: 10, h: 7, color: skin)
 
-            // Top highlight
             px_fill(ctx, ox: ox, oy: oy, px: px,
                     x: 2, y: 0, w: 10, h: 0.8, color: skinLight.opacity(0.3))
 
-            // Eyes
             drawEyes(ctx: ctx, ox: ox, oy: oy, px: px)
-
-            // Mouth
             drawMouth(ctx: ctx, ox: ox, oy: oy, px: px)
 
-            // Legs
             let wiggle: CGFloat = breathe ? 0.1 : 0
             let danceL: CGFloat = gimmick == .dance ? 0.4 : 0
             let danceR: CGFloat = gimmick == .dance ? -0.4 : 0
@@ -152,20 +271,28 @@ struct MiniChawdView: View {
             px_fill(ctx, ox: ox, oy: oy, px: px,
                     x: 9 + wiggle + danceR, y: 7, w: 1.5, h: 3, color: skin)
 
-            // Feet
             px_fill(ctx, ox: ox, oy: oy, px: px,
                     x: 4.5 - wiggle + danceL, y: 9.5, w: 1.5, h: 0.8, color: skinDark)
             px_fill(ctx, ox: ox, oy: oy, px: px,
                     x: 9 + wiggle + danceR, y: 9.5, w: 1.5, h: 0.8, color: skinDark)
 
-            // Extras
             drawExtras(ctx: ctx, ox: ox, oy: oy, px: px)
         }
+        .scaleEffect(x: 1.0, y: squashStretch, anchor: .bottom)
+        .scaleEffect(x: squashStretch > 1 ? 0.92 : (squashStretch < 1 ? 1.1 : 1.0),
+                     y: 1.0, anchor: .center) // wide on squash, narrow on stretch
         .scaleEffect(breathe ? 1.03 : 1.0)
         .scaleEffect(gimmick == .bounce ? 1.12 : 1.0)
-        .offset(y: gimmick == .bounce ? -2 : 0)
+        .offset(y: gimmick == .bounce ? -2 : jumpOffset)
         .offset(x: gimmick == .dance ? (danceTick ? 1.5 : -1.5) : 0)
         .rotationEffect(.degrees(gimmick == .dance ? (danceTick ? 5 : -5) : 0))
+        .onChange(of: excited) { _, isExcited in
+            if isExcited {
+                startHopping()
+            } else {
+                stopHopping()
+            }
+        }
         .onAppear {
             withAnimation(.easeInOut(duration: 2.0).repeatForever(autoreverses: true)) {
                 breathe = true
@@ -178,6 +305,75 @@ struct MiniChawdView: View {
             blinkTimer = nil
             gimmickTimer?.invalidate()
             gimmickTimer = nil
+            hopTimer?.invalidate()
+            hopTimer = nil
+        }
+    }
+
+    // MARK: - Excited hopping (repeating while hovered)
+
+    private func startHopping() {
+        doOneHop()
+        hopTimer = Timer.scheduledTimer(withTimeInterval: 0.95, repeats: true) { _ in
+            doOneHop()
+        }
+    }
+
+    private func stopHopping() {
+        hopTimer?.invalidate()
+        hopTimer = nil
+        // Settle back to ground
+        withAnimation(.spring(response: 0.2, dampingFraction: 0.6)) {
+            jumpOffset = 0
+            squashStretch = 1.0
+        }
+    }
+
+    private func doOneHop() {
+        // Phase 1: Anticipation squash (crouch down)
+        withAnimation(.easeIn(duration: 0.12)) {
+            squashStretch = 0.82
+            jumpOffset = 1
+        }
+
+        // Phase 2: Launch up (stretch tall, fly up)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+            withAnimation(.easeOut(duration: 0.18)) {
+                squashStretch = 1.12
+                jumpOffset = -4.5
+            }
+        }
+
+        // Phase 3: Airborne (hang at peak)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.30) {
+            withAnimation(.easeInOut(duration: 0.12)) {
+                squashStretch = 1.0
+                jumpOffset = -4
+            }
+        }
+
+        // Phase 4: Fall down
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.42) {
+            withAnimation(.easeIn(duration: 0.14)) {
+                squashStretch = 1.03
+                jumpOffset = 0
+            }
+        }
+
+        // Phase 5: Landing squash (absorb impact)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.56) {
+            withAnimation(.spring(response: 0.15, dampingFraction: 0.45)) {
+                squashStretch = 0.86
+                jumpOffset = 0.5
+            }
+        }
+
+        // Phase 6: Recover to neutral
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.68) {
+            withAnimation(.spring(response: 0.15, dampingFraction: 0.55)) {
+                squashStretch = 1.0
+                jumpOffset = 0
+            }
         }
     }
 
@@ -190,7 +386,7 @@ struct MiniChawdView: View {
         } else if gimmick == .lookAround {
             px_fill(ctx, ox: ox, oy: oy, px: px, x: 5.5, y: 1.5, w: 0.8, h: 2.5, color: .black)
             px_fill(ctx, ox: ox, oy: oy, px: px, x: 9.5, y: 1.5, w: 0.8, h: 2.5, color: .black)
-        } else if gimmick == .sparkle || gimmick == .bounce {
+        } else if gimmick == .sparkle || gimmick == .bounce || excited {
             px_fill(ctx, ox: ox, oy: oy, px: px, x: 5, y: 2.2, w: 1.2, h: 0.6, color: .black)
             px_fill(ctx, ox: ox, oy: oy, px: px, x: 5, y: 1.8, w: 0.5, h: 1, color: .black)
             px_fill(ctx, ox: ox, oy: oy, px: px, x: 5.7, y: 1.8, w: 0.5, h: 1, color: .black)
@@ -208,7 +404,7 @@ struct MiniChawdView: View {
     private func drawMouth(ctx: GraphicsContext, ox: CGFloat, oy: CGFloat, px: CGFloat) {
         if gimmick == .doze {
             px_fill(ctx, ox: ox, oy: oy, px: px, x: 7, y: 5, w: 1.2, h: 1, color: skinDark)
-        } else if gimmick == .bounce || gimmick == .sparkle {
+        } else if gimmick == .bounce || gimmick == .sparkle || excited {
             px_fill(ctx, ox: ox, oy: oy, px: px, x: 6, y: 5.2, w: 3, h: 0.6, color: skinDark)
             px_fill(ctx, ox: ox, oy: oy, px: px, x: 4, y: 4, w: 1.5, h: 1, color: Color(hex: "E8756B").opacity(0.3))
             px_fill(ctx, ox: ox, oy: oy, px: px, x: 9.5, y: 4, w: 1.5, h: 1, color: Color(hex: "E8756B").opacity(0.3))
@@ -223,7 +419,7 @@ struct MiniChawdView: View {
     // MARK: - Extras
 
     private func drawExtras(ctx: GraphicsContext, ox: CGFloat, oy: CGFloat, px: CGFloat) {
-        if gimmick == .sparkle {
+        if gimmick == .sparkle || excited {
             px_fill(ctx, ox: ox, oy: oy, px: px, x: -1, y: -1, w: 0.8, h: 0.8, color: .yellow.opacity(0.8))
             px_fill(ctx, ox: ox, oy: oy, px: px, x: 14, y: -1.5, w: 0.8, h: 0.8, color: .yellow.opacity(0.7))
             px_fill(ctx, ox: ox, oy: oy, px: px, x: 15, y: 2, w: 0.6, h: 0.6, color: .yellow.opacity(0.5))
@@ -234,15 +430,11 @@ struct MiniChawdView: View {
         }
     }
 
-    // MARK: - Pixel helper
-
     private func px_fill(_ ctx: GraphicsContext, ox: CGFloat, oy: CGFloat, px: CGFloat,
                          x: CGFloat, y: CGFloat, w: CGFloat, h: CGFloat, color: Color) {
         let rect = CGRect(x: ox + x * px, y: oy + y * px, width: w * px, height: h * px)
         ctx.fill(Path(rect), with: .color(color))
     }
-
-    // MARK: - Blink
 
     private func startBlink() {
         blinkTimer = Timer.scheduledTimer(withTimeInterval: 3.5, repeats: true) { _ in
@@ -253,8 +445,6 @@ struct MiniChawdView: View {
             }
         }
     }
-
-    // MARK: - Periodic gimmicks
 
     private func scheduleNextGimmick() {
         let delay = Double.random(in: 4...8)
@@ -282,12 +472,8 @@ struct MiniChawdView: View {
             gimmick = picked
         }
 
-        if picked == .dance {
-            doDanceWiggle(count: 4, interval: 0.2)
-        }
-        if picked == .wave {
-            doWavePump(count: 3, interval: 0.2)
-        }
+        if picked == .dance { doDanceWiggle(count: 4, interval: 0.2) }
+        if picked == .wave { doWavePump(count: 3, interval: 0.2) }
 
         DispatchQueue.main.asyncAfter(deadline: .now() + duration) { [self] in
             withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
