@@ -90,10 +90,11 @@ class NotchWindowController {
             pillPanel?.setFrame(panelFrame, display: true)
         }
 
-        pillPanel?.alphaValue = 1.0
-        pillPanel?.orderFrontRegardless()
+        guard let pillPanel else { return }
+        pillPanel.alphaValue = 1.0
+        pillPanel.orderFrontRegardless()
 
-        pillHoverMonitor.start(panel: pillPanel!)
+        pillHoverMonitor.start(panel: pillPanel)
     }
 
     func hideSessionPill() {
