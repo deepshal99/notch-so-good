@@ -34,7 +34,7 @@ fi
 # Remove hooks from Claude settings
 SETTINGS="$HOME/.claude/settings.json"
 if [ -f "$SETTINGS" ] && command -v jq &> /dev/null; then
-    if jq -e '.hooks.Start' "$SETTINGS" > /dev/null 2>&1; then
+    if jq -e '.hooks.SessionStart' "$SETTINGS" > /dev/null 2>&1; then
         UPDATED=$(jq 'del(.hooks.SessionStart, .hooks.Notification, .hooks.Stop) | if .hooks == {} then del(.hooks) else . end' "$SETTINGS")
         echo "$UPDATED" > "$SETTINGS"
         echo -e "  ${GREEN}✓${RESET} Removed Claude Code hooks"

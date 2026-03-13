@@ -14,7 +14,7 @@ class NotchPanel: NSPanel {
 
         isFloatingPanel = true
         level = .statusBar + 1
-        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        collectionBehavior = [.stationary, .canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
         isOpaque = false
         backgroundColor = .clear
         hasShadow = false
@@ -51,15 +51,16 @@ class PillHoverMonitor: ObservableObject {
     var expandedScreenRect: NSRect = .zero
 
     func start(panel: NotchPanel) {
+        stop()
         self.panel = panel
         panel.ignoresMouseEvents = true
 
-        timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
+        // Use Timer + RunLoop.main .common mode directly (not scheduledTimer, which would double-add)
+        let t = Timer(timeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
             self?.update()
         }
-        if let timer {
-            RunLoop.main.add(timer, forMode: .common)
-        }
+        RunLoop.main.add(t, forMode: .common)
+        timer = t
     }
 
     func stop() {

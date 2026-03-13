@@ -3,8 +3,18 @@
 set -e
 
 APP_NAME="NotchSoGood"
-BUILD_DIR=".build/release"
 APP_BUNDLE="$APP_NAME.app"
+
+# Detect correct build directory (Apple Silicon vs Intel)
+if [ -f ".build/arm64-apple-macosx/release/$APP_NAME" ]; then
+    BUILD_DIR=".build/arm64-apple-macosx/release"
+elif [ -f ".build/x86_64-apple-macosx/release/$APP_NAME" ]; then
+    BUILD_DIR=".build/x86_64-apple-macosx/release"
+elif [ -f ".build/release/$APP_NAME" ]; then
+    BUILD_DIR=".build/release"
+else
+    BUILD_DIR=".build/release"
+fi
 CONTENTS="$APP_BUNDLE/Contents"
 MACOS="$CONTENTS/MacOS"
 RESOURCES="$CONTENTS/Resources"

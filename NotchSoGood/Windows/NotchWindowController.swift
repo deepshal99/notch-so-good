@@ -1,6 +1,12 @@
 import AppKit
 import SwiftUI
 
+/// Observable data source so SwiftUI pill view updates without recreating the hosting view.
+class PillDataSource: ObservableObject {
+    @Published var sessions: [(id: String, startTime: Date)] = []
+    @Published var primaryStartTime: Date = Date()
+}
+
 class NotchWindowController {
     private var panel: NotchPanel?
     private var pillPanel: NotchPanel?
@@ -8,6 +14,7 @@ class NotchWindowController {
     private var isDismissing = false
     private var hasPillSession = false
     private let pillHoverMonitor = PillHoverMonitor()
+    private let pillDataSource = PillDataSource()
 
     // Pill sizing constants (must match SessionPillView)
     private let wingExpanded: CGFloat = 110
@@ -32,13 +39,6 @@ class NotchWindowController {
 
         let panelFrame = calculateFrame(panelWidth: maxWidth, panelHeight: maxHeight, hasNotch: hasNotch, geo: geo)
 
-        if pillPanel == nil {
-            pillPanel = NotchPanel(contentRect: panelFrame)
-            pillPanel?.level = .statusBar + 1
-        } else {
-            pillPanel?.setFrame(panelFrame, display: true)
-        }
-
         // Compute pill screen rects for hover detection
         let collapsedW = notchW + (wingCollapsed * 2)
         let expandedW = maxWidth
@@ -59,28 +59,37 @@ class NotchWindowController {
             height: expandedH
         )
 
-        pillHoverMonitor.stop()
+        // Update data source — SwiftUI observes changes without recreating the view
+        pillDataSource.sessions = sessions
+        pillDataSource.primaryStartTime = primaryStartTime
 
-        let pillView = SessionPillView(
-            sessions: sessions,
-            primaryStartTime: primaryStartTime,
-            notchWidth: notchW,
-            notchHeight: notchH,
-            onTap: { sessionId in
-                TerminalLauncher.focusClaudeCode(sessionId: sessionId, sourceBundleId: nil)
-            },
-            hoverMonitor: pillHoverMonitor
-        )
+        if pillPanel == nil {
+            pillPanel = NotchPanel(contentRect: panelFrame)
+            pillPanel?.level = .statusBar + 1
 
-        let container = VStack(spacing: 0) {
-            pillView
-            Spacer(minLength: 0)
+            let pillView = SessionPillView(
+                dataSource: pillDataSource,
+                notchWidth: notchW,
+                notchHeight: notchH,
+                onTap: { sessionId in
+                    TerminalLauncher.focusClaudeCode(sessionId: sessionId, sourceBundleId: nil)
+                },
+                hoverMonitor: pillHoverMonitor
+            )
+
+            let container = VStack(spacing: 0) {
+                pillView
+                Spacer(minLength: 0)
+            }
+            .frame(width: maxWidth, height: maxHeight)
+
+            let hostingView = NSHostingView(rootView: AnyView(container))
+            hostingView.layer?.backgroundColor = .clear
+            pillPanel?.contentView = hostingView
+        } else {
+            pillPanel?.setFrame(panelFrame, display: true)
         }
-        .frame(width: maxWidth, height: maxHeight)
 
-        let hostingView = NSHostingView(rootView: AnyView(container))
-        hostingView.layer?.backgroundColor = .clear
-        pillPanel?.contentView = hostingView
         pillPanel?.alphaValue = 1.0
         pillPanel?.orderFrontRegardless()
 
@@ -169,10 +178,15 @@ class NotchWindowController {
         dismissTimer?.invalidate()
         dismissTimer = nil
 
+        guard let panel else {
+            isDismissing = false
+            return
+        }
+
         NSAnimationContext.runAnimationGroup({ context in
             context.duration = 0.25
             context.timingFunction = CAMediaTimingFunction(name: .easeIn)
-            panel?.animator().alphaValue = 0
+            panel.animator().alphaValue = 0
         }, completionHandler: { [weak self] in
             self?.panel?.orderOut(nil)
             self?.panel?.alphaValue = 1.0

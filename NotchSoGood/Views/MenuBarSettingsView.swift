@@ -2,80 +2,263 @@ import SwiftUI
 
 struct MenuBarSettingsView: View {
     @ObservedObject var notificationManager: NotificationManager
+    @State private var hoveredPreview: NotificationType?
+
+    private let bg = Color(hex: "1A1A1A")
+    private let cardBg = Color.white.opacity(0.05)
+    private let subtleText = Color.white.opacity(0.4)
+    private let bodyText = Color.white.opacity(0.85)
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            // Header
-            HStack(spacing: 8) {
-                Text("🦀")
-                    .font(.system(size: 16))
-                Text("Notch So Good")
-                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+        VStack(spacing: 0) {
+            // === HEADER with Chawd ===
+            header
+                .padding(.top, 16)
+                .padding(.bottom, 12)
+
+            // === NOTIFICATION TOGGLES ===
+            sectionLabel("NOTIFICATIONS")
+                .padding(.horizontal, 16)
+                .padding(.bottom, 6)
+
+            VStack(spacing: 1) {
+                notifToggle(
+                    icon: "checkmark.circle.fill",
+                    label: "Task Complete",
+                    color: NotificationType.complete.accentColor,
+                    isOn: $notificationManager.showOnComplete
+                )
+                notifToggle(
+                    icon: "questionmark.circle.fill",
+                    label: "Questions",
+                    color: NotificationType.question.accentColor,
+                    isOn: $notificationManager.showOnQuestion
+                )
+                notifToggle(
+                    icon: "exclamationmark.lock.fill",
+                    label: "Permissions",
+                    color: NotificationType.permission.accentColor,
+                    isOn: $notificationManager.showOnPermission
+                )
             }
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .padding(.horizontal, 12)
 
-            Divider().opacity(0.3)
+            Spacer().frame(height: 14)
 
-            // Toggles
-            Group {
-                Toggle("Sound Effects", isOn: $notificationManager.soundEnabled)
-                Toggle("Session Pill", isOn: $notificationManager.showSessionPill)
-                Toggle("Task Complete", isOn: $notificationManager.showOnComplete)
-                Toggle("Questions", isOn: $notificationManager.showOnQuestion)
-                Toggle("Permissions", isOn: $notificationManager.showOnPermission)
+            // === DISPLAY SETTINGS ===
+            sectionLabel("DISPLAY")
+                .padding(.horizontal, 16)
+                .padding(.bottom, 6)
+
+            VStack(spacing: 1) {
+                settingToggle(
+                    icon: "waveform",
+                    label: "Sound Effects",
+                    isOn: $notificationManager.soundEnabled
+                )
+                settingToggle(
+                    icon: "capsule.fill",
+                    label: "Session Pill",
+                    isOn: $notificationManager.showSessionPill
+                )
             }
-            .font(.system(size: 12))
-            .toggleStyle(.switch)
-            .controlSize(.small)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .padding(.horizontal, 12)
 
-            Divider().opacity(0.3)
+            Spacer().frame(height: 14)
 
-            // Test buttons
-            Text("PREVIEW")
-                .font(.system(size: 10, weight: .medium))
-                .foregroundColor(.secondary)
-                .tracking(0.5)
+            // === PREVIEW ===
+            sectionLabel("PREVIEW")
+                .padding(.horizontal, 16)
+                .padding(.bottom, 6)
 
-            HStack(spacing: 4) {
-                testButton("checkmark.circle", color: .green, type: .complete)
-                testButton("questionmark.bubble", color: .blue, type: .question)
-                testButton("lock.shield", color: .orange, type: .permission)
-                testButton("hand.wave", color: .purple, type: .general)
+            HStack(spacing: 6) {
+                previewButton(type: .complete)
+                previewButton(type: .question)
+                previewButton(type: .permission)
+                previewButton(type: .general)
             }
+            .padding(.horizontal, 12)
 
-            Divider().opacity(0.3)
+            Spacer().frame(height: 14)
+
+            // === FOOTER ===
+            Divider()
+                .overlay(Color.white.opacity(0.06))
+                .padding(.horizontal, 12)
 
             Button {
                 NSApplication.shared.terminate(nil)
             } label: {
                 HStack {
-                    Text("Quit")
-                        .font(.system(size: 12))
+                    Image(systemName: "power")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(subtleText)
+                    Text("Quit Notch So Good")
+                        .font(.system(size: 11.5, weight: .medium, design: .rounded))
+                        .foregroundColor(bodyText)
                     Spacer()
                     Text("⌘Q")
-                        .font(.system(size: 10))
-                        .foregroundColor(.secondary)
+                        .font(.system(size: 10, weight: .medium, design: .monospaced))
+                        .foregroundColor(subtleText)
                 }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(HoverButtonStyle())
             .keyboardShortcut("q")
+            .padding(.bottom, 4)
         }
-        .padding(12)
-        .frame(width: 210)
+        .frame(width: 260)
+        .background(bg)
+        .preferredColorScheme(.dark)
     }
 
-    private func testButton(_ icon: String, color: Color, type: NotificationType) -> some View {
-        Button {
+    // MARK: - Header
+
+    private var header: some View {
+        VStack(spacing: 8) {
+            MascotView(expression: .waving)
+                .frame(width: 44, height: 38)
+
+            VStack(spacing: 2) {
+                Text("Notch So Good")
+                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .foregroundColor(.white)
+
+                Text("Dynamic Island for Claude Code")
+                    .font(.system(size: 10, weight: .medium, design: .rounded))
+                    .foregroundColor(subtleText)
+            }
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    // MARK: - Section Label
+
+    private func sectionLabel(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 10, weight: .semibold, design: .rounded))
+            .foregroundColor(subtleText)
+            .tracking(0.8)
+    }
+
+    // MARK: - Notification Toggle Row
+
+    private func notifToggle(
+        icon: String,
+        label: String,
+        color: Color,
+        isOn: Binding<Bool>
+    ) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: icon)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(color)
+                .frame(width: 20)
+
+            Text(label)
+                .font(.system(size: 12, weight: .medium, design: .rounded))
+                .foregroundColor(bodyText)
+
+            Spacer()
+
+            Toggle("", isOn: isOn)
+                .toggleStyle(.switch)
+                .controlSize(.mini)
+                .labelsHidden()
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(cardBg)
+    }
+
+    // MARK: - Setting Toggle Row
+
+    private func settingToggle(
+        icon: String,
+        label: String,
+        isOn: Binding<Bool>
+    ) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: icon)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(Color.white.opacity(0.5))
+                .frame(width: 20)
+
+            Text(label)
+                .font(.system(size: 12, weight: .medium, design: .rounded))
+                .foregroundColor(bodyText)
+
+            Spacer()
+
+            Toggle("", isOn: isOn)
+                .toggleStyle(.switch)
+                .controlSize(.mini)
+                .labelsHidden()
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(cardBg)
+    }
+
+    // MARK: - Preview Buttons
+
+    private func previewButton(type: NotificationType) -> some View {
+        let isHovered = hoveredPreview == type
+
+        return Button {
             notificationManager.showTestNotification(type: type)
         } label: {
-            Image(systemName: icon)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundColor(color)
-                .frame(width: 36, height: 28)
-                .background(
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(color.opacity(0.1))
-                )
+            VStack(spacing: 5) {
+                ZStack {
+                    Circle()
+                        .fill(type.accentColor.opacity(isHovered ? 0.2 : 0.1))
+                        .frame(width: 36, height: 36)
+
+                    Image(systemName: type.sfSymbol)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(type.accentColor)
+                }
+
+                Text(type.defaultTitle)
+                    .font(.system(size: 9, weight: .medium, design: .rounded))
+                    .foregroundColor(isHovered ? type.accentColor : subtleText)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 8)
+            .background(
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(cardBg.opacity(isHovered ? 1.5 : 1))
+            )
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .onHover { h in
+            withAnimation(.easeOut(duration: 0.15)) {
+                hoveredPreview = h ? type : nil
+            }
+        }
+    }
+}
+
+// MARK: - Hover Button Style
+
+private struct HoverButtonStyle: ButtonStyle {
+    @State private var isHovered = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(.white.opacity(isHovered ? 0.06 : 0))
+                    .padding(.horizontal, 4)
+            )
+            .opacity(configuration.isPressed ? 0.7 : 1)
+            .onHover { h in
+                withAnimation(.easeOut(duration: 0.12)) { isHovered = h }
+            }
     }
 }

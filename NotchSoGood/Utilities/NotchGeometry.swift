@@ -22,9 +22,12 @@ struct NotchGeometry {
         guard safeTop > 0 else { return nil }
 
         let frame = screen.frame
-        let leftArea = screen.auxiliaryTopLeftArea ?? .zero
-        let rightArea = screen.auxiliaryTopRightArea ?? .zero
+        let leftArea = screen.auxiliaryTopLeftArea
+        let rightArea = screen.auxiliaryTopRightArea
+        // Both areas must be non-nil for valid notch width calculation
+        guard let leftArea, let rightArea else { return nil }
         let notchWidth = frame.width - leftArea.width - rightArea.width
+        guard notchWidth > 0, notchWidth < frame.width else { return nil }
 
         return NotchGeometry(
             notchWidth: notchWidth,

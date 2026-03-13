@@ -38,6 +38,8 @@ class NotificationManager: ObservableObject {
     @Published var activeSessions: [SessionInfo] = []
 
     private var endSessionWorkItems: [String: DispatchWorkItem] = [:]
+    private var sessionTimeoutTimers: [String: Timer] = [:]
+    private let sessionTimeoutInterval: TimeInterval = 3600 // 1 hour max session
     let windowController = NotchWindowController()
 
     init() {
@@ -84,16 +86,26 @@ class NotificationManager: ObservableObject {
 
         activeSessions.append(SessionInfo(id: sid, startTime: Date()))
         refreshPill()
+
+        // Safety timeout — auto-end session after 1 hour to prevent zombie pills
+        sessionTimeoutTimers[sid]?.invalidate()
+        sessionTimeoutTimers[sid] = Timer.scheduledTimer(withTimeInterval: sessionTimeoutInterval, repeats: false) { [weak self] _ in
+            self?.endSession(sessionId: sid)
+        }
     }
 
     func endSession(sessionId: String?) {
         if let sid = sessionId {
             activeSessions.removeAll { $0.id == sid }
             endSessionWorkItems.removeValue(forKey: sid)
+            sessionTimeoutTimers[sid]?.invalidate()
+            sessionTimeoutTimers.removeValue(forKey: sid)
         } else {
             // No ID — end all sessions
             activeSessions.removeAll()
             endSessionWorkItems.removeAll()
+            sessionTimeoutTimers.values.forEach { $0.invalidate() }
+            sessionTimeoutTimers.removeAll()
         }
 
         if activeSessions.isEmpty {

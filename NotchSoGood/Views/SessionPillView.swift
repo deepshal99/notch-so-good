@@ -3,8 +3,7 @@ import SwiftUI
 /// A Dynamic Island pill that extends the notch left and right while Claude is active.
 /// On hover, it expands fluidly to show session details.
 struct SessionPillView: View {
-    let sessions: [(id: String, startTime: Date)]
-    let primaryStartTime: Date
+    @ObservedObject var dataSource: PillDataSource
     let notchWidth: CGFloat
     let notchHeight: CGFloat
     let onTap: (String?) -> Void
@@ -12,6 +11,9 @@ struct SessionPillView: View {
 
     @State private var appeared = false
     private var hovered: Bool { hoverMonitor.isHovered }
+
+    private var sessions: [(id: String, startTime: Date)] { dataSource.sessions }
+    private var primaryStartTime: Date { dataSource.primaryStartTime }
 
     // Collapsed: small wings
     private let wingCollapsed: CGFloat = 56
@@ -78,7 +80,7 @@ struct SessionPillView: View {
 
                 // === EXPANDED SESSION LIST ===
                 if hovered {
-                    expandedContent
+                    expandedContent(now: context.date)
                         .padding(.top, notchHeight + 4)
                         .padding(.horizontal, 10)
                         .padding(.bottom, 10)
@@ -116,10 +118,10 @@ struct SessionPillView: View {
 
     // MARK: - Expanded content
 
-    private var expandedContent: some View {
+    private func expandedContent(now: Date) -> some View {
         VStack(spacing: 2) {
             ForEach(Array(sessions.prefix(4).enumerated()), id: \.offset) { index, session in
-                sessionRow(session: session)
+                sessionRow(session: session, now: now)
             }
             if sessions.count > 4 {
                 Text("+\(sessions.count - 4) more")
@@ -132,7 +134,7 @@ struct SessionPillView: View {
         }
     }
 
-    private func sessionRow(session: (id: String, startTime: Date)) -> some View {
+    private func sessionRow(session: (id: String, startTime: Date), now: Date) -> some View {
         Button {
             onTap(session.id)
         } label: {
@@ -142,7 +144,7 @@ struct SessionPillView: View {
                     .frame(width: 5, height: 5)
 
                 VStack(alignment: .leading, spacing: 1) {
-                    let secs = Int(Date().timeIntervalSince(session.startTime))
+                    let secs = Int(now.timeIntervalSince(session.startTime))
                     let label = session.id.isEmpty || session.id == "test-session"
                         ? "Claude Session"
                         : String(session.id.prefix(12)) + (session.id.count > 12 ? "…" : "")
@@ -219,7 +221,6 @@ struct MiniChawdView: View {
     @State private var waveTick = false
     @State private var jumpOffset: CGFloat = 0
     @State private var squashStretch: CGFloat = 1.0  // <1 = squash, >1 = stretch
-    @State private var legTuck: CGFloat = 0  // legs tuck up mid-air
     @State private var hopTimer: Timer?
 
     private let skin = Color(hex: "C4896C")
