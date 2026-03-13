@@ -16,9 +16,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {}
 
     func application(_ application: NSApplication, open urls: [URL]) {
+        // Capture the previously active app BEFORE processing URLs,
+        // so we can give focus back — URL scheme delivery activates our app.
+        let previousApp = NSWorkspace.shared.frontmostApplication
+
         for url in urls {
             guard url.scheme == "notchsogood" else { continue }
             handleNotchURL(url)
+        }
+
+        // Immediately yield focus back to whatever the user was using
+        if let previousApp,
+           previousApp.bundleIdentifier != Bundle.main.bundleIdentifier {
+            DispatchQueue.main.async {
+                previousApp.activate()
+            }
         }
     }
 

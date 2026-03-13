@@ -166,12 +166,13 @@ class NotchWindowController {
         panel?.alphaValue = 1.0
         panel?.orderFrontRegardless()
 
-        // Set up hover monitor so notification is click-through outside the visible area
+        // Set up hover monitor — only the visible content area below the notch is interactive.
+        // The top notchH pixels overlap the physical notch and should always be click-through.
         notifHoverMonitor.contentScreenRect = NSRect(
             x: frame.origin.x,
             y: frame.origin.y,
             width: frame.width,
-            height: frame.height
+            height: contentHeight
         )
         if let panel {
             notifHoverMonitor.start(panel: panel)

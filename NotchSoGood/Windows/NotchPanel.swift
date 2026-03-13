@@ -23,6 +23,7 @@ class NotchPanel: NSPanel {
         isMovableByWindowBackground = false
         hidesOnDeactivate = false
         animationBehavior = .none
+        ignoresMouseEvents = true
     }
 
     override var canBecomeKey: Bool { false }
