@@ -81,7 +81,7 @@ struct MenuBarSettingsView: View {
             }
             .padding(.horizontal, 12)
 
-            Spacer().frame(height: 14)
+            Spacer().frame(height: 10)
 
             // === FOOTER ===
             Divider()
