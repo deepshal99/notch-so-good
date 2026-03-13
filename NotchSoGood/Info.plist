@@ -22,6 +22,12 @@
 	<string>14.0</string>
 	<key>LSUIElement</key>
 	<true/>
+	<key>SUFeedURL</key>
+	<string>https://raw.githubusercontent.com/deepshal99/notch-so-good/main/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>5vdUWlthEz9q9czlyFOINzMA4nELfpQfnrhzzClMjN8=</string>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>

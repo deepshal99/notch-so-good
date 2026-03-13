@@ -67,7 +67,7 @@ You only need to do this once.
 
 **Multi-Session** — Running multiple Claude sessions? Hover the pill to see all of them. Each session has its own arrow to focus that specific terminal.
 
-**Menu Bar** — Click the ✦ icon to toggle sounds, pill visibility, and notification types.
+**Menu Bar** — Click the Chawd icon to toggle sounds, pill visibility, notification types, and check for updates.
 
 ---
 
@@ -102,11 +102,11 @@ No server, no polling — just URL scheme callbacks between Claude Code and the 
 
 ## Update
 
-```bash
-cd notch-so-good
-git pull
-bash install.sh
-```
+The app checks for updates automatically on launch via [Sparkle](https://sparkle-project.org). When a new version is available, you'll get a native macOS update dialog — just click **Install Update**.
+
+You can also check manually from the menu bar: **Chawd icon → Check for Updates**.
+
+> **First-time users on v1.0:** You'll need to update once manually (`git pull && bash install.sh`) to get the auto-update-enabled build. After that, all future updates are automatic.
 
 ## Uninstall
 

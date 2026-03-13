@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+    <channel>
+        <title>Notch So Good Updates</title>
+        <link>https://github.com/deepshal99/notch-so-good</link>
+        <description>Automatic updates for Notch So Good</description>
+        <language>en</language>
+    </channel>
+</rss>

@@ -6,7 +6,10 @@ struct NotchSoGoodApp: App {
 
     var body: some Scene {
         MenuBarExtra {
-            MenuBarSettingsView(notificationManager: NotificationManager.shared)
+            MenuBarSettingsView(
+                notificationManager: NotificationManager.shared,
+                updater: appDelegate.updaterController.updater
+            )
         } label: {
             Image(nsImage: ChawdMenuBarIcon.shared)
         }

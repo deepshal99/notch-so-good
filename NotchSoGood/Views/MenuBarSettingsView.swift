@@ -1,8 +1,10 @@
 import SwiftUI
+import Sparkle
 
 struct MenuBarSettingsView: View {
     @ObservedObject var notificationManager: NotificationManager
     @State private var hoveredPreview: NotificationType?
+    let updater: SPUUpdater
 
     private let bg = Color(hex: "1A1A1A")
     private let cardBg = Color.white.opacity(0.05)
@@ -87,6 +89,24 @@ struct MenuBarSettingsView: View {
             Divider()
                 .overlay(Color.white.opacity(0.06))
                 .padding(.horizontal, 12)
+
+            Button {
+                updater.checkForUpdates()
+            } label: {
+                HStack {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(subtleText)
+                    Text("Check for Updates")
+                        .font(.system(size: 11.5, weight: .medium, design: .rounded))
+                        .foregroundColor(bodyText)
+                    Spacer()
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(HoverButtonStyle())
 
             Button {
                 NSApplication.shared.terminate(nil)
