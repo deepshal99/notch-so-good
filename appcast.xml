@@ -8,15 +8,15 @@
         <item>
             <title>Version 1.1.0</title>
             <pubDate>Fri, 13 Mar 2026 20:52:59 +0530</pubDate>
-            <sparkle:version>3</sparkle:version>
+            <sparkle:version>4</sparkle:version>
             <sparkle:shortVersionString>1.1.0</sparkle:shortVersionString>
-            <description><![CDATA[<h2>What's New in 1.1.0</h2><p>New Chawd idle animations (backflip, sneeze, peek-a-boo, walk), notification fixes, smooth animations, and update menu</p>]]></description>
+            <description><![CDATA[<h2>What's New in 1.1.0</h2><p>New Chawd idle animations (backflip, sneeze, peek-a-boo, walk), notification fixes, smooth animations, and update menu. Fix for menu bar panel animation glitch.</p>]]></description>
             <enclosure
                 url="https://github.com/deepshal99/notch-so-good/releases/download/v1.1.0/NotchSoGood-1.1.0.zip"
-                sparkle:version="3"
+                sparkle:version="4"
                 sparkle:shortVersionString="1.1.0"
-                sparkle:edSignature="wTZ6gSJz2bSve2gFMR1+K/bedUHkoclaMkwlKdXl8oY0oosbjbVwFKoLwkbuDz1QZh1zCL1785jvUW88+oXQDg=="
-                length="1711616"
+                sparkle:edSignature="xmd+UtYxS8/7ekOkbVpndkEH9AdfMfL4WZjhOOrFaDFO1UcI1HmXDMTxIchbvgHPgfhHctYTW3NNGUk4OL5nBg=="
+                length="1707685"
                 type="application/octet-stream"
             />
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
