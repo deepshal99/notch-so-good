@@ -14,6 +14,7 @@ class NotchWindowController {
     private var isDismissing = false
     private var hasPillSession = false
     private let pillHoverMonitor = PillHoverMonitor()
+    private let notifHoverMonitor = NotificationHoverMonitor()
     private let pillDataSource = PillDataSource()
 
     // Pill sizing constants (must match SessionPillView)
@@ -165,6 +166,17 @@ class NotchWindowController {
         panel?.alphaValue = 1.0
         panel?.orderFrontRegardless()
 
+        // Set up hover monitor so notification is click-through outside the visible area
+        notifHoverMonitor.contentScreenRect = NSRect(
+            x: frame.origin.x,
+            y: frame.origin.y,
+            width: frame.width,
+            height: frame.height
+        )
+        if let panel {
+            notifHoverMonitor.start(panel: panel)
+        }
+
         SoundManager.shared.play(for: notification.type)
 
         dismissTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: false) { [weak self] _ in
@@ -178,6 +190,7 @@ class NotchWindowController {
 
         dismissTimer?.invalidate()
         dismissTimer = nil
+        notifHoverMonitor.stop()
 
         guard let panel else {
             isDismissing = false

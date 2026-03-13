@@ -90,3 +90,40 @@ class PillHoverMonitor: ObservableObject {
 
     deinit { stop() }
 }
+
+/// Lightweight hover monitor for the notification panel.
+/// Makes the panel click-through except when the mouse is over the visible content.
+class NotificationHoverMonitor {
+    private var timer: Timer?
+    private weak var panel: NotchPanel?
+
+    /// The visible notification rect in screen coordinates.
+    var contentScreenRect: NSRect = .zero
+
+    func start(panel: NotchPanel) {
+        stop()
+        self.panel = panel
+        panel.ignoresMouseEvents = true
+
+        let t = Timer(timeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
+            self?.update()
+        }
+        RunLoop.main.add(t, forMode: .common)
+        timer = t
+    }
+
+    func stop() {
+        timer?.invalidate()
+        timer = nil
+        panel?.ignoresMouseEvents = true
+    }
+
+    private func update() {
+        guard let panel else { return }
+        let mouse = NSEvent.mouseLocation
+        let inside = contentScreenRect.insetBy(dx: -4, dy: -4).contains(mouse)
+        panel.ignoresMouseEvents = !inside
+    }
+
+    deinit { stop() }
+}

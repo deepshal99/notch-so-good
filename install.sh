@@ -50,11 +50,30 @@ echo ""
 # 1. Build
 echo -e "  ${CYAN}Building...${RESET}"
 cd "$PROJECT_DIR"
-swift build -c release 2>&1 | grep -E "Build complete|error:" | while read -r line; do
+
+# Reset SPM state to avoid stale cache errors
+swift package reset 2>/dev/null || true
+
+# Build (retry once with full cache purge if first attempt fails)
+BUILD_OUTPUT=$(swift build -c release 2>&1)
+BUILD_EXIT=$?
+
+if [ $BUILD_EXIT -ne 0 ]; then
+    echo -e "  ${DIM}Retrying with clean cache...${RESET}"
+    swift package purge-cache 2>/dev/null || true
+    rm -rf "$PROJECT_DIR/.build" 2>/dev/null || true
+    BUILD_OUTPUT=$(swift build -c release 2>&1)
+    BUILD_EXIT=$?
+fi
+
+echo "$BUILD_OUTPUT" | grep -E "Build complete|error:" | while read -r line; do
     echo -e "  ${DIM}$line${RESET}"
 done
 
 BINARY="$PROJECT_DIR/.build/arm64-apple-macosx/release/NotchSoGood"
+if [ ! -f "$BINARY" ]; then
+    BINARY="$PROJECT_DIR/.build/x86_64-apple-macosx/release/NotchSoGood"
+fi
 if [ ! -f "$BINARY" ]; then
     BINARY="$PROJECT_DIR/.build/release/NotchSoGood"
 fi
@@ -72,11 +91,24 @@ APP_BUNDLE="$PROJECT_DIR/$BUNDLE_NAME"
 rm -rf "$APP_BUNDLE"
 mkdir -p "$APP_BUNDLE/Contents/MacOS"
 mkdir -p "$APP_BUNDLE/Contents/Resources"
+mkdir -p "$APP_BUNDLE/Contents/Frameworks"
 
 cp "$BINARY" "$APP_BUNDLE/Contents/MacOS/NotchSoGood"
 cp "$PROJECT_DIR/NotchSoGood/Info.plist" "$APP_BUNDLE/Contents/Info.plist"
 cp "$PROJECT_DIR/HookInstaller/install-hooks.sh" "$APP_BUNDLE/Contents/Resources/install-hooks.sh"
 chmod +x "$APP_BUNDLE/Contents/Resources/install-hooks.sh"
+
+# Copy app icon
+if [ -f "$PROJECT_DIR/AppIcon.icns" ]; then
+    cp "$PROJECT_DIR/AppIcon.icns" "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
+fi
+
+# Embed Sparkle.framework
+SPARKLE_FW=$(find "$PROJECT_DIR/.build/artifacts" -name "Sparkle.framework" -path "*/macos*" 2>/dev/null | head -1)
+if [ -n "$SPARKLE_FW" ]; then
+    cp -R "$SPARKLE_FW" "$APP_BUNDLE/Contents/Frameworks/"
+    install_name_tool -add_rpath "@executable_path/../Frameworks" "$APP_BUNDLE/Contents/MacOS/NotchSoGood" 2>/dev/null || true
+fi
 
 echo -e "  ${GREEN}✓${RESET} App bundle ready"
 
