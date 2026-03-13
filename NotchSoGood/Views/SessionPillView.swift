@@ -216,6 +216,7 @@ private struct SessionRowButtonStyle: ButtonStyle {
 
 struct MiniChawdView: View {
     var excited: Bool = false
+    var forceGimmick: String? = nil
 
     @State private var breathe = false
     @State private var blink = false
@@ -596,15 +597,21 @@ struct MiniChawdView: View {
     }
 
     private func scheduleNextGimmick() {
-        let delay = Double.random(in: 4...8)
+        let delay = forceGimmick != nil ? 3.0 : Double.random(in: 4...8)
         gimmickTimer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { _ in
             performRandomGimmick()
         }
     }
 
     private func performRandomGimmick() {
-        let options: [ChawdGimmick] = [.wave, .bounce, .lookAround, .dance, .doze, .sparkle, .walk, .backflip, .sneeze, .peekaboo]
-        let picked = options.randomElement() ?? .wave
+        let picked: ChawdGimmick
+        if let force = forceGimmick,
+           let match = ChawdGimmick.allCases.first(where: { "\($0)" == force }) {
+            picked = match
+        } else {
+            let options: [ChawdGimmick] = [.wave, .bounce, .lookAround, .dance, .doze, .sparkle, .walk, .backflip, .sneeze, .peekaboo]
+            picked = options.randomElement() ?? .wave
+        }
 
         // These gimmicks handle their own lifecycle
         switch picked {

@@ -519,31 +519,63 @@ private struct DemoPulseModifier: ViewModifier {
 class DemoWindowController {
     private var window: NSWindow?
 
-    func open() {
-        // Always create a fresh window so the animation replays
+    func open(animation: String? = nil) {
         window?.close()
 
-        let demoView = DemoView()
-        let hostingView = NSHostingView(rootView: demoView)
+        let view: AnyView
+        let size: NSSize
+
+        if let animation {
+            view = AnyView(AnimationPreviewView(animationName: animation))
+            size = NSSize(width: 300, height: 300)
+        } else {
+            view = AnyView(DemoView())
+            size = NSSize(width: 800, height: 500)
+        }
+
+        let hostingView = NSHostingView(rootView: view)
 
         let w = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 800, height: 500),
+            contentRect: NSRect(origin: .zero, size: size),
             styleMask: [.titled, .closable, .miniaturizable],
             backing: .buffered,
             defer: false
         )
         w.contentView = hostingView
-        w.title = "Notch So Good — Demo"
-        // Center on screen
+        w.title = animation != nil ? "Chawd — \(animation!)" : "Notch So Good — Demo"
         if let screen = NSScreen.main {
             let screenFrame = screen.visibleFrame
-            let x = screenFrame.midX - 400
-            let y = screenFrame.midY - 250
+            let x = screenFrame.midX - size.width / 2
+            let y = screenFrame.midY - size.height / 2
             w.setFrameOrigin(NSPoint(x: x, y: y))
         } else {
             w.center()
         }
         w.makeKeyAndOrderFront(nil)
         window = w
+    }
+}
+
+/// Shows a single Chawd animation on repeat in a preview window.
+struct AnimationPreviewView: View {
+    let animationName: String
+
+    var body: some View {
+        VStack(spacing: 20) {
+            Text(animationName.uppercased())
+                .font(.system(size: 12, weight: .bold, design: .monospaced))
+                .foregroundColor(.white.opacity(0.5))
+                .tracking(1.5)
+
+            MiniChawdView(excited: false, forceGimmick: animationName)
+                .frame(width: 80, height: 80)
+                .scaleEffect(3)
+
+            Text("Repeats every 3s")
+                .font(.system(size: 10, weight: .medium, design: .rounded))
+                .foregroundColor(.white.opacity(0.3))
+        }
+        .frame(width: 300, height: 300)
+        .background(Color(hex: "1A1A1A"))
     }
 }

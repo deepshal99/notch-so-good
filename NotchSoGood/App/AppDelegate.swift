@@ -3,6 +3,7 @@ import Sparkle
 
 class AppDelegate: NSObject, NSApplicationDelegate {
     let updaterController: SPUStandardUpdaterController
+    private let demoController = DemoWindowController()
 
     override init() {
         updaterController = SPUStandardUpdaterController(
@@ -69,6 +70,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         case "session_end":
             NotificationManager.shared.endSession(sessionId: sessionId)
+
+        case "demo":
+            let animation = params["animation"]
+            demoController.open(animation: animation)
 
         default:
             break
