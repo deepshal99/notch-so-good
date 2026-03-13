@@ -300,6 +300,7 @@ struct MiniChawdView: View {
         .scaleEffect(x: squashStretch > 1 ? 0.92 : (squashStretch < 1 ? 1.1 : 1.0),
                      y: 1.0, anchor: .center)
         .scaleEffect(breathe ? 1.03 : 1.0)
+        .animation(.easeInOut(duration: 2.0).repeatForever(autoreverses: true), value: breathe)
         .scaleEffect(gimmick == .bounce ? 1.12 : 1.0)
         .offset(y: gimmick == .bounce ? -2 : (jumpOffset + peekOffset))
         .offset(x: gimmick == .dance ? (danceTick ? 1.5 : -1.5) : 0)
@@ -315,9 +316,7 @@ struct MiniChawdView: View {
             }
         }
         .onAppear {
-            withAnimation(.easeInOut(duration: 2.0).repeatForever(autoreverses: true)) {
-                breathe = true
-            }
+            breathe = true
             startBlink()
             scheduleNextGimmick()
         }
@@ -945,10 +944,9 @@ private struct PulseModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
             .opacity(pulse ? 0.4 : 1.0)
+            .animation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true), value: pulse)
             .onAppear {
-                withAnimation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true)) {
-                    pulse = true
-                }
+                pulse = true
             }
     }
 }

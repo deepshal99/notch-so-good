@@ -259,6 +259,7 @@ struct DemoView: View {
                     .frame(width: currentWidth, height: currentHeight)
                     .blur(radius: 8)
                     .opacity(notifTextRevealed ? 1 : 0)
+                    .animation(.linear(duration: 4).repeatForever(autoreverses: false), value: glowRotation)
             }
 
             // Black shape
@@ -326,9 +327,7 @@ struct DemoView: View {
     // MARK: - Animation Sequence
 
     private func startSequence() {
-        withAnimation(.linear(duration: 4).repeatForever(autoreverses: false)) {
-            glowRotation = 360
-        }
+        glowRotation = 360
 
         // Pill slides in
         after(0.5) {
@@ -506,10 +505,9 @@ private struct DemoPulseModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
             .opacity(pulse ? 0.4 : 1.0)
+            .animation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true), value: pulse)
             .onAppear {
-                withAnimation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true)) {
-                    pulse = true
-                }
+                pulse = true
             }
     }
 }

@@ -12,6 +12,7 @@ struct MascotView: View {
     @State private var armWave: CGFloat = 0
     @State private var bounce: CGFloat = 0
     @State private var blinkTimer: Timer?
+    @State private var waveTimer: Timer?
 
     // The exact Chawd color from the reference
     private let skin = Color(hex: "C4896C")
@@ -30,27 +31,25 @@ struct MascotView: View {
             chawdCanvas
                 .frame(width: 56, height: 46)
                 .scaleEffect(breathe ? 1.02 : 1.0)
+                .animation(.easeInOut(duration: 2.0).repeatForever(autoreverses: true), value: breathe)
                 .offset(y: bounce)
+                .animation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true), value: bounce)
         }
         .onAppear {
-            withAnimation(.easeInOut(duration: 2.0).repeatForever(autoreverses: true)) {
-                breathe = true
-            }
+            breathe = true
             startBlink()
             if expression == .happy {
-                withAnimation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true)) {
-                    bounce = -2
-                }
+                bounce = -2
             }
             if expression == .waving {
-                withAnimation(.easeInOut(duration: 0.35).repeatForever(autoreverses: true)) {
-                    armWave = -4
-                }
+                startWave()
             }
         }
         .onDisappear {
             blinkTimer?.invalidate()
             blinkTimer = nil
+            waveTimer?.invalidate()
+            waveTimer = nil
         }
     }
 
@@ -239,6 +238,13 @@ struct MascotView: View {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
                 withAnimation(.easeInOut(duration: 0.08)) { blink = false }
             }
+        }
+    }
+
+    private func startWave() {
+        armWave = -4
+        waveTimer = Timer.scheduledTimer(withTimeInterval: 0.35, repeats: true) { _ in
+            armWave = armWave == 0 ? -4 : 0
         }
     }
 }

@@ -101,10 +101,9 @@ struct NotchNotificationView: View {
                 .blur(radius: 3)
                 .opacity(textRevealed ? 1 : 0)
         }
+        .animation(.linear(duration: 4).repeatForever(autoreverses: false), value: glowRotation)
         .onAppear {
-            withAnimation(.linear(duration: 4).repeatForever(autoreverses: false)) {
-                glowRotation = 360
-            }
+            glowRotation = 360
         }
     }
 
