@@ -4,7 +4,6 @@ import Sparkle
 struct MenuBarSettingsView: View {
     @ObservedObject var notificationManager: NotificationManager
     @State private var hoveredPreview: NotificationType?
-    @State private var showUpdateInfo = false
     let updater: SPUUpdater
 
     private let bg = Color(hex: "1A1A1A")
@@ -92,13 +91,13 @@ struct MenuBarSettingsView: View {
                 .padding(.horizontal, 12)
 
             Button {
-                showUpdateInfo.toggle()
+                updater.checkForUpdates()
             } label: {
                 HStack {
                     Image(systemName: "arrow.triangle.2.circlepath")
                         .font(.system(size: 10, weight: .medium))
                         .foregroundColor(subtleText)
-                    Text("Update")
+                    Text("Check for Updates")
                         .font(.system(size: 11.5, weight: .medium, design: .rounded))
                         .foregroundColor(bodyText)
                     Spacer()
@@ -111,37 +110,6 @@ struct MenuBarSettingsView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(HoverButtonStyle())
-
-            if showUpdateInfo {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("To update, run in Terminal:")
-                        .font(.system(size: 10, weight: .medium, design: .rounded))
-                        .foregroundColor(subtleText)
-
-                    Button {
-                        NSPasteboard.general.clearContents()
-                        NSPasteboard.general.setString("cd ~/notch-so-good && git pull && bash install.sh", forType: .string)
-                    } label: {
-                        HStack(spacing: 6) {
-                            Text("cd ~/notch-so-good && git pull && bash install.sh")
-                                .font(.system(size: 9.5, weight: .medium, design: .monospaced))
-                                .foregroundColor(.white.opacity(0.7))
-                                .lineLimit(2)
-                            Spacer(minLength: 4)
-                            Image(systemName: "doc.on.doc")
-                                .font(.system(size: 9, weight: .medium))
-                                .foregroundColor(subtleText)
-                        }
-                        .padding(8)
-                        .background(RoundedRectangle(cornerRadius: 6).fill(.white.opacity(0.05)))
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                }
-                .padding(.horizontal, 16)
-                .padding(.bottom, 6)
-                .transition(.opacity.combined(with: .move(edge: .top)))
-            }
 
             Button {
                 NSApplication.shared.terminate(nil)
