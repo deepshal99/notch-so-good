@@ -11,7 +11,7 @@ struct NotchNotificationView: View {
     @State private var expanded = false
     @State private var contentAppeared = false
     @State private var textRevealed = false
-    @State private var hovered = false
+    @State private var glowVisible = false
     @State private var glowRotation: Double = 0
 
     private let bottomRadius: CGFloat = 26
@@ -21,34 +21,37 @@ struct NotchNotificationView: View {
             let fullWidth = geo.size.width
             let fullHeight = geo.size.height
 
-            let currentWidth = expanded ? fullWidth : (hasNotch ? notchWidth + 8 : fullWidth * 0.5)
-            let currentHeight = expanded ? fullHeight : (hasNotch ? notchHeight + 4 : 12)
+            // Scale factors: start at notch size, expand to full
+            let startScaleX = hasNotch ? (notchWidth + 8) / fullWidth : 0.5
+            let startScaleY = hasNotch ? (notchHeight + 4) / fullHeight : 0.15
 
             VStack(spacing: 0) {
                 ZStack(alignment: .top) {
                     // === ANIMATED GRADIENT GLOW (behind the shape) ===
-                    if expanded {
-                        glowBorder(width: currentWidth, height: currentHeight)
+                    if glowVisible {
+                        glowBorder(width: fullWidth, height: fullHeight)
                     }
 
-                    // === MAIN BACKGROUND — also the tap target ===
+                    // === MAIN BACKGROUND — always full size, scaled ===
                     islandShape
                         .fill(Color.black)
                         .contentShape(islandShape)
 
                     // === CONTENT ===
-                    if expanded {
-                        contentView
-                            .padding(.top, hasNotch ? notchHeight + 10 : 12)
-                            .padding(.horizontal, 20)
-                            .padding(.bottom, 16)
-                            .allowsHitTesting(false)
-                    }
+                    contentView
+                        .padding(.top, hasNotch ? notchHeight + 10 : 12)
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 16)
+                        .allowsHitTesting(false)
                 }
-                .frame(width: currentWidth, height: currentHeight)
+                .frame(width: fullWidth, height: fullHeight)
+                .scaleEffect(
+                    x: expanded ? 1 : startScaleX,
+                    y: expanded ? 1 : startScaleY,
+                    anchor: .top
+                )
                 .contentShape(islandShape)
                 .onTapGesture(perform: onTap)
-                .shadow(color: .black.opacity(0.5), radius: expanded ? 16 : 6, y: expanded ? 6 : 2)
             }
             .frame(width: fullWidth, height: fullHeight, alignment: .top)
         }
@@ -159,14 +162,18 @@ struct NotchNotificationView: View {
     // MARK: - Animation
 
     private func animateIn() {
-        withAnimation(.spring(response: 0.55, dampingFraction: 0.72, blendDuration: 0)) {
+        // 1. Shape expands from notch size (scale preserves corner radius)
+        withAnimation(.spring(response: 0.5, dampingFraction: 0.78)) {
             expanded = true
         }
+        // 2. Mascot pops in
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-            withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) {
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
                 contentAppeared = true
             }
+            glowVisible = true
         }
+        // 3. Text fades in
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
             withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                 textRevealed = true

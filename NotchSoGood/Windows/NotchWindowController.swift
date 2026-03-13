@@ -160,8 +160,7 @@ class NotchWindowController {
             }
         )
 
-        let hostingView = NSHostingView(rootView: AnyView(view))
-        hostingView.layer?.backgroundColor = .clear
+        let hostingView = TransparentHostingView(rootView: AnyView(view))
         panel?.contentView = hostingView
         panel?.alphaValue = 1.0
         panel?.orderFrontRegardless()

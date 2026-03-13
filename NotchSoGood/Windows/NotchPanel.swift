@@ -1,6 +1,25 @@
 import AppKit
 import SwiftUI
 
+/// NSHostingView subclass that is fully transparent — no default background.
+class TransparentHostingView: NSHostingView<AnyView> {
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        // Remove the default opaque background NSHostingView draws
+        guard let layer = self.layer else { return }
+        layer.backgroundColor = .clear
+    }
+
+    override var isOpaque: Bool { false }
+
+    override func draw(_ dirtyRect: NSRect) {
+        // Don't draw any background
+        NSColor.clear.setFill()
+        dirtyRect.fill()
+        super.draw(dirtyRect)
+    }
+}
+
 class NotchPanel: NSPanel {
     var onCancel: (() -> Void)?
 
