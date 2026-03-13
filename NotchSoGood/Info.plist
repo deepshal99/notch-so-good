@@ -28,6 +28,10 @@
 	<string>5vdUWlthEz9q9czlyFOINzMA4nELfpQfnrhzzClMjN8=</string>
 	<key>SUEnableAutomaticChecks</key>
 	<true/>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
+	<key>NSHumanReadableCopyright</key>
+	<string>Copyright © 2026 Notch So Good. All rights reserved.</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>

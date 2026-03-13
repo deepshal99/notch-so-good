@@ -39,6 +39,11 @@ cp "NotchSoGood/Info.plist" "$CONTENTS/Info.plist"
 cp "HookInstaller/install-hooks.sh" "$RESOURCES/install-hooks.sh"
 chmod +x "$RESOURCES/install-hooks.sh"
 
+# Copy app icon
+if [ -f "AppIcon.icns" ]; then
+    cp "AppIcon.icns" "$RESOURCES/AppIcon.icns"
+fi
+
 # Embed Sparkle.framework
 SPARKLE_FW=$(find .build/artifacts -name "Sparkle.framework" -path "*/macos*" 2>/dev/null | head -1)
 if [ -n "$SPARKLE_FW" ]; then
