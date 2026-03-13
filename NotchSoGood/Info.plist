@@ -6,6 +6,8 @@
 	<string>en</string>
 	<key>CFBundleExecutable</key>
 	<string>NotchSoGood</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
 	<key>CFBundleIdentifier</key>
 	<string>com.notchsogood.app</string>
 	<key>CFBundleInfoDictionaryVersion</key>
@@ -15,23 +17,7 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.1</string>
-	<key>CFBundleVersion</key>
-	<string>2</string>
-	<key>LSMinimumSystemVersion</key>
-	<string>14.0</string>
-	<key>LSUIElement</key>
-	<true/>
-	<key>SUFeedURL</key>
-	<string>https://raw.githubusercontent.com/deepshal99/notch-so-good/main/appcast.xml</string>
-	<key>SUPublicEDKey</key>
-	<string>5vdUWlthEz9q9czlyFOINzMA4nELfpQfnrhzzClMjN8=</string>
-	<key>SUEnableAutomaticChecks</key>
-	<true/>
-	<key>CFBundleIconFile</key>
-	<string>AppIcon</string>
-	<key>NSHumanReadableCopyright</key>
-	<string>Copyright © 2026 Notch So Good. All rights reserved.</string>
+	<string>1.1.0</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -43,5 +29,19 @@
 			</array>
 		</dict>
 	</array>
+	<key>CFBundleVersion</key>
+	<string>3</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>14.0</string>
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSHumanReadableCopyright</key>
+	<string>Copyright © 2026 Notch So Good. All rights reserved.</string>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUFeedURL</key>
+	<string>https://raw.githubusercontent.com/deepshal99/notch-so-good/main/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>5vdUWlthEz9q9czlyFOINzMA4nELfpQfnrhzzClMjN8=</string>
 </dict>
 </plist>
