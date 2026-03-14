@@ -6,6 +6,22 @@
         <description>Automatic updates for Notch So Good</description>
         <language>en</language>
         <item>
+            <title>Version 1.2.0</title>
+            <pubDate>Sat, 15 Mar 2026 01:57:00 +0530</pubDate>
+            <sparkle:version>5</sparkle:version>
+            <sparkle:shortVersionString>1.2.0</sparkle:shortVersionString>
+            <description><![CDATA[<h2>What's New in 1.2.0</h2><ul><li>Chawd now feels alive with subtle idle animations: gentle sway, floating bob, leg dangling, eye wander, and arm twitches</li><li>New strut animation: walks left then right like asking to be noticed</li><li>New nod animation: gentle head bob</li><li>New shiver animation: quick shake like a chill ran through</li><li>New levitate animation: floats up and away, reappears from below</li><li>Removed backflip animation</li><li>More frequent gimmick cycling</li></ul>]]></description>
+            <enclosure
+                url="https://github.com/deepshal99/notch-so-good/releases/download/v1.2.0/NotchSoGood-1.2.0.zip"
+                sparkle:version="5"
+                sparkle:shortVersionString="1.2.0"
+                sparkle:edSignature="S0GEbXhEZQyrdu/ZdZOTCRtGIE04Iwg4tCjfe++Hm12V1Ht22cSTYMS8gPMYYl1MBoBOehN6N2f57w71cTHKBg=="
+                length="1704125"
+                type="application/octet-stream"
+            />
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+        </item>
+        <item>
             <title>Version 1.1.0</title>
             <pubDate>Fri, 13 Mar 2026 20:52:59 +0530</pubDate>
             <sparkle:version>4</sparkle:version>
