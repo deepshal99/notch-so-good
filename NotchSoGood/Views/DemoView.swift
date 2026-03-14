@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// Auto-playing demo view for screen recording.
-/// Shows: pill appears → hover expand → collapse → all 4 notification types → pill returns
+/// Shows: pill appears → Chawd animation showcase → hover expand → all 4 notification types → loop
 struct DemoView: View {
     @State private var pillAppeared = false
     @State private var hovered = false
@@ -11,6 +11,12 @@ struct DemoView: View {
     @State private var notifTextRevealed = false
     @State private var glowRotation: Double = 0
     @State private var pillOpacity: Double = 0
+
+    // Animation showcase state
+    @State private var showcaseVisible = false
+    @State private var showcaseGimmick: String? = nil
+    @State private var showcaseLabel: String = ""
+    @State private var showcaseLabelOpacity: Double = 0
 
     private let notchW: CGFloat = 200
     private let notchH: CGFloat = 36
@@ -25,6 +31,19 @@ struct DemoView: View {
 
     private let menuBarH: CGFloat = 28
     private let bezelThickness: CGFloat = 4
+
+    // Animations to showcase (name, display label)
+    private let showcaseAnimations: [(String, String)] = [
+        ("wave", "Wave"),
+        ("dance", "Dance"),
+        ("walk", "Walk"),
+        ("strut", "Strut"),
+        ("sneeze", "Sneeze"),
+        ("peekaboo", "Peek-a-Boo"),
+        ("nod", "Nod"),
+        ("shiver", "Shiver"),
+        ("levitate", "Levitate"),
+    ]
 
     var body: some View {
         VStack(spacing: 0) {
@@ -70,11 +89,19 @@ struct DemoView: View {
                     .frame(height: menuBarH)
 
                     // Wallpaper below menu bar
-                    LinearGradient(
-                        colors: [Color(hex: "B8C6DB"), Color(hex: "F5F7FA")],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
+                    ZStack {
+                        LinearGradient(
+                            colors: [Color(hex: "B8C6DB"), Color(hex: "F5F7FA")],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+
+                        // Animation showcase overlay
+                        if showcaseVisible {
+                            animationShowcase
+                                .transition(.opacity.combined(with: .scale(scale: 0.9)))
+                        }
+                    }
                 }
 
                 // Notch cutout
@@ -106,6 +133,35 @@ struct DemoView: View {
         .onAppear {
             startSequence()
         }
+    }
+
+    // MARK: - Animation Showcase
+
+    private var animationShowcase: some View {
+        VStack(spacing: 16) {
+            // Chawd in a dark card
+            VStack(spacing: 12) {
+                MiniChawdView(excited: false, forceGimmick: showcaseGimmick)
+                    .frame(width: 26, height: 26)
+                    .scaleEffect(3.5)
+                    .frame(width: 100, height: 100)
+                    .id(showcaseGimmick ?? "idle") // force recreate on gimmick change
+
+                Text(showcaseLabel)
+                    .font(.system(size: 16, weight: .bold, design: .rounded))
+                    .foregroundColor(.white)
+                    .opacity(showcaseLabelOpacity)
+            }
+            .padding(.horizontal, 40)
+            .padding(.top, 32)
+            .padding(.bottom, 24)
+            .background(
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .fill(Color.black.opacity(0.85))
+                    .shadow(color: .black.opacity(0.2), radius: 20, y: 8)
+            )
+        }
+        .padding(.top, 60)
     }
 
     // MARK: - Demo Pill
@@ -328,59 +384,111 @@ struct DemoView: View {
 
     private func startSequence() {
         glowRotation = 360
+        runSequence(isFirst: true)
+    }
 
-        // Pill slides in
-        after(0.5) {
+    private func runSequence(isFirst: Bool = false) {
+        let t: Double = 0
+
+        // Phase 1: Pill slides in
+        after(t + 0.5) {
             pillAppeared = true
             withAnimation(.spring(response: 0.45, dampingFraction: 0.75)) {
                 pillOpacity = 1
             }
         }
 
-        // Hover expand
-        after(3.0) {
+        // Phase 2: Hover expand
+        after(t + 2.5) {
             withAnimation(.spring(response: 0.4, dampingFraction: 0.78)) {
                 hovered = true
             }
         }
 
         // Hover collapse
-        after(5.5) {
+        after(t + 5.0) {
             withAnimation(.spring(response: 0.4, dampingFraction: 0.78)) {
                 hovered = false
             }
         }
 
-        // Notification 1: Complete (green)
-        after(7.0) {
-            withAnimation(.easeOut(duration: 0.2)) { pillOpacity = 0 }
+        // Phase 3: Animation showcase
+        let showcaseStart = t + 6.5
+        let animDuration = 3.5 // seconds per animation
+
+        // Fade pill out, show showcase
+        after(showcaseStart - 0.5) {
+            withAnimation(.easeOut(duration: 0.3)) { pillOpacity = 0 }
         }
-        showNotification(.complete, showAt: 7.3, hideAt: 10.8)
+        after(showcaseStart) {
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) {
+                showcaseVisible = true
+            }
+        }
 
-        // Notification 2: Question (blue)
-        showNotification(.question, showAt: 11.3, hideAt: 14.8)
+        // Cycle through each animation
+        for (i, anim) in showcaseAnimations.enumerated() {
+            let showAt = showcaseStart + 0.3 + (animDuration * Double(i))
 
-        // Notification 3: Permission (amber)
-        showNotification(.permission, showAt: 15.3, hideAt: 18.8)
+            after(showAt) {
+                showcaseGimmick = anim.0
+                showcaseLabel = anim.1
+                withAnimation(.easeOut(duration: 0.2)) {
+                    showcaseLabelOpacity = 1
+                }
+            }
 
-        // Notification 4: General (violet)
-        showNotification(.general, showAt: 19.3, hideAt: 22.8)
+            // Fade label between transitions
+            if i < showcaseAnimations.count - 1 {
+                after(showAt + animDuration - 0.3) {
+                    withAnimation(.easeIn(duration: 0.2)) {
+                        showcaseLabelOpacity = 0
+                    }
+                }
+            }
+        }
 
-        // Pill returns
-        after(23.3) {
+        let showcaseEnd = showcaseStart + 0.3 + (animDuration * Double(showcaseAnimations.count))
+
+        // Hide showcase
+        after(showcaseEnd) {
+            withAnimation(.easeIn(duration: 0.2)) {
+                showcaseLabelOpacity = 0
+            }
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                showcaseVisible = false
+            }
+        }
+
+        // Phase 4: Notifications
+        let notifStart = showcaseEnd + 0.8
+        let notifDuration = 3.5
+        let notifGap = 0.5
+
+        let types: [NotificationType] = [.complete, .question, .permission, .general]
+        for (i, type) in types.enumerated() {
+            let showAt = notifStart + Double(i) * (notifDuration + notifGap)
+            let hideAt = showAt + notifDuration
+            showNotification(type, showAt: showAt, hideAt: hideAt)
+        }
+
+        // Phase 5: Pill returns after last notification
+        let pillReturnAt = notifStart + Double(types.count) * (notifDuration + notifGap) + 0.3
+        after(pillReturnAt) {
             withAnimation(.spring(response: 0.45, dampingFraction: 0.75)) {
                 pillOpacity = 1
             }
         }
 
-        // Fade pill out and restart loop
-        after(26.0) {
+        // Fade and loop
+        let loopAt = pillReturnAt + 3.0
+        after(loopAt) {
             withAnimation(.easeOut(duration: 0.3)) {
                 pillOpacity = 0
             }
         }
 
-        after(27.0) {
+        after(loopAt + 1.0) {
             resetState()
             runSequence()
         }
@@ -394,53 +502,10 @@ struct DemoView: View {
         notifContentAppeared = false
         notifTextRevealed = false
         pillOpacity = 0
-    }
-
-    private func runSequence() {
-        // Pill slides in
-        after(0.5) {
-            pillAppeared = true
-            withAnimation(.spring(response: 0.45, dampingFraction: 0.75)) {
-                pillOpacity = 1
-            }
-        }
-
-        after(3.0) {
-            withAnimation(.spring(response: 0.4, dampingFraction: 0.78)) {
-                hovered = true
-            }
-        }
-
-        after(5.5) {
-            withAnimation(.spring(response: 0.4, dampingFraction: 0.78)) {
-                hovered = false
-            }
-        }
-
-        after(7.0) {
-            withAnimation(.easeOut(duration: 0.2)) { pillOpacity = 0 }
-        }
-        showNotification(.complete, showAt: 7.3, hideAt: 10.8)
-        showNotification(.question, showAt: 11.3, hideAt: 14.8)
-        showNotification(.permission, showAt: 15.3, hideAt: 18.8)
-        showNotification(.general, showAt: 19.3, hideAt: 22.8)
-
-        after(23.3) {
-            withAnimation(.spring(response: 0.45, dampingFraction: 0.75)) {
-                pillOpacity = 1
-            }
-        }
-
-        after(26.0) {
-            withAnimation(.easeOut(duration: 0.3)) {
-                pillOpacity = 0
-            }
-        }
-
-        after(27.0) {
-            resetState()
-            runSequence()
-        }
+        showcaseVisible = false
+        showcaseGimmick = nil
+        showcaseLabel = ""
+        showcaseLabelOpacity = 0
     }
 
     private func showNotification(_ type: NotificationType, showAt: Double, hideAt: Double) {
@@ -566,8 +631,9 @@ struct AnimationPreviewView: View {
                 .tracking(1.5)
 
             MiniChawdView(excited: false, forceGimmick: animationName)
-                .frame(width: 80, height: 80)
+                .frame(width: 26, height: 26)
                 .scaleEffect(3)
+                .frame(width: 80, height: 80)
 
             Text("Repeats every 3s")
                 .font(.system(size: 10, weight: .medium, design: .rounded))
