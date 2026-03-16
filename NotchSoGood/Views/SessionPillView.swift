@@ -54,8 +54,6 @@ struct SessionPillView: View {
     private var pillTotalHeight: CGFloat { hovered ? (notchHeight + expandedContentHeight) : notchHeight }
 
     var body: some View {
-        let bufferOffset: CGFloat = 3
-        let expandedTopPad = notchHeight + bufferOffset + 4
         TimelineView(.periodic(from: .now, by: 1)) { context in
             let seconds = Int(context.date.timeIntervalSince(primaryStartTime))
             let elapsed = formatElapsed(seconds)
@@ -104,12 +102,11 @@ struct SessionPillView: View {
                     .opacity(appeared ? 1 : 0)
                 }
                 .frame(width: pillWidth, height: notchHeight)
-                .offset(y: bufferOffset)
 
                 // === EXPANDED SESSION LIST ===
                 if hovered {
                     expandedContent(now: context.date)
-                        .padding(.top, expandedTopPad)
+                        .padding(.top, notchHeight + 4)
                         .padding(.horizontal, 10)
                         .padding(.bottom, 10)
                         .frame(width: pillWidth, alignment: .top)

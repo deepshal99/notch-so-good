@@ -36,8 +36,7 @@ class NotchWindowController {
         // Panel stays at max size for smooth SwiftUI animations
         // Must match SessionPillView's maxWidth/maxHeight
         let maxWidth = notchW + (wingExpanded * 2)
-        // Must match SessionPillView.maxContentHeight
-        let maxHeight = notchH + 4 + 10 + (22 * 3) + (32 * 6) + 20
+        let maxHeight = notchH + 300  // Match SessionPillView.maxContentHeight
 
         let panelFrame = calculateFrame(panelWidth: maxWidth, panelHeight: maxHeight, hasNotch: hasNotch, geo: geo)
 
@@ -86,8 +85,10 @@ class NotchWindowController {
             .frame(width: maxWidth, height: maxHeight)
 
             let hostingView = NSHostingView(rootView: AnyView(container))
+            hostingView.safeAreaRegions = []
             hostingView.layer?.backgroundColor = .clear
             pillPanel?.contentView = hostingView
+
         } else {
             pillPanel?.setFrame(panelFrame, display: true)
         }
