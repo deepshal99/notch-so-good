@@ -3,7 +3,7 @@ import SwiftUI
 
 /// Observable data source so SwiftUI pill view updates without recreating the hosting view.
 class PillDataSource: ObservableObject {
-    @Published var sessions: [(id: String, startTime: Date)] = []
+    @Published var sessions: [NotificationManager.SessionInfo] = []
     @Published var primaryStartTime: Date = Date()
 }
 
@@ -24,7 +24,7 @@ class NotchWindowController {
 
     // MARK: - Session Pill
 
-    func showSessionPill(sessions: [(id: String, startTime: Date)], primaryStartTime: Date) {
+    func showSessionPill(sessions: [NotificationManager.SessionInfo], primaryStartTime: Date) {
         hasPillSession = true
 
         let hasNotch = NotchGeometry.hasNotch
@@ -36,7 +36,7 @@ class NotchWindowController {
         // Panel stays at max size for smooth SwiftUI animations
         // Must match SessionPillView's maxWidth/maxHeight
         let maxWidth = notchW + (wingExpanded * 2)
-        let maxHeight = notchH + 16 + (36 * 4) + 6
+        let maxHeight = notchH + 4 + 10 + (36 * 4) + 20 // topPad + bottomPad + rows + overflow
 
         let panelFrame = calculateFrame(panelWidth: maxWidth, panelHeight: maxHeight, hasNotch: hasNotch, geo: geo)
 
@@ -120,6 +120,10 @@ class NotchWindowController {
 
     func showNotification(_ notification: NotchNotification) {
         dismissTimer?.invalidate()
+
+        // Hide pill while notification is visible
+        pillPanel?.alphaValue = 0
+        pillHoverMonitor.stop()
 
         let hasNotch = NotchGeometry.hasNotch
         let geo = NotchGeometry.calculate()
@@ -205,6 +209,13 @@ class NotchWindowController {
             self?.panel?.orderOut(nil)
             self?.panel?.alphaValue = 1.0
             self?.isDismissing = false
+
+            // Restore pill after notification dismisses
+            if let self, self.hasPillSession, let pillPanel = self.pillPanel {
+                pillPanel.alphaValue = 1.0
+                pillPanel.orderFrontRegardless()
+                self.pillHoverMonitor.start(panel: pillPanel)
+            }
         })
     }
 

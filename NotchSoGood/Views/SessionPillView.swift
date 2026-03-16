@@ -12,7 +12,7 @@ struct SessionPillView: View {
     @State private var appeared = false
     private var hovered: Bool { hoverMonitor.isHovered }
 
-    private var sessions: [(id: String, startTime: Date)] { dataSource.sessions }
+    private var sessions: [NotificationManager.SessionInfo] { dataSource.sessions }
     private var primaryStartTime: Date { dataSource.primaryStartTime }
 
     // Collapsed: small wings
@@ -20,18 +20,21 @@ struct SessionPillView: View {
     // Expanded: wider wings for session detail
     private let wingExpanded: CGFloat = 110
     // Drop-down height below the notch on hover
+    private let dropTopPad: CGFloat = 4
+    private let dropBottomPad: CGFloat = 10
+    private let rowHeight: CGFloat = 36
+    private let overflowRowHeight: CGFloat = 20
+
     private var dropHeight: CGFloat {
-        let topPad: CGFloat = 4
-        let bottomPad: CGFloat = 10
-        let rowHeight: CGFloat = 36
         let count = CGFloat(min(sessions.count, 4))
-        return topPad + bottomPad + (rowHeight * max(count, 1))
+        let overflow: CGFloat = sessions.count > 4 ? overflowRowHeight : 0
+        return dropTopPad + dropBottomPad + (rowHeight * max(count, 1)) + overflow
     }
 
     private var wing: CGFloat { hovered ? wingExpanded : wingCollapsed }
     private var pillWidth: CGFloat { notchWidth + (wing * 2) }
     private var maxWidth: CGFloat { notchWidth + (wingExpanded * 2) }
-    private var maxHeight: CGFloat { notchHeight + 16 + (36 * 4) + 6 }
+    private var maxHeight: CGFloat { notchHeight + dropTopPad + dropBottomPad + (rowHeight * 4) + overflowRowHeight }
     private var pillTotalHeight: CGFloat { hovered ? (notchHeight + dropHeight) : notchHeight }
 
     var body: some View {
@@ -65,12 +68,13 @@ struct SessionPillView: View {
                     Spacer()
                         .frame(width: notchWidth)
 
-                    // Right wing — Timer
+                    // Right wing — Timer + status dot
                     HStack(spacing: 5) {
+                        let primaryStatus = sessions.first?.status ?? .running
                         Circle()
-                            .fill(Color(hex: "4ADE80"))
+                            .fill(primaryStatus.dotColor)
                             .frame(width: hovered ? 5 : 4, height: hovered ? 5 : 4)
-                            .modifier(PulseModifier())
+                            .modifier(primaryStatus.shouldPulse ? PulseModifier() : PulseModifier(disabled: true))
 
                         Text(elapsed)
                             .font(.system(size: hovered ? 11 : 10, weight: .semibold, design: .monospaced))
@@ -125,7 +129,7 @@ struct SessionPillView: View {
 
     private func expandedContent(now: Date) -> some View {
         VStack(spacing: 2) {
-            ForEach(Array(sessions.prefix(4).enumerated()), id: \.offset) { index, session in
+            ForEach(Array(sessions.prefix(4)), id: \.id) { session in
                 sessionRow(session: session, now: now)
             }
             if sessions.count > 4 {
@@ -139,29 +143,38 @@ struct SessionPillView: View {
         }
     }
 
-    private func sessionRow(session: (id: String, startTime: Date), now: Date) -> some View {
+    private func sessionRow(session: NotificationManager.SessionInfo, now: Date) -> some View {
         Button {
             onTap(session.id)
         } label: {
             HStack(spacing: 8) {
                 Circle()
-                    .fill(Color(hex: "4ADE80"))
+                    .fill(session.status.dotColor)
                     .frame(width: 5, height: 5)
+                    .modifier(PulseModifier(disabled: !session.status.shouldPulse))
 
                 VStack(alignment: .leading, spacing: 1) {
                     let secs = Int(now.timeIntervalSince(session.startTime))
-                    let label = session.id.isEmpty || session.id == "test-session"
-                        ? "Claude Session"
-                        : String(session.id.prefix(12)) + (session.id.count > 12 ? "…" : "")
 
-                    Text(label)
+                    Text(session.displayName)
                         .font(.system(size: 10, weight: .medium))
                         .foregroundColor(.white.opacity(0.8))
                         .lineLimit(1)
 
-                    Text(formatElapsed(secs))
-                        .font(.system(size: 9, weight: .regular, design: .monospaced))
-                        .foregroundColor(.white.opacity(0.35))
+                    HStack(spacing: 4) {
+                        Text(formatElapsed(secs))
+                            .font(.system(size: 9, weight: .regular, design: .monospaced))
+                            .foregroundColor(.white.opacity(0.35))
+
+                        if let statusLabel = session.status.label {
+                            Text("·")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundColor(.white.opacity(0.2))
+                            Text(statusLabel)
+                                .font(.system(size: 9, weight: .medium))
+                                .foregroundColor(session.status.dotColor.opacity(0.8))
+                        }
+                    }
                 }
 
                 Spacer(minLength: 4)
@@ -1233,14 +1246,15 @@ private struct HorizontalOnlyClip: Shape {
 // MARK: - Pulse animation modifier
 
 private struct PulseModifier: ViewModifier {
+    var disabled: Bool = false
     @State private var pulse = false
 
     func body(content: Content) -> some View {
         content
-            .opacity(pulse ? 0.4 : 1.0)
-            .animation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true), value: pulse)
+            .opacity(disabled ? 1.0 : (pulse ? 0.4 : 1.0))
+            .animation(disabled ? nil : .easeInOut(duration: 1.0).repeatForever(autoreverses: true), value: pulse)
             .onAppear {
-                pulse = true
+                if !disabled { pulse = true }
             }
     }
 }

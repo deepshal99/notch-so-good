@@ -66,7 +66,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             NotificationManager.shared.handleNotification(notification)
 
         case "session_start":
-            NotificationManager.shared.startSession(sessionId: sessionId)
+            let displayName = params["cwd"]
+            NotificationManager.shared.startSession(sessionId: sessionId, displayName: displayName)
 
         case "session_end":
             NotificationManager.shared.endSession(sessionId: sessionId)

@@ -37,7 +37,7 @@ cp "$SETTINGS_FILE" "$SETTINGS_FILE.backup.$(date +%s)"
 # Build hooks JSON via heredocs to avoid quoting hell
 
 read -r -d '' START_HOOK << 'HOOKEOF' || true
-[{"matcher":"","hooks":[{"type":"command","command":"INPUT=$(cat); SID=$(echo \"$INPUT\" | jq -r '.session_id // empty'); open -g \"notchsogood://session_start?session_id=$SID\"","timeout":5000}]}]
+[{"matcher":"","hooks":[{"type":"command","command":"INPUT=$(cat); SID=$(echo \"$INPUT\" | jq -r '.session_id // empty'); CWD=$(echo \"$INPUT\" | jq -r '.cwd // empty'); if [ -z \"$CWD\" ]; then CWD=$(basename \"$(pwd)\"); fi; ECWD=$(python3 -c \"import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1]))\" \"$CWD\"); open -g \"notchsogood://session_start?session_id=$SID&cwd=$ECWD\"","timeout":5000}]}]
 HOOKEOF
 
 read -r -d '' NOTIFICATION_HOOK << 'HOOKEOF' || true

@@ -34,6 +34,9 @@ class NotificationManager: ObservableObject {
     struct SessionInfo: Identifiable {
         let id: String
         let startTime: Date
+        var displayName: String
+        var status: SessionStatus
+        var lastMessage: String?
     }
     @Published var activeSessions: [SessionInfo] = []
 
@@ -72,7 +75,7 @@ class NotificationManager: ObservableObject {
 
     // MARK: - Session lifecycle
 
-    func startSession(sessionId: String?) {
+    func startSession(sessionId: String?, displayName: String? = nil) {
         guard showSessionPill else { return }
 
         let sid = sessionId ?? UUID().uuidString
@@ -81,10 +84,19 @@ class NotificationManager: ObservableObject {
         endSessionWorkItems[sid]?.cancel()
         endSessionWorkItems.removeValue(forKey: sid)
 
-        // Don't add duplicate
-        if activeSessions.contains(where: { $0.id == sid }) { return }
+        // Don't add duplicate — but update name if we now have one
+        if let idx = activeSessions.firstIndex(where: { $0.id == sid }) {
+            if let name = displayName, !name.isEmpty {
+                activeSessions[idx].displayName = name
+            }
+            // Reset status back to running on re-start
+            activeSessions[idx].status = .running
+            refreshPill()
+            return
+        }
 
-        activeSessions.append(SessionInfo(id: sid, startTime: Date()))
+        let name = displayName ?? "Claude Session"
+        activeSessions.append(SessionInfo(id: sid, startTime: Date(), displayName: name, status: .running))
         refreshPill()
 
         // Safety timeout — auto-end session after 1 hour to prevent zombie pills
@@ -117,8 +129,7 @@ class NotificationManager: ObservableObject {
 
     private func refreshPill() {
         guard let first = activeSessions.first else { return }
-        windowController.showSessionPill(sessions: activeSessions.map { (id: $0.id, startTime: $0.startTime) },
-                                          primaryStartTime: first.startTime)
+        windowController.showSessionPill(sessions: activeSessions, primaryStartTime: first.startTime)
     }
 
     var hasActiveSession: Bool {
@@ -131,10 +142,34 @@ class NotificationManager: ObservableObject {
 
     // MARK: - Notifications
 
+    func updateSessionStatus(sessionId: String?, status: SessionStatus, message: String? = nil) {
+        guard let sid = sessionId,
+              let idx = activeSessions.firstIndex(where: { $0.id == sid }) else { return }
+        activeSessions[idx].status = status
+        if let msg = message {
+            activeSessions[idx].lastMessage = msg
+        }
+        refreshPill()
+    }
+
     func handleNotification(_ notification: NotchNotification) {
         // Auto-start session pill if not already showing
         if !hasActiveSession && showSessionPill {
             startSession(sessionId: notification.sessionId)
+        }
+
+        // Update session status based on notification type
+        if let sid = notification.sessionId {
+            switch notification.type {
+            case .question:
+                updateSessionStatus(sessionId: sid, status: .needsInput, message: notification.message)
+            case .permission:
+                updateSessionStatus(sessionId: sid, status: .needsPermission, message: notification.message)
+            case .complete:
+                updateSessionStatus(sessionId: sid, status: .completed, message: notification.message)
+            case .general:
+                break
+            }
         }
 
         switch notification.type {
@@ -179,7 +214,7 @@ class NotificationManager: ObservableObject {
 
         // Start a test session pill too
         if !hasActiveSession {
-            startSession(sessionId: "test-session")
+            startSession(sessionId: "test-session", displayName: "Test Project")
         }
 
         windowController.showNotification(notification)
