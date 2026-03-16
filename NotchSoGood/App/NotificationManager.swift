@@ -95,7 +95,7 @@ class NotificationManager: ObservableObject {
             return
         }
 
-        let name = displayName ?? "Claude Session"
+        let name = displayName ?? String(sid.prefix(6))
         activeSessions.append(SessionInfo(id: sid, startTime: Date(), displayName: name, status: .running))
         refreshPill()
 
