@@ -105,7 +105,6 @@ class NotificationManager: ObservableObject {
             if let name = displayName {
                 activeSessions[idx].projectName = sanitizedProjectName(name, sessionId: sid)
             }
-            activeSessions[idx].status = .running
             refreshPill()
             return
         }
