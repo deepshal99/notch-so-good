@@ -43,8 +43,10 @@ class NotchWindowController {
         // Compute pill screen rects for hover detection
         let collapsedW = notchW + (wingCollapsed * 2)
         let expandedW = maxWidth
-        // Use full max content height for expanded hover rect — generous is fine for hit testing
-        let expandedH = maxHeight
+        // Estimate expanded content height based on session count (matches SessionPillView row sizing)
+        let dropPad: CGFloat = 4 + 10  // top + bottom padding
+        let rowH: CGFloat = 36 * CGFloat(min(sessions.count, 6))
+        let expandedH = notchH + dropPad + rowH
         let centerX = panelFrame.origin.x + maxWidth / 2
 
         pillHoverMonitor.collapsedScreenRect = NSRect(
