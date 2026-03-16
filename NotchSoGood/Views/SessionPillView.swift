@@ -244,6 +244,11 @@ struct SessionPillView: View {
                     .frame(width: 5, height: 5)
                     .modifier(PulseModifier(disabled: !session.status.shouldPulse))
 
+                // Short session ID for identification
+                Text(String(session.id.prefix(6)))
+                    .font(.system(size: 9, weight: .medium, design: .monospaced))
+                    .foregroundColor(.white.opacity(0.35))
+
                 let secs = Int(now.timeIntervalSince(session.startTime))
 
                 Text(formatElapsed(secs))
