@@ -34,7 +34,7 @@ class NotificationManager: ObservableObject {
     struct SessionInfo: Identifiable {
         let id: String
         let startTime: Date
-        var displayName: String
+        var projectName: String   // sanitized cwd or short UUID fallback
         var status: SessionStatus
         var lastMessage: String?
     }
@@ -81,34 +81,14 @@ class NotificationManager: ObservableObject {
         "Desktop", "Documents", "Downloads",
     ]
 
-    private func sanitizedDisplayName(_ raw: String?, sessionId: String) -> String {
+    private func sanitizedProjectName(_ raw: String?, sessionId: String) -> String {
         guard let raw, !raw.isEmpty, !Self.unhelpfulNames.contains(raw) else {
             return String(sessionId.prefix(6))
         }
-        // Filter out home directory name (e.g. "deepakmaurya")
         let home = NSHomeDirectory()
         let homeBase = (home as NSString).lastPathComponent
         if raw == homeBase { return String(sessionId.prefix(6)) }
         return raw
-    }
-
-    private func disambiguateSessionNames() {
-        // Count how many sessions share each display name
-        var nameCounts: [String: [Int]] = [:]
-        for (i, session) in activeSessions.enumerated() {
-            nameCounts[session.displayName, default: []].append(i)
-        }
-        // For duplicates, append short ID suffix
-        for (_, indices) in nameCounts where indices.count > 1 {
-            for idx in indices {
-                let session = activeSessions[idx]
-                let suffix = String(session.id.prefix(4))
-                // Only add suffix if not already there
-                if !session.displayName.hasSuffix(suffix) {
-                    activeSessions[idx].displayName = "\(session.displayName) · \(suffix)"
-                }
-            }
-        }
     }
 
     func startSession(sessionId: String?, displayName: String? = nil) {
@@ -120,22 +100,18 @@ class NotificationManager: ObservableObject {
         endSessionWorkItems[sid]?.cancel()
         endSessionWorkItems.removeValue(forKey: sid)
 
-        // Don't add duplicate — but update name if we now have one
+        // Don't add duplicate — but update project name if we now have one
         if let idx = activeSessions.firstIndex(where: { $0.id == sid }) {
             if let name = displayName {
-                let clean = sanitizedDisplayName(name, sessionId: sid)
-                activeSessions[idx].displayName = clean
-                disambiguateSessionNames()
+                activeSessions[idx].projectName = sanitizedProjectName(name, sessionId: sid)
             }
-            // Reset status back to running on re-start
             activeSessions[idx].status = .running
             refreshPill()
             return
         }
 
-        let name = sanitizedDisplayName(displayName, sessionId: sid)
-        activeSessions.append(SessionInfo(id: sid, startTime: Date(), displayName: name, status: .running))
-        disambiguateSessionNames()
+        let project = sanitizedProjectName(displayName, sessionId: sid)
+        activeSessions.append(SessionInfo(id: sid, startTime: Date(), projectName: project, status: .running))
         refreshPill()
 
         // Safety timeout — auto-end session after 1 hour to prevent zombie pills

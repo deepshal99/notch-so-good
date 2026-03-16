@@ -36,15 +36,16 @@ class NotchWindowController {
         // Panel stays at max size for smooth SwiftUI animations
         // Must match SessionPillView's maxWidth/maxHeight
         let maxWidth = notchW + (wingExpanded * 2)
-        let maxHeight = notchH + 4 + 10 + (36 * 4) + 20 // topPad + bottomPad + rows + overflow
+        // Must match SessionPillView.maxContentHeight
+        let maxHeight = notchH + 4 + 10 + (22 * 3) + (32 * 6) + 20
 
         let panelFrame = calculateFrame(panelWidth: maxWidth, panelHeight: maxHeight, hasNotch: hasNotch, geo: geo)
 
         // Compute pill screen rects for hover detection
         let collapsedW = notchW + (wingCollapsed * 2)
         let expandedW = maxWidth
-        let dropHeight: CGFloat = 16 + (36 * CGFloat(min(sessions.count, 4)))
-        let expandedH = notchH + dropHeight
+        // Use full max content height for expanded hover rect — generous is fine for hit testing
+        let expandedH = maxHeight
         let centerX = panelFrame.origin.x + maxWidth / 2
 
         pillHoverMonitor.collapsedScreenRect = NSRect(

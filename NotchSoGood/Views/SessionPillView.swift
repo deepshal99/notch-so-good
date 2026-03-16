@@ -19,23 +19,39 @@ struct SessionPillView: View {
     private let wingCollapsed: CGFloat = 56
     // Expanded: wider wings for session detail
     private let wingExpanded: CGFloat = 110
-    // Drop-down height below the notch on hover
+    // Drop-down sizing
     private let dropTopPad: CGFloat = 4
     private let dropBottomPad: CGFloat = 10
-    private let rowHeight: CGFloat = 36
+    private let sessionRowHeight: CGFloat = 36
+    private let groupHeaderHeight: CGFloat = 22
+    private let subSessionRowHeight: CGFloat = 32
     private let overflowRowHeight: CGFloat = 20
 
-    private var dropHeight: CGFloat {
-        let count = CGFloat(min(sessions.count, 4))
-        let overflow: CGFloat = sessions.count > 4 ? overflowRowHeight : 0
-        return dropTopPad + dropBottomPad + (rowHeight * max(count, 1)) + overflow
+    // Group sessions by project name for hierarchical display
+    private var sessionGroups: [SessionGroup] {
+        SessionGroup.from(sessions)
     }
+
+    private var expandedContentHeight: CGFloat {
+        var h: CGFloat = dropTopPad + dropBottomPad
+        for group in sessionGroups {
+            if group.sessions.count == 1 {
+                h += sessionRowHeight
+            } else {
+                h += groupHeaderHeight + (subSessionRowHeight * CGFloat(group.sessions.count))
+            }
+        }
+        return h
+    }
+
+    // Cap max height for the panel (generous to avoid clipping)
+    private static let maxContentHeight: CGFloat = 300
 
     private var wing: CGFloat { hovered ? wingExpanded : wingCollapsed }
     private var pillWidth: CGFloat { notchWidth + (wing * 2) }
     private var maxWidth: CGFloat { notchWidth + (wingExpanded * 2) }
-    private var maxHeight: CGFloat { notchHeight + dropTopPad + dropBottomPad + (rowHeight * 4) + overflowRowHeight }
-    private var pillTotalHeight: CGFloat { hovered ? (notchHeight + dropHeight) : notchHeight }
+    private var maxHeight: CGFloat { notchHeight + Self.maxContentHeight }
+    private var pillTotalHeight: CGFloat { hovered ? (notchHeight + expandedContentHeight) : notchHeight }
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
@@ -125,23 +141,26 @@ struct SessionPillView: View {
         )
     }
 
-    // MARK: - Expanded content
+    // MARK: - Expanded content (grouped by project)
 
     private func expandedContent(now: Date) -> some View {
-        VStack(spacing: 2) {
-            ForEach(Array(sessions.prefix(4)), id: \.id) { session in
-                sessionRow(session: session, now: now)
-            }
-            if sessions.count > 4 {
-                Text("+\(sessions.count - 4) more")
-                    .font(.system(size: 9, weight: .medium))
-                    .foregroundColor(.white.opacity(0.3))
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 6)
-                    .padding(.top, 2)
+        VStack(spacing: 0) {
+            ForEach(sessionGroups) { group in
+                if group.sessions.count == 1 {
+                    // Single session — flat row with project name
+                    sessionRow(session: group.sessions[0], now: now)
+                } else {
+                    // Multiple sessions — project header + indented sub-rows
+                    projectHeader(name: group.projectName)
+                    ForEach(group.sessions, id: \.id) { session in
+                        subSessionRow(session: session, now: now)
+                    }
+                }
             }
         }
     }
+
+    // MARK: - Full session row (single session per project)
 
     private func sessionRow(session: NotificationManager.SessionInfo, now: Date) -> some View {
         Button {
@@ -156,7 +175,7 @@ struct SessionPillView: View {
                 VStack(alignment: .leading, spacing: 1) {
                     let secs = Int(now.timeIntervalSince(session.startTime))
 
-                    Text(session.displayName)
+                    Text(session.projectName)
                         .font(.system(size: 10, weight: .medium))
                         .foregroundColor(.white.opacity(0.8))
                         .lineLimit(1)
@@ -187,6 +206,69 @@ struct SessionPillView: View {
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 6)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(SessionRowButtonStyle())
+    }
+
+    // MARK: - Project group header
+
+    private func projectHeader(name: String) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: "folder.fill")
+                .font(.system(size: 8, weight: .medium))
+                .foregroundColor(.white.opacity(0.3))
+            Text(name)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundColor(.white.opacity(0.5))
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 8)
+        .padding(.top, 6)
+        .padding(.bottom, 2)
+    }
+
+    // MARK: - Sub-session row (multiple sessions under a project)
+
+    private func subSessionRow(session: NotificationManager.SessionInfo, now: Date) -> some View {
+        Button {
+            onTap(session.id)
+        } label: {
+            HStack(spacing: 6) {
+                // Indent to align under project header text
+                Spacer().frame(width: 6)
+
+                Circle()
+                    .fill(session.status.dotColor)
+                    .frame(width: 5, height: 5)
+                    .modifier(PulseModifier(disabled: !session.status.shouldPulse))
+
+                let secs = Int(now.timeIntervalSince(session.startTime))
+
+                Text(formatElapsed(secs))
+                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                    .foregroundColor(.white.opacity(0.6))
+
+                if let statusLabel = session.status.label {
+                    Text("·")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundColor(.white.opacity(0.15))
+                    Text(statusLabel)
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundColor(session.status.dotColor.opacity(0.8))
+                }
+
+                Spacer(minLength: 4)
+
+                Image(systemName: "arrow.up.right")
+                    .font(.system(size: 7, weight: .bold))
+                    .foregroundColor(.white.opacity(0.25))
+                    .frame(width: 16, height: 16)
+                    .background(Circle().fill(.white.opacity(0.05)))
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
             .contentShape(Rectangle())
         }
         .buttonStyle(SessionRowButtonStyle())
@@ -1244,6 +1326,29 @@ private struct HorizontalOnlyClip: Shape {
 }
 
 // MARK: - Pulse animation modifier
+
+// MARK: - Session grouping by project
+
+struct SessionGroup: Identifiable {
+    let id: String  // projectName
+    let projectName: String
+    let sessions: [NotificationManager.SessionInfo]
+
+    static func from(_ sessions: [NotificationManager.SessionInfo]) -> [SessionGroup] {
+        var order: [String] = []
+        var map: [String: [NotificationManager.SessionInfo]] = [:]
+        for session in sessions {
+            if map[session.projectName] == nil {
+                order.append(session.projectName)
+            }
+            map[session.projectName, default: []].append(session)
+        }
+        return order.compactMap { name in
+            guard let sessions = map[name] else { return nil }
+            return SessionGroup(id: name, projectName: name, sessions: sessions)
+        }
+    }
+}
 
 private struct PulseModifier: ViewModifier {
     var disabled: Bool = false
