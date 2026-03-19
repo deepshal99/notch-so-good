@@ -6,6 +6,22 @@
         <description>Automatic updates for Notch So Good</description>
         <language>en</language>
         <item>
+            <title>Version 1.3.0</title>
+            <pubDate>Wed, 19 Mar 2026 23:00:00 +0530</pubDate>
+            <sparkle:version>8</sparkle:version>
+            <sparkle:shortVersionString>1.3.0</sparkle:shortVersionString>
+            <description><![CDATA[<h2>What's New in 1.3.0</h2><ul><li>Chawd's eyes now track your mouse cursor when idle</li><li>New yawn animation with stretch and teardrop</li><li>New hiccup animation with surprised jolts</li><li>New spin animation with full 360° rotation</li><li>New stretch animation with arms-up relaxation</li><li>Drowsiness system: Chawd gets sleepy after 2 minutes idle, shows startled wake-up on hover</li></ul>]]></description>
+            <enclosure
+                url="https://github.com/deepshal99/notch-so-good/releases/download/v1.3.0/NotchSoGood-1.3.0.zip"
+                sparkle:version="8"
+                sparkle:shortVersionString="1.3.0"
+                sparkle:edSignature="oSm+u8b9xPROZJ2zpTRpqNatS/oZYdnhQDQL0KeM/SpdsDv0m9DkD5GfxdY/xUJSLE0BheSWBUNvgpgQgpgkCg=="
+                length="1755588"
+                type="application/octet-stream"
+            />
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+        </item>
+        <item>
             <title>Version 1.2.2</title>
             <pubDate>Sun, 16 Mar 2026 16:45:00 +0530</pubDate>
             <sparkle:version>7</sparkle:version>
