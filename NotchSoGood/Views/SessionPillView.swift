@@ -283,7 +283,7 @@ struct SessionPillView: View {
 
     private func formatElapsed(_ seconds: Int) -> String {
         if seconds < 60 {
-            return "\(seconds)s"
+            return String(format: "%02ds", seconds)
         } else if seconds < 3600 {
             return "\(seconds / 60):\(String(format: "%02d", seconds % 60))"
         } else {
@@ -463,6 +463,8 @@ struct MiniChawdView: View {
             if isExcited {
                 cancelWalk()
                 cancelGimmickState()
+                gimmickTimer?.invalidate()
+                gimmickTimer = nil
                 // Wake-up reaction if drowsy
                 if isDrowsy {
                     isDrowsy = false
@@ -533,6 +535,8 @@ struct MiniChawdView: View {
             jumpOffset = 0
             squashStretch = 1.0
         }
+        // Resume gimmick cycle after hover ends
+        scheduleNextGimmick()
     }
 
     private func doOneHop() {

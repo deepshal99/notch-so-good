@@ -1,5 +1,6 @@
 #!/bin/bash
 # Uninstall Notch So Good
+set -e
 
 BOLD='\033[1m'
 DIM='\033[2m'
@@ -26,16 +27,31 @@ fi
 # Remove launch agent
 PLIST="$HOME/Library/LaunchAgents/com.notchsogood.app.plist"
 if [ -f "$PLIST" ]; then
-    launchctl unload "$PLIST" 2>/dev/null || true
+    launchctl bootout "gui/$(id -u)" "$PLIST" 2>/dev/null || true
     rm -f "$PLIST"
     echo -e "  ${GREEN}✓${RESET} Removed launch agent"
 fi
 
 # Remove hooks from Claude settings
 SETTINGS="$HOME/.claude/settings.json"
-if [ -f "$SETTINGS" ] && command -v jq &> /dev/null; then
-    if jq -e '.hooks.SessionStart' "$SETTINGS" > /dev/null 2>&1; then
-        UPDATED=$(jq 'del(.hooks.SessionStart, .hooks.Notification, .hooks.Stop) | if .hooks == {} then del(.hooks) else . end' "$SETTINGS")
+if [ -f "$SETTINGS" ] && command -v python3 &> /dev/null; then
+    UPDATED=$(python3 -c "
+import json, sys
+try:
+    with open(sys.argv[1]) as f:
+        s = json.load(f)
+    hooks = s.get('hooks', {})
+    for k in ['SessionStart', 'Notification', 'Stop']:
+        hooks.pop(k, None)
+    if hooks:
+        s['hooks'] = hooks
+    else:
+        s.pop('hooks', None)
+    print(json.dumps(s, indent=2))
+except:
+    pass
+" "$SETTINGS" 2>/dev/null)
+    if [ -n "$UPDATED" ]; then
         echo "$UPDATED" > "$SETTINGS"
         echo -e "  ${GREEN}✓${RESET} Removed Claude Code hooks"
     fi

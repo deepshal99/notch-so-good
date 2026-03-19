@@ -1,6 +1,7 @@
 #!/bin/bash
 # Installs Claude Code hooks for Notch So Good
 # This script adds hooks to ~/.claude/settings.json
+# Only dependency: python3 (pre-installed on macOS)
 
 set -e
 
@@ -14,19 +15,13 @@ if [ ! -f "$SETTINGS_FILE" ]; then
     echo '{}' > "$SETTINGS_FILE"
 fi
 
-# Check dependencies
-if ! command -v jq &> /dev/null; then
-    echo "Error: jq is required. Install with: brew install jq"
-    exit 1
-fi
-
 if ! command -v python3 &> /dev/null; then
-    echo "Error: python3 is required (used for URL encoding in hooks)."
+    echo "Error: python3 is required (should be pre-installed on macOS)."
     exit 1
 fi
 
 # Validate existing settings file is valid JSON
-if ! jq empty "$SETTINGS_FILE" 2>/dev/null; then
+if ! python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$SETTINGS_FILE" 2>/dev/null; then
     echo "Error: $SETTINGS_FILE is not valid JSON. Please fix it manually."
     exit 1
 fi
@@ -34,37 +29,53 @@ fi
 # Backup existing settings
 cp "$SETTINGS_FILE" "$SETTINGS_FILE.backup.$(date +%s)"
 
-# Build hooks JSON via heredocs to avoid quoting hell
+# Hooks use python3 instead of jq for JSON parsing (python3 is pre-installed on macOS, jq is not)
+# Each hook command: reads JSON from stdin via python3, extracts fields, URL-encodes, calls open -g
 
 read -r -d '' START_HOOK << 'HOOKEOF' || true
-[{"matcher":"","hooks":[{"type":"command","command":"INPUT=$(cat); SID=$(echo \"$INPUT\" | jq -r '.session_id // empty'); CWD=$(echo \"$INPUT\" | jq -r '.cwd // empty'); if [ -z \"$CWD\" ]; then CWD=$(basename \"$(pwd)\"); fi; ECWD=$(python3 -c \"import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1]))\" \"$CWD\"); open -g \"notchsogood://session_start?session_id=$SID&cwd=$ECWD\"","timeout":5000}]}]
+[{"matcher":"","hooks":[{"type":"command","command":"INPUT=$(cat); eval $(echo \"$INPUT\" | python3 -c \"import sys,json,urllib.parse; d=json.load(sys.stdin); sid=d.get('session_id',''); cwd=d.get('cwd','') or ''; print(f'SID={sid}'); print(f'ECWD={urllib.parse.quote(cwd)}')\"); open -g \"notchsogood://session_start?session_id=$SID&cwd=$ECWD\"","timeout":5000}]}]
 HOOKEOF
 
 read -r -d '' NOTIFICATION_HOOK << 'HOOKEOF' || true
-[{"matcher":"","hooks":[{"type":"command","command":"INPUT=$(cat); TYPE=$(echo \"$INPUT\" | jq -r '.notification_type // \"general\"'); MSG=$(echo \"$INPUT\" | jq -r '.message // \"Claude needs attention\"' | head -c 200 | python3 -c 'import sys,urllib.parse; print(urllib.parse.quote(sys.stdin.read().strip()))'); TITLE=$(echo \"$INPUT\" | jq -r '.title // empty' | python3 -c 'import sys,urllib.parse; print(urllib.parse.quote(sys.stdin.read().strip()))'); SID=$(echo \"$INPUT\" | jq -r '.session_id // empty'); NTYPE=\"general\"; case \"$TYPE\" in permission_prompt) NTYPE=\"permission\";; idle_prompt) NTYPE=\"question\";; esac; open -g \"notchsogood://notify?type=$NTYPE&message=$MSG&title=$TITLE&session_id=$SID\"","timeout":5000}]}]
+[{"matcher":"","hooks":[{"type":"command","command":"INPUT=$(cat); eval $(echo \"$INPUT\" | python3 -c \"import sys,json,urllib.parse; d=json.load(sys.stdin); t=d.get('notification_type','general'); nt={'permission_prompt':'permission','idle_prompt':'question'}.get(t,'general'); msg=urllib.parse.quote(d.get('message','Claude needs attention')[:200]); title=urllib.parse.quote(d.get('title','')); sid=d.get('session_id',''); print(f'NTYPE={nt}'); print(f'MSG={msg}'); print(f'TITLE={title}'); print(f'SID={sid}')\"); open -g \"notchsogood://notify?type=$NTYPE&message=$MSG&title=$TITLE&session_id=$SID\"","timeout":5000}]}]
 HOOKEOF
 
 read -r -d '' STOP_HOOK << 'HOOKEOF' || true
-[{"matcher":"","hooks":[{"type":"command","command":"INPUT=$(cat); MSG=$(echo \"$INPUT\" | jq -r '.last_assistant_message // \"Task completed\"' | head -c 200 | python3 -c 'import sys,urllib.parse; print(urllib.parse.quote(sys.stdin.read().strip()))'); SID=$(echo \"$INPUT\" | jq -r '.session_id // empty'); open -g \"notchsogood://notify?type=complete&message=$MSG&session_id=$SID\"","timeout":5000}]}]
+[{"matcher":"","hooks":[{"type":"command","command":"INPUT=$(cat); eval $(echo \"$INPUT\" | python3 -c \"import sys,json,urllib.parse; d=json.load(sys.stdin); msg=urllib.parse.quote(d.get('last_assistant_message','Task completed')[:200]); sid=d.get('session_id',''); print(f'MSG={msg}'); print(f'SID={sid}')\"); open -g \"notchsogood://notify?type=complete&message=$MSG&session_id=$SID\"","timeout":5000}]}]
 HOOKEOF
 
-# Merge hooks into settings — preserves any existing non-conflicting hooks
-# Uses jq to add our hooks alongside existing ones rather than replacing the entire hooks object
-UPDATED=$(jq \
-  --argjson start "$START_HOOK" \
-  --argjson notif "$NOTIFICATION_HOOK" \
-  --argjson stop "$STOP_HOOK" \
-  '.hooks = (.hooks // {}) | .hooks.SessionStart = $start | .hooks.Notification = $notif | .hooks.Stop = $stop' \
-  "$SETTINGS_FILE")
+# Merge hooks into settings using python3 (replaces jq dependency)
+UPDATED=$(python3 -c "
+import json, sys
+
+settings_path = sys.argv[1]
+start_hook = json.loads(sys.argv[2])
+notif_hook = json.loads(sys.argv[3])
+stop_hook = json.loads(sys.argv[4])
+
+with open(settings_path) as f:
+    settings = json.load(f)
+
+hooks = settings.get('hooks', {})
+hooks['SessionStart'] = start_hook
+hooks['Notification'] = notif_hook
+hooks['Stop'] = stop_hook
+settings['hooks'] = hooks
+
+print(json.dumps(settings, indent=2))
+" "$SETTINGS_FILE" "$START_HOOK" "$NOTIFICATION_HOOK" "$STOP_HOOK")
+
+if [ -z "$UPDATED" ]; then
+    echo "Error: Failed to update settings — restoring backup"
+    LATEST_BACKUP=$(ls -t "$SETTINGS_FILE.backup."* 2>/dev/null | head -1)
+    if [ -n "$LATEST_BACKUP" ]; then cp "$LATEST_BACKUP" "$SETTINGS_FILE"; fi
+    exit 1
+fi
 
 echo "$UPDATED" > "$SETTINGS_FILE"
 
-echo "✓ Claude Code hooks installed successfully!"
+echo "Claude Code hooks installed!"
 echo "  Settings: $SETTINGS_FILE"
-echo "  Hooks added: SessionStart, Notification, Stop"
+echo "  Hooks: SessionStart, Notification, Stop"
 echo ""
-echo "  SessionStart → Shows mini Chawd pill at the notch"
-echo "  Notify → Expands to show notification"
-echo "  Stop   → Shows completion, then pill dismisses"
-echo ""
-echo "  Make sure NotchSoGood.app is running to receive notifications."
+echo "  Make sure Notch So Good is running to receive notifications."

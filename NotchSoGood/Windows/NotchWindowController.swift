@@ -96,8 +96,10 @@ class NotchWindowController {
         }
 
         guard let pillPanel else { return }
-        pillPanel.alphaValue = 1.0
-        pillPanel.orderFrontRegardless()
+        if !pillPanel.isVisible {
+            pillPanel.alphaValue = 1.0
+            pillPanel.orderFrontRegardless()
+        }
 
         pillHoverMonitor.start(panel: pillPanel)
     }
@@ -125,8 +127,9 @@ class NotchWindowController {
     func showNotification(_ notification: NotchNotification) {
         dismissTimer?.invalidate()
 
-        // Hide pill while notification is visible
-        pillPanel?.alphaValue = 0
+        // Hide pill while notification is visible (cancel any in-progress fade animation)
+        pillPanel?.animator().alphaValue = 0
+        pillPanel?.orderOut(nil)
         pillHoverMonitor.stop()
 
         let hasNotch = NotchGeometry.hasNotch

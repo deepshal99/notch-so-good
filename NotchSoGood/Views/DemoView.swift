@@ -17,6 +17,7 @@ struct DemoView: View {
     @State private var showcaseGimmick: String? = nil
     @State private var showcaseLabel: String = ""
     @State private var showcaseLabelOpacity: Double = 0
+    @State private var isAlive = false
 
     private let notchW: CGFloat = 200
     private let notchH: CGFloat = 36
@@ -135,7 +136,11 @@ struct DemoView: View {
         .background(Color(hex: "D8D8D8"))
         .frame(width: 800, height: 500)
         .onAppear {
+            isAlive = true
             startSequence()
+        }
+        .onDisappear {
+            isAlive = false
         }
     }
 
@@ -550,7 +555,10 @@ struct DemoView: View {
     }
 
     private func after(_ seconds: Double, action: @escaping () -> Void) {
-        DispatchQueue.main.asyncAfter(deadline: .now() + seconds, execute: action)
+        DispatchQueue.main.asyncAfter(deadline: .now() + seconds) { [self] in
+            guard isAlive else { return }
+            action()
+        }
     }
 
     // MARK: - Format

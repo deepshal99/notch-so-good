@@ -12,15 +12,19 @@ struct TerminalLauncher {
 
         // 2. Walk known terminals/IDEs
         let knownApps = [
-            "com.google.antigravity",     // Antigravity IDE
-            "com.cursor.Cursor",           // Cursor
-            "com.microsoft.VSCode",        // VS Code
+            "com.google.antigravity",        // Antigravity IDE
+            "com.cursor.Cursor",             // Cursor
+            "com.microsoft.VSCode",          // VS Code
             "com.todesktop.230313mzl4w4u92", // Cursor (alt ID)
-            "com.mitchellh.ghostty",       // Ghostty
-            "com.googlecode.iterm2",       // iTerm2
-            "net.kovidgoyal.kitty",        // Kitty
-            "dev.warp.Warp-Stable",        // Warp
-            "com.apple.Terminal",          // Terminal.app
+            "com.mitchellh.ghostty",         // Ghostty
+            "com.googlecode.iterm2",         // iTerm2
+            "net.kovidgoyal.kitty",          // Kitty
+            "dev.warp.Warp-Stable",          // Warp
+            "io.alacritty",                  // Alacritty
+            "com.github.wez.wezterm",        // WezTerm
+            "co.zeit.hyper",                 // Hyper
+            "com.raphaelamorim.rio",         // Rio
+            "com.apple.Terminal",            // Terminal.app (last resort)
         ]
 
         for bundleId in knownApps {

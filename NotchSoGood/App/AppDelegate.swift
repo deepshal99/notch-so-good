@@ -1,9 +1,13 @@
 import AppKit
 import Sparkle
 
+@MainActor
 class AppDelegate: NSObject, NSApplicationDelegate {
     let updaterController: SPUStandardUpdaterController
     private let demoController = DemoWindowController()
+    /// Track the last known frontmost app so we can yield focus back after URL scheme activates us.
+    private var lastFrontmostApp: NSRunningApplication?
+    private var frontmostObserver: NSObjectProtocol?
 
     override init() {
         updaterController = SPUStandardUpdaterController(
@@ -14,12 +18,23 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         super.init()
     }
 
-    func applicationDidFinishLaunching(_ notification: Notification) {}
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        // Observe app deactivation to track the last active app before us
+        frontmostObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notif in
+            guard let app = notif.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+                  app.bundleIdentifier != Bundle.main.bundleIdentifier else { return }
+            Task { @MainActor in
+                self?.lastFrontmostApp = app
+            }
+        }
+    }
 
     func application(_ application: NSApplication, open urls: [URL]) {
-        // Capture the previously active app BEFORE processing URLs,
-        // so we can give focus back — URL scheme delivery activates our app.
-        let previousApp = NSWorkspace.shared.frontmostApplication
+        let appToRestore = lastFrontmostApp
 
         for url in urls {
             guard url.scheme == "notchsogood" else { continue }
@@ -27,10 +42,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         // Immediately yield focus back to whatever the user was using
-        if let previousApp,
-           previousApp.bundleIdentifier != Bundle.main.bundleIdentifier {
+        if let appToRestore, appToRestore.isTerminated == false {
             DispatchQueue.main.async {
-                previousApp.activate()
+                appToRestore.activate()
             }
         }
     }
@@ -70,7 +84,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             NotificationManager.shared.startSession(sessionId: sessionId, displayName: displayName)
 
         case "session_end":
-            NotificationManager.shared.endSession(sessionId: sessionId)
+            // Only end a specific session — ignore if no session_id to prevent wiping all sessions
+            if sessionId != nil {
+                NotificationManager.shared.endSession(sessionId: sessionId)
+            }
 
         case "demo":
             let animation = params["animation"]

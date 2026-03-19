@@ -5,16 +5,6 @@ set -e
 APP_NAME="NotchSoGood"
 APP_BUNDLE="$APP_NAME.app"
 
-# Detect correct build directory (Apple Silicon vs Intel)
-if [ -f ".build/arm64-apple-macosx/release/$APP_NAME" ]; then
-    BUILD_DIR=".build/arm64-apple-macosx/release"
-elif [ -f ".build/x86_64-apple-macosx/release/$APP_NAME" ]; then
-    BUILD_DIR=".build/x86_64-apple-macosx/release"
-elif [ -f ".build/release/$APP_NAME" ]; then
-    BUILD_DIR=".build/release"
-else
-    BUILD_DIR=".build/release"
-fi
 CONTENTS="$APP_BUNDLE/Contents"
 MACOS="$CONTENTS/MacOS"
 RESOURCES="$CONTENTS/Resources"
@@ -22,6 +12,18 @@ FRAMEWORKS="$CONTENTS/Frameworks"
 
 echo "Building $APP_NAME in release mode..."
 swift build -c release 2>&1
+
+# Detect correct build directory AFTER build completes
+if [ -f ".build/arm64-apple-macosx/release/$APP_NAME" ]; then
+    BUILD_DIR=".build/arm64-apple-macosx/release"
+elif [ -f ".build/x86_64-apple-macosx/release/$APP_NAME" ]; then
+    BUILD_DIR=".build/x86_64-apple-macosx/release"
+elif [ -f ".build/release/$APP_NAME" ]; then
+    BUILD_DIR=".build/release"
+else
+    echo "Error: Build succeeded but binary not found"
+    exit 1
+fi
 
 echo "Creating app bundle..."
 rm -rf "$APP_BUNDLE"

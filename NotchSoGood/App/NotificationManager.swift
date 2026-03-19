@@ -1,6 +1,7 @@
 import Foundation
 import AppKit
 
+@MainActor
 class NotificationManager: ObservableObject {
     static let shared = NotificationManager()
 
@@ -116,7 +117,9 @@ class NotificationManager: ObservableObject {
         // Safety timeout — auto-end session after 1 hour to prevent zombie pills
         sessionTimeoutTimers[sid]?.invalidate()
         sessionTimeoutTimers[sid] = Timer.scheduledTimer(withTimeInterval: sessionTimeoutInterval, repeats: false) { [weak self] _ in
-            self?.endSession(sessionId: sid)
+            Task { @MainActor in
+                self?.endSession(sessionId: sid)
+            }
         }
     }
 

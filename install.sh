@@ -33,13 +33,6 @@ if ! command -v swift &> /dev/null; then
 fi
 echo -e "  ${GREEN}✓${RESET} Swift"
 
-if ! command -v jq &> /dev/null; then
-    echo -e "  ${RED}✗${RESET} jq not found. Install with:"
-    echo -e "    ${DIM}brew install jq${RESET}"
-    exit 1
-fi
-echo -e "  ${GREEN}✓${RESET} jq"
-
 if ! command -v python3 &> /dev/null; then
     echo -e "  ${RED}✗${RESET} python3 not found"
     exit 1
@@ -123,7 +116,11 @@ fi
 if [ -d "$INSTALL_DIR/$BUNDLE_NAME" ]; then
     rm -rf "$INSTALL_DIR/$BUNDLE_NAME"
 fi
-cp -R "$APP_BUNDLE" "$INSTALL_DIR/$BUNDLE_NAME"
+if ! cp -R "$APP_BUNDLE" "$INSTALL_DIR/$BUNDLE_NAME" 2>/dev/null; then
+    echo -e "  ${RED}✗${RESET} Cannot write to $INSTALL_DIR (permission denied)"
+    echo -e "    ${DIM}Try: sudo cp -R \"$APP_BUNDLE\" \"$INSTALL_DIR/$BUNDLE_NAME\"${RESET}"
+    exit 1
+fi
 echo -e "  ${GREEN}✓${RESET} Installed to /Applications"
 
 # 5. Register URL scheme
@@ -141,32 +138,46 @@ if [ ! -f "$SETTINGS_FILE" ]; then
     echo '{}' > "$SETTINGS_FILE"
 fi
 
-if ! jq empty "$SETTINGS_FILE" 2>/dev/null; then
+if ! python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$SETTINGS_FILE" 2>/dev/null; then
     echo -e "  ${RED}✗${RESET} $SETTINGS_FILE is not valid JSON — skipping hooks"
     echo -e "    ${DIM}Fix the file manually, then run: bash HookInstaller/install-hooks.sh${RESET}"
 else
     cp "$SETTINGS_FILE" "$SETTINGS_FILE.backup.$(date +%s)"
 
     read -r -d '' START_HOOK << 'HOOKEOF' || true
-[{"matcher":"","hooks":[{"type":"command","command":"INPUT=$(cat); SID=$(echo \"$INPUT\" | jq -r '.session_id // empty'); open -g \"notchsogood://session_start?session_id=$SID\"","timeout":5000}]}]
+[{"matcher":"","hooks":[{"type":"command","command":"INPUT=$(cat); eval $(echo \"$INPUT\" | python3 -c \"import sys,json,urllib.parse; d=json.load(sys.stdin); sid=d.get('session_id',''); cwd=d.get('cwd','') or ''; print(f'SID={sid}'); print(f'ECWD={urllib.parse.quote(cwd)}')\"); open -g \"notchsogood://session_start?session_id=$SID&cwd=$ECWD\"","timeout":5000}]}]
 HOOKEOF
 
     read -r -d '' NOTIFICATION_HOOK << 'HOOKEOF' || true
-[{"matcher":"","hooks":[{"type":"command","command":"INPUT=$(cat); TYPE=$(echo \"$INPUT\" | jq -r '.notification_type // \"general\"'); MSG=$(echo \"$INPUT\" | jq -r '.message // \"Claude needs attention\"' | head -c 200 | python3 -c 'import sys,urllib.parse; print(urllib.parse.quote(sys.stdin.read().strip()))'); TITLE=$(echo \"$INPUT\" | jq -r '.title // empty' | python3 -c 'import sys,urllib.parse; print(urllib.parse.quote(sys.stdin.read().strip()))'); SID=$(echo \"$INPUT\" | jq -r '.session_id // empty'); NTYPE=\"general\"; case \"$TYPE\" in permission_prompt) NTYPE=\"permission\";; idle_prompt) NTYPE=\"question\";; esac; open -g \"notchsogood://notify?type=$NTYPE&message=$MSG&title=$TITLE&session_id=$SID\"","timeout":5000}]}]
+[{"matcher":"","hooks":[{"type":"command","command":"INPUT=$(cat); eval $(echo \"$INPUT\" | python3 -c \"import sys,json,urllib.parse; d=json.load(sys.stdin); t=d.get('notification_type','general'); nt={'permission_prompt':'permission','idle_prompt':'question'}.get(t,'general'); msg=urllib.parse.quote(d.get('message','Claude needs attention')[:200]); title=urllib.parse.quote(d.get('title','')); sid=d.get('session_id',''); print(f'NTYPE={nt}'); print(f'MSG={msg}'); print(f'TITLE={title}'); print(f'SID={sid}')\"); open -g \"notchsogood://notify?type=$NTYPE&message=$MSG&title=$TITLE&session_id=$SID\"","timeout":5000}]}]
 HOOKEOF
 
     read -r -d '' STOP_HOOK << 'HOOKEOF' || true
-[{"matcher":"","hooks":[{"type":"command","command":"INPUT=$(cat); MSG=$(echo \"$INPUT\" | jq -r '.last_assistant_message // \"Task completed\"' | head -c 200 | python3 -c 'import sys,urllib.parse; print(urllib.parse.quote(sys.stdin.read().strip()))'); SID=$(echo \"$INPUT\" | jq -r '.session_id // empty'); open -g \"notchsogood://notify?type=complete&message=$MSG&session_id=$SID\"","timeout":5000}]}]
+[{"matcher":"","hooks":[{"type":"command","command":"INPUT=$(cat); eval $(echo \"$INPUT\" | python3 -c \"import sys,json,urllib.parse; d=json.load(sys.stdin); msg=urllib.parse.quote(d.get('last_assistant_message','Task completed')[:200]); sid=d.get('session_id',''); print(f'MSG={msg}'); print(f'SID={sid}')\"); open -g \"notchsogood://notify?type=complete&message=$MSG&session_id=$SID\"","timeout":5000}]}]
 HOOKEOF
 
-    UPDATED=$(jq \
-      --argjson start "$START_HOOK" \
-      --argjson notif "$NOTIFICATION_HOOK" \
-      --argjson stop "$STOP_HOOK" \
-      '.hooks = (.hooks // {}) | .hooks.SessionStart = $start | .hooks.Notification = $notif | .hooks.Stop = $stop' \
-      "$SETTINGS_FILE")
+    UPDATED=$(python3 -c "
+import json, sys
+start_hook = json.loads(sys.argv[1])
+notif_hook = json.loads(sys.argv[2])
+stop_hook = json.loads(sys.argv[3])
+with open(sys.argv[4]) as f:
+    settings = json.load(f)
+hooks = settings.get('hooks', {})
+hooks['SessionStart'] = start_hook
+hooks['Notification'] = notif_hook
+hooks['Stop'] = stop_hook
+settings['hooks'] = hooks
+print(json.dumps(settings, indent=2))
+" "$START_HOOK" "$NOTIFICATION_HOOK" "$STOP_HOOK" "$SETTINGS_FILE")
 
-    echo "$UPDATED" > "$SETTINGS_FILE"
+    if [ -z "$UPDATED" ]; then
+        echo -e "  ${RED}✗${RESET} Failed to update settings — restoring backup"
+        LATEST_BACKUP=$(ls -t "$SETTINGS_FILE.backup."* 2>/dev/null | head -1)
+        if [ -n "$LATEST_BACKUP" ]; then cp "$LATEST_BACKUP" "$SETTINGS_FILE"; fi
+    else
+        echo "$UPDATED" > "$SETTINGS_FILE"
+    fi
 
     echo -e "  ${GREEN}✓${RESET} SessionStart hook  ${DIM}→ Chawd pill appears${RESET}"
     echo -e "  ${GREEN}✓${RESET} Notify hook ${DIM}→ Notch expands with notification${RESET}"

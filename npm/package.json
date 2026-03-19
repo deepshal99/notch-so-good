@@ -1,0 +1,32 @@
+{
+  "name": "notch-so-good",
+  "version": "1.3.0",
+  "description": "Dynamic Island for Claude Code — a pixel-art crab mascot lives in your Mac's notch",
+  "bin": {
+    "notch-so-good": "./install.mjs"
+  },
+  "keywords": [
+    "claude",
+    "claude-code",
+    "macos",
+    "menubar",
+    "notch",
+    "dynamic-island",
+    "developer-tools",
+    "ai-tools",
+    "pixel-art"
+  ],
+  "author": "Deepak Maurya",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/deepshal99/notch-so-good.git"
+  },
+  "homepage": "https://github.com/deepshal99/notch-so-good",
+  "os": [
+    "darwin"
+  ],
+  "engines": {
+    "node": ">=16"
+  }
+}
