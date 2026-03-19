@@ -1,8 +1,8 @@
 # <img src="https://em-content.zobj.net/source/apple/391/crab_1f980.png" width="28"> Notch So Good
 
-**A Dynamic Island for Claude Code on Mac.**
+**The world's smallest coworker lives in your Mac's notch.**
 
-A tiny pixel-art crab called **Chawd** lives in your MacBook's notch. It appears whenever Claude Code is working, shows you live session timers, and expands into notifications when Claude needs your attention.
+Meet **Chawd**. He's a mass of pixels. He lives in your MacBook's notch. And he has one job: watch Claude Code so you don't have to.
 
 ```
                     ┌──────────────────────────┐
@@ -11,101 +11,62 @@ A tiny pixel-art crab called **Chawd** lives in your MacBook's notch. It appears
          │  🦀 0:42 │      [ N O T C H ]       │ ● 3:21  │
          └──────────┴──────────────────────────┴──────────┘
               ↑                                      ↑
-          Chawd mascot                         Live timer
-          (does tricks!)                    (green pulse dot)
+          Chawd                                 Live timer
+          (has no chill)                     (green pulse dot)
 ```
 
 ---
 
 ## Install
 
-**One command:**
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/deepshal99/notch-so-good/main/get.sh | bash
-```
-
-Or if you prefer npx:
-
 ```bash
 npx notch-so-good
 ```
 
-That's it. The installer downloads a pre-built universal binary, installs to `/Applications`, sets up Claude Code hooks, enables launch-at-login, and starts the app.
+That's it. 10 seconds. No Xcode, no dependencies, no sign-up.
+
+Also works with curl:
+```bash
+curl -fsSL https://raw.githubusercontent.com/deepshal99/notch-so-good/main/get.sh | bash
+```
 
 ### Requirements
 
-| Requirement | Notes |
-|------------|-------|
-| **macOS 14+** (Sonoma or later) | MacBook with a notch recommended |
-| **Claude Code** | [docs.anthropic.com/en/docs/claude-code](https://docs.anthropic.com/en/docs/claude-code) |
-
-> **python3** is needed for hooks (pre-installed on macOS).
-
-### Build from source
-
-If you prefer to build locally:
-
-```bash
-git clone https://github.com/deepshal99/notch-so-good.git
-cd notch-so-good
-bash install.sh
-```
-
-This requires Xcode Command Line Tools (`xcode-select --install`).
+- **macOS 14+** (Sonoma or later) — MacBook with a notch recommended
+- **Claude Code** — [get it here](https://docs.anthropic.com/en/docs/claude-code)
 
 ---
 
-## What You Get
+## What Chawd Does
 
-**Session Pill** — A seamless black pill extends your notch whenever Claude is working. Chawd on the left, live timer on the right. Hover to expand and see active sessions.
+**He watches.** When Claude Code is running, a black pill extends your notch. Chawd sits on the left, a live timer ticks on the right.
 
-**Chawd Gimmicks** — The crab randomly waves, bounces, dances, dozes off, sparkles, and looks around. Hover and it does an excited hop. Leave it idle and it gets drowsy.
+**He performs.** 13 idle animations — wave, dance, sneeze, peek-a-boo, backflip, levitate, yawn, hiccup, spin, stretch, and more. He has absolutely no chill.
 
-**Smart Notifications** — The notch expands when Claude asks a question, needs permission, or finishes a task. Click anywhere on it to jump to your terminal.
+**He follows your eyes.** Move your mouse near the notch and Chawd's tiny pixel eyes track your cursor. Get close and he gets excited. Leave him alone too long and he falls asleep. Come back and he does a startled little jolt.
 
-**Multi-Session** — Running multiple Claude sessions? Hover the pill to see all of them. Each session has its own arrow to focus that specific terminal.
+**He tells you things.** When Claude needs input, your notch expands into a notification. Color-coded by type — green for done, blue for questions, amber for permissions. Click anywhere to jump back to your terminal.
 
-**Mouse-Reactive Eyes** — Chawd's eyes follow your cursor. Move close and the crab gets excited.
-
-**Menu Bar** — Click the Chawd icon to toggle sounds, pill visibility, notification types, and check for updates.
+**He multitasks.** Running 5 Claude sessions? Hover the pill to see all of them, grouped by project, each with its own timer and status dot.
 
 ---
 
 ## How It Works
 
-Notch So Good plugs into [Claude Code hooks](https://docs.anthropic.com/en/docs/claude-code/hooks):
+Hooks into [Claude Code's hook system](https://docs.anthropic.com/en/docs/claude-code/hooks) via URL scheme callbacks. No server, no polling, no network requests.
 
 ```
-  You start Claude Code
-         │
-         ▼
-  ┌──────────────┐     notchsogood://session_start
-  │ SessionStart │ ──────────────────────────────── 🦀 Chawd pill appears
-  └──────────────┘
-         │
-         ▼  Claude is working...
-         │
-  ┌──────────────┐     notchsogood://notify?type=permission
-  │ Notification │ ──────────────────────────────── 🔔 Notch expands
-  └──────────────┘
-         │
-         ▼  Claude finishes
-         │
-  ┌──────────────┐     notchsogood://notify?type=complete
-  │     Stop     │ ──────────────────────────────── ✅ Done! Pill fades
-  └──────────────┘
+  Claude starts  →  🦀 Chawd appears
+  Claude works   →  🦀 Chawd does tricks, timer ticks
+  Claude asks    →  🔔 Notch expands with notification
+  Claude done    →  ✅ Completion notification, pill fades
 ```
-
-No server, no polling — just URL scheme callbacks between Claude Code and the app.
 
 ---
 
 ## Update
 
-The app checks for updates automatically on launch via [Sparkle](https://sparkle-project.org). When a new version is available, you'll get a native macOS update dialog — just click **Install Update**.
-
-You can also check manually from the menu bar: **Chawd icon → Check for Updates**.
+Automatic via [Sparkle](https://sparkle-project.org). You'll get a native macOS update dialog when a new version drops. Or check manually: **menu bar Chawd icon → Check for Updates**.
 
 ## Uninstall
 
@@ -113,18 +74,21 @@ You can also check manually from the menu bar: **Chawd icon → Check for Update
 curl -fsSL https://raw.githubusercontent.com/deepshal99/notch-so-good/main/uninstall.sh | bash
 ```
 
-Or manually:
+## Build from Source
+
 ```bash
-rm -rf "/Applications/Notch So Good.app"
-rm -f ~/Library/LaunchAgents/com.notchsogood.app.plist
-# Edit ~/.claude/settings.json and remove SessionStart, Notification, Stop hooks
+git clone https://github.com/deepshal99/notch-so-good.git
+cd notch-so-good
+bash install.sh
 ```
+
+Requires Xcode Command Line Tools (`xcode-select --install`).
 
 ---
 
 ## Macs Without a Notch
 
-Notifications appear centered below the menu bar. The session pill is designed for notch MacBooks.
+Notifications appear centered below the menu bar. Chawd prefers notch MacBooks but doesn't discriminate.
 
 ---
 
@@ -136,4 +100,4 @@ PRs welcome. The crab demands more gimmicks.
 
 [MIT](LICENSE)
 
-<sub>Built with 🦀 by [deepshal99](https://github.com/deepshal99) and Claude</sub>
+<sub>Built by [deepshal99](https://github.com/deepshal99) and Claude. Chawd built himself.</sub>
