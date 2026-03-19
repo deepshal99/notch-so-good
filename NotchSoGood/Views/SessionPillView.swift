@@ -53,6 +53,26 @@ struct SessionPillView: View {
     private var maxHeight: CGFloat { notchHeight + Self.maxContentHeight }
     private var pillTotalHeight: CGFloat { hovered ? (notchHeight + expandedContentHeight) : notchHeight }
 
+    /// Convert screen mouse position to a normalized -1...1 direction relative to the pill center.
+    /// Returns nil when mouse is too far away (>300pt) to avoid jittery tracking.
+    private var chawdMouseDirection: CGPoint? {
+        let mouse = hoverMonitor.mouseScreenPosition
+        // Pill center in screen coords: use collapsed rect center
+        let pillCenter = CGPoint(
+            x: hoverMonitor.collapsedScreenRect.midX - hoverMonitor.collapsedScreenRect.width / 2 + wing / 2,
+            y: hoverMonitor.collapsedScreenRect.midY
+        )
+        let dx = mouse.x - pillCenter.x
+        // Screen coords: y increases upward, but we want "mouse above = look up"
+        let dy = mouse.y - pillCenter.y
+        let distance = sqrt(dx * dx + dy * dy)
+        guard distance > 5 && distance < 400 else { return nil }
+        // Normalize with a soft cap so nearby movements feel responsive
+        let scale: CGFloat = min(distance / 150, 1.0)
+        let angle = atan2(dy, dx)
+        return CGPoint(x: cos(angle) * scale, y: -sin(angle) * scale) // flip y for SwiftUI coords
+    }
+
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
             let seconds = Int(context.date.timeIntervalSince(primaryStartTime))
@@ -71,7 +91,7 @@ struct SessionPillView: View {
                     // but hop animation isn't cut off vertically
                     HStack(spacing: 0) {
                         Spacer(minLength: 0)
-                        MiniChawdView(excited: hovered)
+                        MiniChawdView(excited: hovered, mouseDirection: chawdMouseDirection)
                             .frame(width: 20, height: 20)
                         Spacer(minLength: 0)
                     }
@@ -317,6 +337,9 @@ private struct SessionRowButtonStyle: ButtonStyle {
 struct MiniChawdView: View {
     var excited: Bool = false
     var forceGimmick: String? = nil
+    /// Normalized mouse direction for eye tracking: x in -1...1, y in -1...1.
+    /// When nil, falls back to idle eye drift.
+    var mouseDirection: CGPoint? = nil
 
     @State private var isAlive = false  // guards recursive asyncAfter loops
     @State private var breathe = false
@@ -341,6 +364,15 @@ struct MiniChawdView: View {
     @State private var levitateOffset: CGFloat = 0  // levitate up/down
     @State private var levitateScale: CGFloat = 1.0 // shrink as floating away
     @State private var levitateOpacity: Double = 1.0
+    @State private var yawnPhase: YawnPhase = .idle
+    @State private var hiccupJolt: CGFloat = 0
+    @State private var spinAngle: Double = 0
+    @State private var stretchScale: CGFloat = 1.0  // vertical stretch for stretch gimmick
+    @State private var stretchArmOffset: CGFloat = 0 // arms go up during stretch
+
+    enum YawnPhase {
+        case idle, opening, peak, closing
+    }
 
     // Subtle idle animations
     @State private var idleSway: Double = 0       // gentle rotation
@@ -348,6 +380,12 @@ struct MiniChawdView: View {
     @State private var idleLegSwing: CGFloat = 0  // leg dangling
     @State private var idleEyeDrift: CGFloat = 0  // eye wander
     @State private var idleArmTwitch: CGFloat = 0 // arm micro-movement
+
+    // Drowsiness system — gets sleepy after prolonged idle
+    @State private var idleSeconds: Int = 0
+    @State private var isDrowsy: Bool = false
+    @State private var drowsinessTimer: Timer?
+    @State private var wakeUpReaction: Bool = false
 
     enum SneezePhase {
         case idle, windup, explode, dazed
@@ -362,7 +400,7 @@ struct MiniChawdView: View {
     private let skinDark = Color(hex: "B07A5E")
 
     enum ChawdGimmick: CaseIterable {
-        case none, wave, bounce, lookAround, dance, doze, sparkle, walk, sneeze, peekaboo, strut, nod, shiver, levitate
+        case none, wave, bounce, lookAround, dance, doze, sparkle, walk, sneeze, peekaboo, strut, nod, shiver, levitate, yawn, hiccup, spin, stretch
     }
 
     var body: some View {
@@ -373,7 +411,7 @@ struct MiniChawdView: View {
             let ox = (size.width - totalW) / 2
             let oy = (size.height - totalH) / 2
 
-            let armY: CGFloat = gimmick == .wave ? (waveTick ? -2 : 0) : (1.5 + (gimmick == .none ? idleArmTwitch : 0))
+            let armY: CGFloat = gimmick == .wave ? (waveTick ? -2 : 0) : (gimmick == .stretch ? stretchArmOffset : (1.5 + (gimmick == .none ? idleArmTwitch : 0)))
             let armH: CGFloat = gimmick == .wave ? 2.5 : 3
             px_fill(ctx, ox: ox, oy: oy, px: px,
                     x: 0, y: armY, w: 2, h: armH, color: skin)
@@ -430,6 +468,12 @@ struct MiniChawdView: View {
         .offset(y: levitateOffset)
         .scaleEffect(levitateScale)
         .opacity(levitateOpacity)
+        // Spin
+        .rotationEffect(.degrees(spinAngle))
+        // Stretch gimmick — vertical elongation
+        .scaleEffect(x: 1.0, y: stretchScale, anchor: .bottom)
+        // Hiccup jolt
+        .offset(y: hiccupJolt)
         // Subtle idle animations — always running, give life between gimmicks
         .rotationEffect(.degrees(gimmick == .none && !excited ? idleSway : 0))
         .offset(y: gimmick == .none && !excited ? idleBob : 0)
@@ -437,7 +481,28 @@ struct MiniChawdView: View {
             if isExcited {
                 cancelWalk()
                 cancelGimmickState()
-                startHopping()
+                // Wake-up reaction if drowsy
+                if isDrowsy {
+                    isDrowsy = false
+                    idleSeconds = 0
+                    wakeUpReaction = true
+                    // Quick startled jolt before hopping
+                    withAnimation(.spring(response: 0.1, dampingFraction: 0.3)) {
+                        squashStretch = 1.15
+                        jumpOffset = -2
+                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [self] in
+                        guard isAlive else { return }
+                        wakeUpReaction = false
+                        withAnimation(.spring(response: 0.15, dampingFraction: 0.5)) {
+                            squashStretch = 1.0
+                            jumpOffset = 0
+                        }
+                        startHopping()
+                    }
+                } else {
+                    startHopping()
+                }
             } else {
                 stopHopping()
             }
@@ -447,6 +512,7 @@ struct MiniChawdView: View {
             breathe = true
             startBlink()
             startIdleAnimations()
+            startDrowsinessTracker()
             scheduleNextGimmick()
         }
         .onDisappear {
@@ -459,6 +525,8 @@ struct MiniChawdView: View {
             hopTimer = nil
             walkTimer?.invalidate()
             walkTimer = nil
+            drowsinessTimer?.invalidate()
+            drowsinessTimer = nil
         }
     }
 
@@ -539,6 +607,14 @@ struct MiniChawdView: View {
     // MARK: - Eyes
 
     private func drawEyes(ctx: GraphicsContext, ox: CGFloat, oy: CGFloat, px: CGFloat) {
+        if wakeUpReaction {
+            // Startled wide eyes on wake-up
+            px_fill(ctx, ox: ox, oy: oy, px: px, x: 4.5, y: 1, w: 1.5, h: 3, color: .black)
+            px_fill(ctx, ox: ox, oy: oy, px: px, x: 4.8, y: 1.3, w: 0.6, h: 0.6, color: .white.opacity(0.6))
+            px_fill(ctx, ox: ox, oy: oy, px: px, x: 8.5, y: 1, w: 1.5, h: 3, color: .black)
+            px_fill(ctx, ox: ox, oy: oy, px: px, x: 8.8, y: 1.3, w: 0.6, h: 0.6, color: .white.opacity(0.6))
+            return
+        }
         if blink || gimmick == .doze {
             px_fill(ctx, ox: ox, oy: oy, px: px, x: 5, y: 2.8, w: 1, h: 0.6, color: .black)
             px_fill(ctx, ox: ox, oy: oy, px: px, x: 9, y: 2.8, w: 1, h: 0.6, color: .black)
@@ -609,6 +685,36 @@ struct MiniChawdView: View {
                 px_fill(ctx, ox: ox, oy: oy, px: px, x: 5, y: 2.5, w: 1.2, h: 0.5, color: .black)
                 px_fill(ctx, ox: ox, oy: oy, px: px, x: 9, y: 2.5, w: 1.2, h: 0.5, color: .black)
             }
+        } else if gimmick == .yawn {
+            if yawnPhase == .peak {
+                // Eyes squeezed shut during yawn peak
+                px_fill(ctx, ox: ox, oy: oy, px: px, x: 5, y: 2.8, w: 1.2, h: 0.4, color: .black)
+                px_fill(ctx, ox: ox, oy: oy, px: px, x: 9, y: 2.8, w: 1.2, h: 0.4, color: .black)
+            } else if yawnPhase == .closing {
+                // Drowsy half-open eyes
+                px_fill(ctx, ox: ox, oy: oy, px: px, x: 5, y: 2.2, w: 0.8, h: 1.5, color: .black)
+                px_fill(ctx, ox: ox, oy: oy, px: px, x: 9, y: 2.2, w: 0.8, h: 1.5, color: .black)
+            } else {
+                // Opening — normal eyes
+                px_fill(ctx, ox: ox, oy: oy, px: px, x: 5, y: 1.5, w: 0.8, h: 2.5, color: .black)
+                px_fill(ctx, ox: ox, oy: oy, px: px, x: 9, y: 1.5, w: 0.8, h: 2.5, color: .black)
+            }
+        } else if gimmick == .hiccup {
+            // Surprised wide eyes during hiccup
+            px_fill(ctx, ox: ox, oy: oy, px: px, x: 4.8, y: 1.2, w: 1.3, h: 2.8, color: .black)
+            px_fill(ctx, ox: ox, oy: oy, px: px, x: 5.1, y: 1.5, w: 0.5, h: 0.5, color: .white.opacity(0.5))
+            px_fill(ctx, ox: ox, oy: oy, px: px, x: 8.8, y: 1.2, w: 1.3, h: 2.8, color: .black)
+            px_fill(ctx, ox: ox, oy: oy, px: px, x: 9.1, y: 1.5, w: 0.5, h: 0.5, color: .white.opacity(0.5))
+        } else if gimmick == .spin {
+            // Dizzy spiral eyes during spin
+            px_fill(ctx, ox: ox, oy: oy, px: px, x: 5, y: 2, w: 1.2, h: 0.5, color: .black)
+            px_fill(ctx, ox: ox, oy: oy, px: px, x: 5.4, y: 1.6, w: 0.5, h: 1.2, color: .black)
+            px_fill(ctx, ox: ox, oy: oy, px: px, x: 9, y: 2, w: 1.2, h: 0.5, color: .black)
+            px_fill(ctx, ox: ox, oy: oy, px: px, x: 9.4, y: 1.6, w: 0.5, h: 1.2, color: .black)
+        } else if gimmick == .stretch {
+            // Eyes closed peacefully during stretch
+            px_fill(ctx, ox: ox, oy: oy, px: px, x: 5, y: 2.5, w: 1.2, h: 0.5, color: .black)
+            px_fill(ctx, ox: ox, oy: oy, px: px, x: 9, y: 2.5, w: 1.2, h: 0.5, color: .black)
         } else if gimmick == .walk {
             // Walking: eyes look in direction of travel
             let eyeShift: CGFloat = walkPhase == .walkingLeft ? -0.5 : 0.5
@@ -636,9 +742,18 @@ struct MiniChawdView: View {
             px_fill(ctx, ox: ox, oy: oy, px: px, x: 9, y: 1.8, w: 0.5, h: 1, color: .black)
             px_fill(ctx, ox: ox, oy: oy, px: px, x: 9.7, y: 1.8, w: 0.5, h: 1, color: .black)
         } else {
-            // Idle eyes with subtle drift
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: 5 + idleEyeDrift, y: 1.5, w: 0.8, h: 2.5, color: .black)
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: 9 + idleEyeDrift, y: 1.5, w: 0.8, h: 2.5, color: .black)
+            // Idle eyes — track mouse when available, otherwise subtle drift
+            let eyeX: CGFloat
+            let eyeY: CGFloat
+            if let dir = mouseDirection {
+                eyeX = dir.x * 0.6  // max ±0.6 pixel offset horizontal
+                eyeY = dir.y * 0.4  // max ±0.4 pixel offset vertical
+            } else {
+                eyeX = idleEyeDrift
+                eyeY = 0
+            }
+            px_fill(ctx, ox: ox, oy: oy, px: px, x: 5 + eyeX, y: 1.5 + eyeY, w: 0.8, h: 2.5, color: .black)
+            px_fill(ctx, ox: ox, oy: oy, px: px, x: 9 + eyeX, y: 1.5 + eyeY, w: 0.8, h: 2.5, color: .black)
         }
     }
 
@@ -688,6 +803,38 @@ struct MiniChawdView: View {
             px_fill(ctx, ox: ox, oy: oy, px: px, x: 8, y: 5, w: 1, h: 0.6, color: skinDark)
             return
         }
+        if gimmick == .yawn {
+            if yawnPhase == .peak {
+                // Wide open yawn mouth
+                px_fill(ctx, ox: ox, oy: oy, px: px, x: 6, y: 4.5, w: 3, h: 2.5, color: skinDark)
+                px_fill(ctx, ox: ox, oy: oy, px: px, x: 6.5, y: 5, w: 2, h: 1.5, color: Color(hex: "A06850"))
+            } else if yawnPhase == .opening {
+                // Mouth starting to open
+                px_fill(ctx, ox: ox, oy: oy, px: px, x: 6.5, y: 5, w: 2, h: 1.2, color: skinDark)
+            } else {
+                // Closing — gentle smile after yawn
+                px_fill(ctx, ox: ox, oy: oy, px: px, x: 6.5, y: 5, w: 2, h: 0.6, color: skinDark)
+            }
+            return
+        }
+        if gimmick == .hiccup {
+            // Small surprised O mouth
+            px_fill(ctx, ox: ox, oy: oy, px: px, x: 7, y: 4.8, w: 1.5, h: 1.5, color: skinDark)
+            px_fill(ctx, ox: ox, oy: oy, px: px, x: 7.3, y: 5.1, w: 0.9, h: 0.9, color: Color(hex: "A06850"))
+            return
+        }
+        if gimmick == .spin {
+            // Dizzy open mouth
+            px_fill(ctx, ox: ox, oy: oy, px: px, x: 7, y: 5, w: 1.5, h: 1, color: skinDark)
+            return
+        }
+        if gimmick == .stretch {
+            // Relaxed smile + blush
+            px_fill(ctx, ox: ox, oy: oy, px: px, x: 6.5, y: 5, w: 2, h: 0.5, color: skinDark)
+            px_fill(ctx, ox: ox, oy: oy, px: px, x: 4, y: 4, w: 1.5, h: 1, color: Color(hex: "E8756B").opacity(0.25))
+            px_fill(ctx, ox: ox, oy: oy, px: px, x: 9.5, y: 4, w: 1.5, h: 1, color: Color(hex: "E8756B").opacity(0.25))
+            return
+        }
         if gimmick == .levitate {
             if levitateOffset > 10 {
                 // Surprised O mouth on return
@@ -731,6 +878,17 @@ struct MiniChawdView: View {
     // MARK: - Extras
 
     private func drawExtras(ctx: GraphicsContext, ox: CGFloat, oy: CGFloat, px: CGFloat) {
+        if gimmick == .yawn && yawnPhase == .peak {
+            // Teardrop from yawn
+            px_fill(ctx, ox: ox, oy: oy, px: px, x: 12, y: 3.5, w: 0.5, h: 0.8, color: .white.opacity(0.35))
+            return
+        }
+        if gimmick == .stretch {
+            // Relaxation sparkles
+            px_fill(ctx, ox: ox, oy: oy, px: px, x: -1, y: 0, w: 0.6, h: 0.6, color: .yellow.opacity(0.5))
+            px_fill(ctx, ox: ox, oy: oy, px: px, x: 14, y: -1, w: 0.6, h: 0.6, color: .yellow.opacity(0.4))
+            return
+        }
         if gimmick == .sneeze && sneezePhase == .explode {
             // Sneeze particles flying out
             px_fill(ctx, ox: ox, oy: oy, px: px, x: 14, y: 3, w: 0.6, h: 0.6, color: .white.opacity(0.6))
@@ -875,9 +1033,30 @@ struct MiniChawdView: View {
         }
     }
 
+    // MARK: - Drowsiness system
+
+    private func startDrowsinessTracker() {
+        drowsinessTimer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [self] _ in
+            guard isAlive else { return }
+            // Reset counter when excited (hovered)
+            if excited {
+                idleSeconds = 0
+                if isDrowsy {
+                    isDrowsy = false
+                }
+                return
+            }
+            idleSeconds += 10
+            // Become drowsy after 2 minutes of idle
+            if idleSeconds >= 120 && !isDrowsy {
+                isDrowsy = true
+            }
+        }
+    }
+
     private func scheduleNextGimmick() {
         guard isAlive else { return }
-        let delay = forceGimmick != nil ? 3.0 : Double.random(in: 3...6)
+        let delay = forceGimmick != nil ? 3.0 : (isDrowsy ? Double.random(in: 5...9) : Double.random(in: 3...6))
         gimmickTimer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { _ in
             guard isAlive else { return }
             performRandomGimmick()
@@ -889,8 +1068,12 @@ struct MiniChawdView: View {
         if let force = forceGimmick,
            let match = ChawdGimmick.allCases.first(where: { "\($0)" == force }) {
             picked = match
+        } else if isDrowsy {
+            // When drowsy, heavily favor sleepy gimmicks
+            let sleepyOptions: [ChawdGimmick] = [.doze, .doze, .doze, .yawn, .yawn, .nod, .stretch]
+            picked = sleepyOptions.randomElement() ?? .doze
         } else {
-            let options: [ChawdGimmick] = [.wave, .bounce, .lookAround, .dance, .doze, .sparkle, .walk, .sneeze, .peekaboo, .strut, .nod, .shiver, .levitate]
+            let options: [ChawdGimmick] = [.wave, .bounce, .lookAround, .dance, .doze, .sparkle, .walk, .sneeze, .peekaboo, .strut, .nod, .shiver, .levitate, .yawn, .hiccup, .spin, .stretch]
             picked = options.randomElement() ?? .wave
         }
 
@@ -915,6 +1098,22 @@ struct MiniChawdView: View {
         case .levitate:
             withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) { gimmick = .levitate }
             doLevitate()
+            return
+        case .yawn:
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) { gimmick = .yawn }
+            doYawn()
+            return
+        case .hiccup:
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) { gimmick = .hiccup }
+            doHiccup()
+            return
+        case .spin:
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) { gimmick = .spin }
+            doSpin()
+            return
+        case .stretch:
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) { gimmick = .stretch }
+            doStretch()
             return
         case .sneeze:
             withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) { gimmick = .sneeze }
@@ -1166,6 +1365,196 @@ struct MiniChawdView: View {
         }
     }
 
+    // MARK: - Yawn animation (mouth opens wide, eyes squeeze, stretches tall)
+
+    private func doYawn() {
+        yawnPhase = .opening
+
+        // Phase 1: Mouth starts opening, slight stretch up
+        withAnimation(.easeIn(duration: 0.5)) {
+            squashStretch = 1.08
+        }
+
+        // Phase 2: Peak yawn — eyes shut, mouth wide, max stretch
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            guard self.isAlive else { return }
+            yawnPhase = .peak
+            withAnimation(.easeInOut(duration: 0.4)) {
+                squashStretch = 1.15
+            }
+        }
+
+        // Phase 3: Hold peak
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+            guard self.isAlive else { return }
+            yawnPhase = .closing
+            withAnimation(.easeOut(duration: 0.5)) {
+                squashStretch = 0.95
+            }
+        }
+
+        // Phase 4: Settle back with a sigh
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.7) {
+            guard self.isAlive else { return }
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
+                squashStretch = 1.0
+            }
+        }
+
+        // End
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) { [self] in
+            guard isAlive else { return }
+            yawnPhase = .idle
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                gimmick = .none
+            }
+            scheduleNextGimmick()
+        }
+    }
+
+    // MARK: - Hiccup animation (quick jolts upward, 3 times)
+
+    private func doHiccup() {
+        doOneHiccup(remaining: 3, delay: 0)
+    }
+
+    private func doOneHiccup(remaining: Int, delay: Double) {
+        guard remaining > 0, isAlive else {
+            // End after all hiccups
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay + 0.3) { [self] in
+                guard isAlive else { return }
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                    gimmick = .none
+                    hiccupJolt = 0
+                }
+                scheduleNextGimmick()
+            }
+            return
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+            guard self.isAlive else { return }
+            // Jolt up
+            withAnimation(.spring(response: 0.08, dampingFraction: 0.3)) {
+                hiccupJolt = -3
+                squashStretch = 1.1
+            }
+
+            // Settle back
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                guard self.isAlive else { return }
+                withAnimation(.spring(response: 0.2, dampingFraction: 0.5)) {
+                    hiccupJolt = 0
+                    squashStretch = 1.0
+                }
+            }
+
+            // Next hiccup
+            self.doOneHiccup(remaining: remaining - 1, delay: 0.45)
+        }
+    }
+
+    // MARK: - Spin animation (full 360 rotation with bounce landing)
+
+    private func doSpin() {
+        // Wind up — slight crouch
+        withAnimation(.easeIn(duration: 0.15)) {
+            squashStretch = 0.88
+            jumpOffset = 0.5
+        }
+
+        // Launch + spin
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            guard self.isAlive else { return }
+            withAnimation(.easeOut(duration: 0.12)) {
+                jumpOffset = -3
+                squashStretch = 1.05
+            }
+            withAnimation(.easeInOut(duration: 0.5)) {
+                spinAngle = 360
+            }
+        }
+
+        // Land
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.65) {
+            guard self.isAlive else { return }
+            withAnimation(.spring(response: 0.15, dampingFraction: 0.45)) {
+                jumpOffset = 0
+                squashStretch = 0.85
+            }
+        }
+
+        // Bounce recover
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+            guard self.isAlive else { return }
+            withAnimation(.spring(response: 0.2, dampingFraction: 0.55)) {
+                squashStretch = 1.0
+            }
+        }
+
+        // End
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.3) { [self] in
+            guard isAlive else { return }
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                gimmick = .none
+                spinAngle = 0
+            }
+            scheduleNextGimmick()
+        }
+    }
+
+    // MARK: - Stretch animation (arms up, body elongates, relaxes)
+
+    private func doStretch() {
+        // Phase 1: Arms rise, body starts stretching
+        withAnimation(.easeInOut(duration: 0.6)) {
+            stretchArmOffset = -3  // arms go up
+            stretchScale = 1.15
+        }
+
+        // Phase 2: Hold the stretch, slight wobble
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
+            guard self.isAlive else { return }
+            withAnimation(.easeInOut(duration: 0.3)) {
+                stretchScale = 1.12
+            }
+        }
+
+        // Phase 3: Peak stretch
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            guard self.isAlive else { return }
+            withAnimation(.easeInOut(duration: 0.3)) {
+                stretchScale = 1.18
+            }
+        }
+
+        // Phase 4: Release — arms drop, body relaxes
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            guard self.isAlive else { return }
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.5)) {
+                stretchArmOffset = 0
+                stretchScale = 0.95
+            }
+        }
+
+        // Phase 5: Settle
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.9) {
+            guard self.isAlive else { return }
+            withAnimation(.spring(response: 0.25, dampingFraction: 0.6)) {
+                stretchScale = 1.0
+            }
+        }
+
+        // End
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.3) { [self] in
+            guard isAlive else { return }
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                gimmick = .none
+            }
+            scheduleNextGimmick()
+        }
+    }
+
     // MARK: - Sneeze animation
 
     private func doSneeze() {
@@ -1289,6 +1678,7 @@ struct MiniChawdView: View {
 
     private func cancelGimmickState() {
         sneezePhase = .idle
+        yawnPhase = .idle
         levitateOpacity = 1.0
         levitateScale = 1.0
         withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
@@ -1299,6 +1689,10 @@ struct MiniChawdView: View {
             levitateOffset = 0
             squashStretch = 1.0
             jumpOffset = 0
+            hiccupJolt = 0
+            spinAngle = 0
+            stretchScale = 1.0
+            stretchArmOffset = 0
         }
     }
 

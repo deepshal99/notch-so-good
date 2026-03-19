@@ -43,6 +43,10 @@ struct DemoView: View {
         ("nod", "Nod"),
         ("shiver", "Shiver"),
         ("levitate", "Levitate"),
+        ("yawn", "Yawn"),
+        ("hiccup", "Hiccup"),
+        ("spin", "Spin"),
+        ("stretch", "Stretch"),
     ]
 
     var body: some View {
