@@ -1,10 +1,10 @@
 # Notch So Good
 
-A native macOS SwiftUI menubar app that displays animated notifications from the Mac's notch when Claude Code needs attention. Features the "Chawd" pixel-art crab mascot with expression variants.
+The world's smallest coworker lives in your Mac's notch. A pixel-art crab called Chawd watches Claude Code so you don't have to. He has 13 animations and absolutely no chill.
 
 ## Tech Stack
 - Swift / SwiftUI, macOS 14+ (Sonoma)
-- Swift Package Manager (no Xcode required)
+- Swift Package Manager (no Xcode required for pre-built installs)
 - Custom NSPanel for floating window
 - Canvas-based pixel art rendering
 - Claude Code hooks integration via `notchsogood://` URL scheme
@@ -21,8 +21,8 @@ bash HookInstaller/install-hooks.sh  # install Claude Code hooks
 ### Users
 Developers using Claude Code in their terminal. They tab away while Claude works and need a glanceable, delightful way to know when Claude needs them — without intrusive OS notifications. The notification appears at the notch and should feel native to macOS.
 
-### Brand Personality
-**Playful, precise, polished.** The Chawd mascot brings warmth and fun; the surrounding UI brings Apple-level craft. It's a developer's toy that feels like a power tool.
+### Brand Voice
+**Weird, warm, technically precise.** Chawd is the personality — he's a character, not a mascot. Copy should be conversational and slightly absurd ("He has no chill", "Chawd built himself") while the product itself is Apple-level polished. Never corporate. Never boring. The kind of tool you tell your friends about because it made you smile.
 
 ### Aesthetic Direction
 - **Primary reference:** Apple Dynamic Island — black, seamless notch integration, precise animations, feels like part of the hardware

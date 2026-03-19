@@ -1,7 +1,7 @@
 {
   "name": "notch-so-good",
-  "version": "1.3.0",
-  "description": "Dynamic Island for Claude Code — a pixel-art crab mascot lives in your Mac's notch",
+  "version": "1.3.1",
+  "description": "The world's smallest coworker lives in your Mac's notch. A pixel-art crab that watches Claude Code so you don't have to.",
   "bin": {
     "notch-so-good": "./install.mjs"
   },
@@ -14,7 +14,10 @@
     "dynamic-island",
     "developer-tools",
     "ai-tools",
-    "pixel-art"
+    "pixel-art",
+    "mascot",
+    "notifications",
+    "crab"
   ],
   "author": "Deepak Maurya",
   "license": "MIT",

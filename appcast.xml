@@ -3,14 +3,14 @@
     <channel>
         <title>Notch So Good Updates</title>
         <link>https://github.com/deepshal99/notch-so-good</link>
-        <description>Automatic updates for Notch So Good</description>
+        <description>The world's smallest coworker lives in your Mac's notch</description>
         <language>en</language>
         <item>
             <title>Version 1.3.0</title>
             <pubDate>Wed, 19 Mar 2026 23:00:00 +0530</pubDate>
             <sparkle:version>8</sparkle:version>
             <sparkle:shortVersionString>1.3.0</sparkle:shortVersionString>
-            <description><![CDATA[<h2>What's New in 1.3.0</h2><ul><li>Chawd's eyes now track your mouse cursor when idle</li><li>New yawn animation with stretch and teardrop</li><li>New hiccup animation with surprised jolts</li><li>New spin animation with full 360° rotation</li><li>New stretch animation with arms-up relaxation</li><li>Drowsiness system: Chawd gets sleepy after 2 minutes idle, shows startled wake-up on hover</li></ul>]]></description>
+            <description><![CDATA[<h2>v1.3.0 — Product Hunt Ready</h2><ul><li>Chawd's eyes now follow your mouse cursor</li><li>4 new animations: yawn, hiccup, spin, stretch</li><li>Drowsiness system — Chawd gets sleepy if you ignore him, startled jolt when you return</li><li>One-line install: <code>npx notch-so-good</code></li><li>Universal binary (Apple Silicon + Intel)</li><li>No more jq dependency</li><li>12 bug fixes for production hardening</li></ul>]]></description>
             <enclosure
                 url="https://github.com/deepshal99/notch-so-good/releases/download/v1.3.0/NotchSoGood-1.3.0.zip"
                 sparkle:version="8"
