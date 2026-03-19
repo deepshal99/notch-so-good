@@ -581,9 +581,21 @@ private struct DemoPulseModifier: ViewModifier {
 
 class DemoWindowController {
     private var window: NSWindow?
+    private var retainedWindow: NSWindow?  // prevent premature dealloc
 
     func open(animation: String? = nil) {
-        window?.close()
+        if let old = window {
+            // Remove SwiftUI content first so onDisappear fires and timers cancel.
+            old.contentView = nil
+            // Order out instead of close to avoid dealloc during animation flush.
+            old.orderOut(nil)
+            // Hold a reference briefly so AppKit can finish draining animations.
+            retainedWindow = old
+            DispatchQueue.main.async { [weak self] in
+                self?.retainedWindow = nil
+            }
+            window = nil
+        }
 
         let view: AnyView
         let size: NSSize

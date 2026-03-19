@@ -318,6 +318,7 @@ struct MiniChawdView: View {
     var excited: Bool = false
     var forceGimmick: String? = nil
 
+    @State private var isAlive = false  // guards recursive asyncAfter loops
     @State private var breathe = false
     @State private var blink = false
     @State private var blinkTimer: Timer?
@@ -442,12 +443,14 @@ struct MiniChawdView: View {
             }
         }
         .onAppear {
+            isAlive = true
             breathe = true
             startBlink()
             startIdleAnimations()
             scheduleNextGimmick()
         }
         .onDisappear {
+            isAlive = false
             blinkTimer?.invalidate()
             blinkTimer = nil
             gimmickTimer?.invalidate()
@@ -464,6 +467,7 @@ struct MiniChawdView: View {
     private func startHopping() {
         doOneHop()
         hopTimer = Timer.scheduledTimer(withTimeInterval: 0.95, repeats: true) { _ in
+            guard isAlive else { return }
             doOneHop()
         }
     }
@@ -479,6 +483,7 @@ struct MiniChawdView: View {
     }
 
     private func doOneHop() {
+        guard isAlive else { return }
         // Phase 1: Anticipation squash (crouch down)
         withAnimation(.easeIn(duration: 0.12)) {
             squashStretch = 0.82
@@ -487,6 +492,7 @@ struct MiniChawdView: View {
 
         // Phase 2: Launch up (stretch tall, fly up)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+            guard self.isAlive else { return }
             withAnimation(.easeOut(duration: 0.18)) {
                 squashStretch = 1.12
                 jumpOffset = -4.5
@@ -495,6 +501,7 @@ struct MiniChawdView: View {
 
         // Phase 3: Airborne (hang at peak)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.30) {
+            guard self.isAlive else { return }
             withAnimation(.easeInOut(duration: 0.12)) {
                 squashStretch = 1.0
                 jumpOffset = -4
@@ -503,6 +510,7 @@ struct MiniChawdView: View {
 
         // Phase 4: Fall down
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.42) {
+            guard self.isAlive else { return }
             withAnimation(.easeIn(duration: 0.14)) {
                 squashStretch = 1.03
                 jumpOffset = 0
@@ -511,6 +519,7 @@ struct MiniChawdView: View {
 
         // Phase 5: Landing squash (absorb impact)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.56) {
+            guard self.isAlive else { return }
             withAnimation(.spring(response: 0.15, dampingFraction: 0.45)) {
                 squashStretch = 0.86
                 jumpOffset = 0.5
@@ -519,6 +528,7 @@ struct MiniChawdView: View {
 
         // Phase 6: Recover to neutral
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.68) {
+            guard self.isAlive else { return }
             withAnimation(.spring(response: 0.15, dampingFraction: 0.55)) {
                 squashStretch = 1.0
                 jumpOffset = 0
@@ -760,9 +770,11 @@ struct MiniChawdView: View {
 
     private func startBlink() {
         blinkTimer = Timer.scheduledTimer(withTimeInterval: 3.5, repeats: true) { _ in
+            guard isAlive else { return }
             guard gimmick == .none || gimmick == .wave || gimmick == .lookAround else { return }
             withAnimation(.easeInOut(duration: 0.08)) { blink = true }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                guard isAlive else { return }
                 withAnimation(.easeInOut(duration: 0.08)) { blink = false }
             }
         }
@@ -792,18 +804,21 @@ struct MiniChawdView: View {
     }
 
     private func startIdleBob() {
+        guard isAlive else { return }
         // Float up
         withAnimation(.easeInOut(duration: 1.5)) {
             idleBob = -1.2
         }
         // Sink down past resting (dangle)
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            guard isAlive else { return }
             withAnimation(.easeInOut(duration: 1.8)) {
                 idleBob = 0.8
             }
         }
         // Come back up to rest
         DispatchQueue.main.asyncAfter(deadline: .now() + 3.3) {
+            guard isAlive else { return }
             withAnimation(.easeInOut(duration: 1.2)) {
                 idleBob = 0
             }
@@ -815,8 +830,10 @@ struct MiniChawdView: View {
     }
 
     private func startArmTwitch() {
+        guard isAlive else { return }
         let delay = Double.random(in: 2.5...5.0)
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [self] in
+            guard isAlive else { return }
             guard gimmick == .none else {
                 startArmTwitch()
                 return
@@ -825,6 +842,7 @@ struct MiniChawdView: View {
                 idleArmTwitch = CGFloat.random(in: -0.4...0.3)
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                guard isAlive else { return }
                 withAnimation(.easeInOut(duration: 0.4)) {
                     idleArmTwitch = 0
                 }
@@ -834,8 +852,10 @@ struct MiniChawdView: View {
     }
 
     private func startEyeWander() {
+        guard isAlive else { return }
         let delay = Double.random(in: 2.0...4.5)
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [self] in
+            guard isAlive else { return }
             guard gimmick == .none else {
                 startEyeWander()
                 return
@@ -846,6 +866,7 @@ struct MiniChawdView: View {
             // Hold the glance briefly, then drift back
             let holdDuration = Double.random(in: 0.8...1.5)
             DispatchQueue.main.asyncAfter(deadline: .now() + holdDuration) {
+                guard isAlive else { return }
                 withAnimation(.easeInOut(duration: 0.5)) {
                     idleEyeDrift = 0
                 }
@@ -855,8 +876,10 @@ struct MiniChawdView: View {
     }
 
     private func scheduleNextGimmick() {
+        guard isAlive else { return }
         let delay = forceGimmick != nil ? 3.0 : Double.random(in: 3...6)
         gimmickTimer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { _ in
+            guard isAlive else { return }
             performRandomGimmick()
         }
     }
@@ -924,6 +947,7 @@ struct MiniChawdView: View {
         if picked == .wave { doWavePump(count: 3, interval: 0.2) }
 
         DispatchQueue.main.asyncAfter(deadline: .now() + duration) { [self] in
+            guard isAlive else { return }
             withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                 gimmick = .none
             }
@@ -932,8 +956,9 @@ struct MiniChawdView: View {
     }
 
     private func doDanceWiggle(count: Int, interval: Double) {
-        guard count > 0 else { return }
+        guard count > 0, isAlive else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + interval) {
+            guard isAlive else { return }
             withAnimation(.spring(response: 0.15, dampingFraction: 0.4)) {
                 danceTick.toggle()
             }
@@ -942,8 +967,9 @@ struct MiniChawdView: View {
     }
 
     private func doWavePump(count: Int, interval: Double) {
-        guard count > 0 else { return }
+        guard count > 0, isAlive else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + interval) {
+            guard isAlive else { return }
             withAnimation(.spring(response: 0.12, dampingFraction: 0.4)) {
                 waveTick.toggle()
             }
@@ -963,11 +989,13 @@ struct MiniChawdView: View {
 
         // Phase 2: Pause, look around
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
+            guard self.isAlive else { return }
             stopWalkSteps()
         }
 
         // Phase 3: Walk right past center
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            guard self.isAlive else { return }
             startWalkSteps()
             withAnimation(.easeInOut(duration: 0.8)) {
                 strutOffset = 6
@@ -976,11 +1004,13 @@ struct MiniChawdView: View {
 
         // Phase 4: Pause
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.9) {
+            guard self.isAlive else { return }
             stopWalkSteps()
         }
 
         // Phase 5: Walk back to center
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) {
+            guard self.isAlive else { return }
             startWalkSteps()
             withAnimation(.easeInOut(duration: 0.5)) {
                 strutOffset = 0
@@ -989,11 +1019,13 @@ struct MiniChawdView: View {
 
         // Phase 6: Stop and settle
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.7) {
+            guard self.isAlive else { return }
             stopWalkSteps()
         }
 
         // End
         DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [self] in
+            guard isAlive else { return }
             withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                 gimmick = .none
                 strutOffset = 0
@@ -1013,6 +1045,7 @@ struct MiniChawdView: View {
 
         // Back up
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+            guard self.isAlive else { return }
             withAnimation(.easeInOut(duration: 0.25)) {
                 nodAngle = -2
                 squashStretch = 1.0
@@ -1021,6 +1054,7 @@ struct MiniChawdView: View {
 
         // Second nod (smaller)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
+            guard self.isAlive else { return }
             withAnimation(.easeInOut(duration: 0.25)) {
                 nodAngle = 5
                 squashStretch = 0.97
@@ -1029,6 +1063,7 @@ struct MiniChawdView: View {
 
         // Settle
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            guard self.isAlive else { return }
             withAnimation(.easeInOut(duration: 0.3)) {
                 nodAngle = 0
                 squashStretch = 1.0
@@ -1037,6 +1072,7 @@ struct MiniChawdView: View {
 
         // End
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [self] in
+            guard isAlive else { return }
             withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                 gimmick = .none
             }
@@ -1051,6 +1087,7 @@ struct MiniChawdView: View {
 
         // End
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [self] in
+            guard isAlive else { return }
             withAnimation(.spring(response: 0.2, dampingFraction: 0.6)) {
                 shiverOffset = 0
                 gimmick = .none
@@ -1060,8 +1097,9 @@ struct MiniChawdView: View {
     }
 
     private func doShiverShake(count: Int, interval: Double) {
-        guard count > 0 else { return }
+        guard count > 0, isAlive else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + interval) {
+            guard self.isAlive else { return }
             withAnimation(.linear(duration: 0.06)) {
                 shiverOffset = count % 2 == 0 ? 1.2 : -1.2
             }
@@ -1080,6 +1118,7 @@ struct MiniChawdView: View {
 
         // Phase 2: Accelerate upward and fade out
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+            guard self.isAlive else { return }
             withAnimation(.easeIn(duration: 0.5)) {
                 levitateOffset = -25
                 levitateScale = 0.6
@@ -1089,6 +1128,7 @@ struct MiniChawdView: View {
 
         // Phase 3: Teleport to below (invisible)
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
+            guard self.isAlive else { return }
             withAnimation(.none) {
                 levitateOffset = 25
                 levitateScale = 0.6
@@ -1097,6 +1137,7 @@ struct MiniChawdView: View {
 
         // Phase 4: Rise up from bottom, surprised!
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.7) {
+            guard self.isAlive else { return }
             withAnimation(.none) {
                 levitateOpacity = 1.0
             }
@@ -1108,6 +1149,7 @@ struct MiniChawdView: View {
 
         // Phase 5: Settle bounce
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.3) {
+            guard self.isAlive else { return }
             withAnimation(.spring(response: 0.3, dampingFraction: 0.5)) {
                 levitateOffset = 0
                 levitateScale = 1.0
@@ -1116,6 +1158,7 @@ struct MiniChawdView: View {
 
         // End
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.8) { [self] in
+            guard isAlive else { return }
             withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                 gimmick = .none
             }
@@ -1136,6 +1179,7 @@ struct MiniChawdView: View {
 
         // Phase 2: Bigger wind up
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            guard self.isAlive else { return }
             withAnimation(.easeIn(duration: 0.25)) {
                 squashStretch = 0.75
                 jumpOffset = 1.5
@@ -1144,6 +1188,7 @@ struct MiniChawdView: View {
 
         // Phase 3: EXPLODE! — stretch tall, jump, particles
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.75) {
+            guard self.isAlive else { return }
             sneezePhase = .explode
             withAnimation(.spring(response: 0.12, dampingFraction: 0.3)) {
                 squashStretch = 1.25
@@ -1153,6 +1198,7 @@ struct MiniChawdView: View {
 
         // Phase 4: Recoil back
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.95) {
+            guard self.isAlive else { return }
             withAnimation(.spring(response: 0.2, dampingFraction: 0.5)) {
                 squashStretch = 0.9
                 jumpOffset = 0
@@ -1161,6 +1207,7 @@ struct MiniChawdView: View {
 
         // Phase 5: Dazed
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.15) {
+            guard self.isAlive else { return }
             sneezePhase = .dazed
             withAnimation(.spring(response: 0.2, dampingFraction: 0.6)) {
                 squashStretch = 1.0
@@ -1169,6 +1216,7 @@ struct MiniChawdView: View {
 
         // Phase 6: Recover + end
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [self] in
+            guard isAlive else { return }
             sneezePhase = .idle
             withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                 gimmick = .none
@@ -1187,6 +1235,7 @@ struct MiniChawdView: View {
 
         // Phase 2: Pause while hidden
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
+            guard self.isAlive else { return }
             // Phase 3: Peek up slowly (just eyes visible)
             withAnimation(.easeOut(duration: 0.4)) {
                 peekOffset = 5
@@ -1195,6 +1244,7 @@ struct MiniChawdView: View {
 
         // Phase 4: Pause peeking
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
+            guard self.isAlive else { return }
             // Phase 5: Pop back up with bounce!
             withAnimation(.spring(response: 0.3, dampingFraction: 0.5)) {
                 peekOffset = 0
@@ -1203,11 +1253,13 @@ struct MiniChawdView: View {
 
         // Phase 6: Little celebration bounce
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.7) {
+            guard self.isAlive else { return }
             withAnimation(.spring(response: 0.15, dampingFraction: 0.4)) {
                 squashStretch = 0.85
             }
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.85) {
+            guard self.isAlive else { return }
             withAnimation(.spring(response: 0.2, dampingFraction: 0.5)) {
                 squashStretch = 1.0
             }
@@ -1215,6 +1267,7 @@ struct MiniChawdView: View {
 
         // End
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.3) { [self] in
+            guard isAlive else { return }
             withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                 gimmick = .none
             }
@@ -1260,7 +1313,7 @@ struct MiniChawdView: View {
 
         // Phase 2: Behind notch — stop steps, teleport to left
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.3) { [self] in
-            guard gimmick == .walk else { return }
+            guard isAlive, gimmick == .walk else { return }
             walkPhase = .behindNotch
             stopWalkSteps()
 
@@ -1271,7 +1324,7 @@ struct MiniChawdView: View {
 
             // Phase 3: Walk left → center (~1.2s)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [self] in
-                guard gimmick == .walk else { return }
+                guard isAlive, gimmick == .walk else { return }
                 walkPhase = .walkingLeft
                 startWalkSteps()
 
@@ -1281,7 +1334,7 @@ struct MiniChawdView: View {
 
                 // Phase 4: Arrived! Celebration
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [self] in
-                    guard gimmick == .walk else { return }
+                    guard isAlive, gimmick == .walk else { return }
                     stopWalkSteps()
                     walkPhase = .arrived
 
@@ -1290,6 +1343,7 @@ struct MiniChawdView: View {
                         squashStretch = 0.85
                     }
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                        guard self.isAlive else { return }
                         withAnimation(.spring(response: 0.25, dampingFraction: 0.5)) {
                             squashStretch = 1.0
                         }
@@ -1297,6 +1351,7 @@ struct MiniChawdView: View {
 
                     // End walk gimmick after celebration
                     DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [self] in
+                        guard isAlive else { return }
                         walkPhase = .idle
                         withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                             gimmick = .none
@@ -1310,6 +1365,7 @@ struct MiniChawdView: View {
 
     private func startWalkSteps() {
         walkTimer = Timer.scheduledTimer(withTimeInterval: 0.18, repeats: true) { _ in
+            guard isAlive else { return }
             walkStep.toggle()
         }
     }
