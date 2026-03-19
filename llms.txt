@@ -1,0 +1,39 @@
+# Notch So Good
+
+> A pixel-art crab called Chawd lives in your MacBook's notch and watches Claude Code so you don't have to.
+
+## What it is
+
+Notch So Good is a free, open-source macOS menubar app for Claude Code users. It places a tiny animated pixel-art crab mascot (Chawd) in your MacBook's notch area. When Claude Code is running, a black pill extends the notch showing Chawd and a live session timer. When Claude Code needs your input, the notch expands into a color-coded notification. Click to jump back to your terminal.
+
+## Key features
+
+- Session pill: black pill extends the notch with Chawd mascot + live timer
+- 13 idle animations: wave, dance, sneeze, peek-a-boo, yawn, hiccup, spin, stretch, levitate, shiver, strut, nod, walk
+- Mouse-reactive eyes: Chawd's pixel eyes track your cursor
+- Drowsiness system: Chawd falls asleep after 2 minutes idle, startled wake-up on hover
+- Color-coded notifications: green (complete), blue (question), amber (permission), purple (general)
+- Multi-session: hover pill to see all active Claude Code sessions grouped by project
+- Auto-update via Sparkle
+
+## Install
+
+npx notch-so-good
+
+Or: curl -fsSL https://raw.githubusercontent.com/deepshal99/notch-so-good/main/get.sh | bash
+
+## Requirements
+
+- macOS 14+ (Sonoma or later)
+- Claude Code
+- MacBook with a notch (recommended)
+
+## How it works
+
+Uses Claude Code hooks (SessionStart, Notification, Stop) via URL scheme callbacks. No server, no polling, no network requests. The hooks send events to notchsogood:// URLs which the app handles natively.
+
+## Links
+
+- GitHub: https://github.com/deepshal99/notch-so-good
+- npm: https://www.npmjs.com/package/notch-so-good
+- License: MIT
