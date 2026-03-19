@@ -53,26 +53,6 @@ struct SessionPillView: View {
     private var maxHeight: CGFloat { notchHeight + Self.maxContentHeight }
     private var pillTotalHeight: CGFloat { hovered ? (notchHeight + expandedContentHeight) : notchHeight }
 
-    /// Convert screen mouse position to a normalized -1...1 direction relative to the pill center.
-    /// Returns nil when mouse is too far away (>300pt) to avoid jittery tracking.
-    private var chawdMouseDirection: CGPoint? {
-        let mouse = hoverMonitor.mouseScreenPosition
-        // Pill center in screen coords: use collapsed rect center
-        let pillCenter = CGPoint(
-            x: hoverMonitor.collapsedScreenRect.midX - hoverMonitor.collapsedScreenRect.width / 2 + wing / 2,
-            y: hoverMonitor.collapsedScreenRect.midY
-        )
-        let dx = mouse.x - pillCenter.x
-        // Screen coords: y increases upward, but we want "mouse above = look up"
-        let dy = mouse.y - pillCenter.y
-        let distance = sqrt(dx * dx + dy * dy)
-        guard distance > 5 && distance < 400 else { return nil }
-        // Normalize with a soft cap so nearby movements feel responsive
-        let scale: CGFloat = min(distance / 150, 1.0)
-        let angle = atan2(dy, dx)
-        return CGPoint(x: cos(angle) * scale, y: -sin(angle) * scale) // flip y for SwiftUI coords
-    }
-
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
             let seconds = Int(context.date.timeIntervalSince(primaryStartTime))
@@ -91,7 +71,7 @@ struct SessionPillView: View {
                     // but hop animation isn't cut off vertically
                     HStack(spacing: 0) {
                         Spacer(minLength: 0)
-                        MiniChawdView(excited: hovered, mouseDirection: chawdMouseDirection)
+                        MiniChawdView(excited: hovered)
                             .frame(width: 20, height: 20)
                         Spacer(minLength: 0)
                     }
@@ -337,11 +317,13 @@ private struct SessionRowButtonStyle: ButtonStyle {
 struct MiniChawdView: View {
     var excited: Bool = false
     var forceGimmick: String? = nil
-    /// Normalized mouse direction for eye tracking: x in -1...1, y in -1...1.
-    /// When nil, falls back to idle eye drift.
-    var mouseDirection: CGPoint? = nil
 
     @State private var isAlive = false  // guards recursive asyncAfter loops
+    // Mouse eye tracking — updated by a lightweight internal timer
+    @State private var mouseEyeX: CGFloat = 0
+    @State private var mouseEyeY: CGFloat = 0
+    @State private var hasMouseTarget: Bool = false
+    @State private var mouseTrackTimer: Timer?
     @State private var breathe = false
     @State private var blink = false
     @State private var blinkTimer: Timer?
@@ -512,6 +494,7 @@ struct MiniChawdView: View {
             breathe = true
             startBlink()
             startIdleAnimations()
+            startMouseTracking()
             startDrowsinessTracker()
             scheduleNextGimmick()
         }
@@ -527,6 +510,8 @@ struct MiniChawdView: View {
             walkTimer = nil
             drowsinessTimer?.invalidate()
             drowsinessTimer = nil
+            mouseTrackTimer?.invalidate()
+            mouseTrackTimer = nil
         }
     }
 
@@ -743,15 +728,8 @@ struct MiniChawdView: View {
             px_fill(ctx, ox: ox, oy: oy, px: px, x: 9.7, y: 1.8, w: 0.5, h: 1, color: .black)
         } else {
             // Idle eyes — track mouse when available, otherwise subtle drift
-            let eyeX: CGFloat
-            let eyeY: CGFloat
-            if let dir = mouseDirection {
-                eyeX = dir.x * 0.6  // max ±0.6 pixel offset horizontal
-                eyeY = dir.y * 0.4  // max ±0.4 pixel offset vertical
-            } else {
-                eyeX = idleEyeDrift
-                eyeY = 0
-            }
+            let eyeX = hasMouseTarget ? mouseEyeX : idleEyeDrift
+            let eyeY = hasMouseTarget ? mouseEyeY : CGFloat(0)
             px_fill(ctx, ox: ox, oy: oy, px: px, x: 5 + eyeX, y: 1.5 + eyeY, w: 0.8, h: 2.5, color: .black)
             px_fill(ctx, ox: ox, oy: oy, px: px, x: 9 + eyeX, y: 1.5 + eyeY, w: 0.8, h: 2.5, color: .black)
         }
@@ -936,6 +914,47 @@ struct MiniChawdView: View {
                 withAnimation(.easeInOut(duration: 0.08)) { blink = false }
             }
         }
+    }
+
+    // MARK: - Mouse eye tracking (lightweight 10fps poll, internal to MiniChawdView)
+
+    private func startMouseTracking() {
+        let t = Timer(timeInterval: 0.1, repeats: true) { [self] _ in
+            guard isAlive, gimmick == .none, !excited else {
+                if hasMouseTarget {
+                    hasMouseTarget = false
+                }
+                return
+            }
+            let mouse = NSEvent.mouseLocation
+            // Get the screen with the notch (main screen)
+            guard let screen = NSScreen.main else { return }
+            // Chawd sits at top-center of screen near the notch
+            let chawdX = screen.frame.midX
+            let chawdY = screen.frame.maxY - 18  // approximate vertical center of chawd in the pill
+            let dx = mouse.x - chawdX
+            let dy = mouse.y - chawdY
+            let distance = sqrt(dx * dx + dy * dy)
+
+            guard distance > 10 && distance < 400 else {
+                if hasMouseTarget { hasMouseTarget = false }
+                return
+            }
+
+            let scale = min(distance / 150, 1.0)
+            let angle = atan2(dy, dx)
+            let newX = cos(angle) * scale * 0.6   // max ±0.6 px
+            let newY = -sin(angle) * scale * 0.4  // max ±0.4 px, flip for SwiftUI
+
+            // Only update if changed enough to avoid unnecessary redraws
+            if abs(newX - mouseEyeX) > 0.05 || abs(newY - mouseEyeY) > 0.05 {
+                mouseEyeX = newX
+                mouseEyeY = newY
+                if !hasMouseTarget { hasMouseTarget = true }
+            }
+        }
+        RunLoop.main.add(t, forMode: .common)
+        mouseTrackTimer = t
     }
 
     // MARK: - Subtle idle animations (always running, give life between gimmicks)

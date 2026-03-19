@@ -61,8 +61,6 @@ class NotchPanel: NSPanel {
 /// is click-through everywhere except the pill area. Drives hover state for SwiftUI.
 class PillHoverMonitor: ObservableObject {
     @Published var isHovered = false
-    /// Mouse position in screen coordinates, updated at 30fps for eye tracking.
-    @Published var mouseScreenPosition: NSPoint = .zero
 
     private var timer: Timer?
     private weak var panel: NotchPanel?
@@ -94,9 +92,6 @@ class PillHoverMonitor: ObservableObject {
     private func update() {
         guard let panel else { return }
         let mouse = NSEvent.mouseLocation
-
-        // Always publish mouse position for eye tracking
-        mouseScreenPosition = mouse
 
         // When not hovered, check collapsed rect (tight to the pill)
         // When hovered, check expanded rect (so dropdown doesn't flicker)
