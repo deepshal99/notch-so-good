@@ -358,7 +358,6 @@ struct MiniChawdView: View {
     @State private var mouseEyeY: CGFloat = 0
     @State private var hasMouseTarget: Bool = false
     @State private var mouseTrackTimer: Timer?
-    @State private var breathe = false
     @State private var blink = false
     @State private var blinkTimer: Timer?
     @State private var gimmick: ChawdGimmick = .none
@@ -390,12 +389,7 @@ struct MiniChawdView: View {
         case idle, opening, peak, closing
     }
 
-    // Subtle idle animations
-    @State private var idleSway: Double = 0       // gentle rotation
-    @State private var idleBob: CGFloat = 0       // tiny vertical float
-    @State private var idleLegSwing: CGFloat = 0  // leg dangling
-    @State private var idleEyeDrift: CGFloat = 0  // eye wander
-    @State private var idleArmTwitch: CGFloat = 0 // arm micro-movement
+    @State private var idleEyeDrift: CGFloat = 0  // fallback when no mouse target
 
     // Drowsiness system — gets sleepy after prolonged idle
     @State private var idleSeconds: Int = 0
@@ -427,7 +421,7 @@ struct MiniChawdView: View {
             let ox = (size.width - totalW) / 2
             let oy = (size.height - totalH) / 2
 
-            let armY: CGFloat = gimmick == .wave ? (waveTick ? -2 : 0) : (gimmick == .stretch ? stretchArmOffset : (1.5 + (gimmick == .none ? idleArmTwitch : 0)))
+            let armY: CGFloat = gimmick == .wave ? (waveTick ? -2 : 0) : (gimmick == .stretch ? stretchArmOffset : 1.5)
             let armH: CGFloat = gimmick == .wave ? 2.5 : 3
             px_fill(ctx, ox: ox, oy: oy, px: px,
                     x: 0, y: armY, w: 2, h: armH, color: skin)
@@ -441,25 +435,22 @@ struct MiniChawdView: View {
             drawEyes(ctx: ctx, ox: ox, oy: oy, px: px)
             drawMouth(ctx: ctx, ox: ox, oy: oy, px: px)
 
-            let wiggle: CGFloat = breathe ? 0.1 : 0
+            let wiggle: CGFloat = 0
             let danceL: CGFloat = gimmick == .dance ? 0.4 : 0
             let danceR: CGFloat = gimmick == .dance ? -0.4 : 0
             // Walking legs: alternate forward/back (for walk and strut)
             let isWalking = (gimmick == .walk || gimmick == .strut) && walkStep
             let walkL: CGFloat = isWalking ? -1.0 : 0
             let walkR: CGFloat = isWalking ? 1.0 : 0
-            // Idle leg dangle — legs swing slightly out of phase
-            let legDangleL: CGFloat = gimmick == .none ? idleLegSwing : 0
-            let legDangleR: CGFloat = gimmick == .none ? -idleLegSwing * 0.7 : 0
             px_fill(ctx, ox: ox, oy: oy, px: px,
-                    x: 4.5 - wiggle + danceL + walkL + legDangleL, y: 7, w: 1.5, h: 3, color: skin)
+                    x: 4.5 - wiggle + danceL + walkL, y: 7, w: 1.5, h: 3, color: skin)
             px_fill(ctx, ox: ox, oy: oy, px: px,
-                    x: 9 + wiggle + danceR + walkR + legDangleR, y: 7, w: 1.5, h: 3, color: skin)
+                    x: 9 + wiggle + danceR + walkR, y: 7, w: 1.5, h: 3, color: skin)
 
             px_fill(ctx, ox: ox, oy: oy, px: px,
-                    x: 4.5 - wiggle + danceL + walkL + legDangleL, y: 9.5, w: 1.5, h: 0.8, color: skinDark)
+                    x: 4.5 - wiggle + danceL + walkL, y: 9.5, w: 1.5, h: 0.8, color: skinDark)
             px_fill(ctx, ox: ox, oy: oy, px: px,
-                    x: 9 + wiggle + danceR + walkR + legDangleR, y: 9.5, w: 1.5, h: 0.8, color: skinDark)
+                    x: 9 + wiggle + danceR + walkR, y: 9.5, w: 1.5, h: 0.8, color: skinDark)
 
             drawExtras(ctx: ctx, ox: ox, oy: oy, px: px)
         }
@@ -470,8 +461,7 @@ struct MiniChawdView: View {
         .scaleEffect(x: 1.0, y: squashStretch, anchor: .bottom)
         .scaleEffect(x: squashStretch > 1 ? 0.92 : (squashStretch < 1 ? 1.1 : 1.0),
                      y: 1.0, anchor: .center)
-        .scaleEffect(breathe ? 1.04 : 1.0)
-        .animation(.easeInOut(duration: 2.8).repeatForever(autoreverses: true), value: breathe)
+        // Breathing removed — was causing perceived jumping
         .scaleEffect(gimmick == .bounce ? 1.12 : 1.0)
         .offset(y: gimmick == .bounce ? -2 : (jumpOffset + peekOffset))
         .offset(x: gimmick == .dance ? (danceTick ? 1.5 : -1.5) : 0)
@@ -490,9 +480,7 @@ struct MiniChawdView: View {
         .scaleEffect(x: 1.0, y: stretchScale, anchor: .bottom)
         // Hiccup jolt
         .offset(y: hiccupJolt)
-        // Subtle idle animations — always running, give life between gimmicks
-        .rotationEffect(.degrees(gimmick == .none && !excited ? idleSway : 0))
-        .offset(y: gimmick == .none && !excited ? idleBob : 0)
+        // Idle animations removed — Chawd stays still between gimmicks
         .onChange(of: excited) { _, isExcited in
             if isExcited {
                 cancelWalk()
@@ -527,9 +515,7 @@ struct MiniChawdView: View {
         }
         .onAppear {
             isAlive = true
-            breathe = true
             startBlink()
-            startIdleAnimations()
             startMouseTracking()
             startDrowsinessTracker()
             scheduleNextGimmick()
@@ -999,75 +985,6 @@ struct MiniChawdView: View {
     }
 
     // MARK: - Subtle idle animations (always running, give life between gimmicks)
-
-    private func startIdleAnimations() {
-        // Gentle sway — very slow rotation oscillation
-        withAnimation(.easeInOut(duration: 4.0).repeatForever(autoreverses: true)) {
-            idleSway = 1.2
-        }
-
-        // Vertical bob — barely perceptible float (simple repeating, no recursive chain)
-        withAnimation(.easeInOut(duration: 3.5).repeatForever(autoreverses: true)) {
-            idleBob = -0.4
-        }
-
-        // Leg dangle — swinging like sitting on a ledge
-        withAnimation(.easeInOut(duration: 2.2).repeatForever(autoreverses: true)) {
-            idleLegSwing = 0.25
-        }
-
-        // Arm micro-twitch — subtle shift every few seconds
-        startArmTwitch()
-
-        // Eye wander — occasional subtle drift
-        startEyeWander()
-    }
-
-    private func startArmTwitch() {
-        guard isAlive else { return }
-        let delay = Double.random(in: 2.5...5.0)
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [self] in
-            guard isAlive else { return }
-            guard gimmick == .none else {
-                startArmTwitch()
-                return
-            }
-            withAnimation(.easeInOut(duration: 0.3)) {
-                idleArmTwitch = CGFloat.random(in: -0.4...0.3)
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                guard isAlive else { return }
-                withAnimation(.easeInOut(duration: 0.4)) {
-                    idleArmTwitch = 0
-                }
-            }
-            startArmTwitch()
-        }
-    }
-
-    private func startEyeWander() {
-        guard isAlive else { return }
-        let delay = Double.random(in: 2.0...4.5)
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [self] in
-            guard isAlive else { return }
-            guard gimmick == .none else {
-                startEyeWander()
-                return
-            }
-            withAnimation(.easeInOut(duration: 0.4)) {
-                idleEyeDrift = CGFloat.random(in: -0.5...0.5)
-            }
-            // Hold the glance briefly, then drift back
-            let holdDuration = Double.random(in: 0.8...1.5)
-            DispatchQueue.main.asyncAfter(deadline: .now() + holdDuration) {
-                guard isAlive else { return }
-                withAnimation(.easeInOut(duration: 0.5)) {
-                    idleEyeDrift = 0
-                }
-            }
-            startEyeWander()
-        }
-    }
 
     // MARK: - Drowsiness system
 
