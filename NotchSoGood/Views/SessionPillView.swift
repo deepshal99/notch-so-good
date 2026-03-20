@@ -1002,16 +1002,18 @@ struct MiniChawdView: View {
 
     private func startIdleAnimations() {
         // Gentle sway — very slow rotation oscillation
-        withAnimation(.easeInOut(duration: 3.0).repeatForever(autoreverses: true)) {
-            idleSway = 1.8
+        withAnimation(.easeInOut(duration: 4.0).repeatForever(autoreverses: true)) {
+            idleSway = 1.2
         }
 
-        // Vertical bob — float up, dangle down, come back up (looping)
-        startIdleBob()
+        // Vertical bob — barely perceptible float (simple repeating, no recursive chain)
+        withAnimation(.easeInOut(duration: 3.5).repeatForever(autoreverses: true)) {
+            idleBob = -0.4
+        }
 
         // Leg dangle — swinging like sitting on a ledge
-        withAnimation(.easeInOut(duration: 1.8).repeatForever(autoreverses: true)) {
-            idleLegSwing = 0.35
+        withAnimation(.easeInOut(duration: 2.2).repeatForever(autoreverses: true)) {
+            idleLegSwing = 0.25
         }
 
         // Arm micro-twitch — subtle shift every few seconds
@@ -1019,32 +1021,6 @@ struct MiniChawdView: View {
 
         // Eye wander — occasional subtle drift
         startEyeWander()
-    }
-
-    private func startIdleBob() {
-        guard isAlive else { return }
-        // Float up
-        withAnimation(.easeInOut(duration: 1.5)) {
-            idleBob = -1.2
-        }
-        // Sink down past resting (dangle)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-            guard isAlive else { return }
-            withAnimation(.easeInOut(duration: 1.8)) {
-                idleBob = 0.8
-            }
-        }
-        // Come back up to rest
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3.3) {
-            guard isAlive else { return }
-            withAnimation(.easeInOut(duration: 1.2)) {
-                idleBob = 0
-            }
-        }
-        // Loop
-        DispatchQueue.main.asyncAfter(deadline: .now() + 4.8) { [self] in
-            startIdleBob()
-        }
     }
 
     private func startArmTwitch() {
