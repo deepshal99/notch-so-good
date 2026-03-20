@@ -409,6 +409,9 @@ struct MiniChawdView: View {
     private let skinLight = Color(hex: "D49A7C")
     private let skinDark = Color(hex: "B07A5E")
 
+    /// True when Chawd should be perfectly still — no gimmick, not excited
+    private var isIdle: Bool { gimmick == .none && !excited }
+
     enum ChawdGimmick: CaseIterable {
         case none, wave, bounce, lookAround, dance, doze, sparkle, walk, sneeze, peekaboo, strut, nod, shiver, levitate, yawn, hiccup, spin, stretch
     }
@@ -454,33 +457,26 @@ struct MiniChawdView: View {
 
             drawExtras(ctx: ctx, ox: ox, oy: oy, px: px)
         }
-        .scaleEffect(x: (gimmick == .walk || gimmick == .strut) ? (walkStep ? -1 : 1) * 0.03 + 1 : 1.0,
-                     y: 1.0, anchor: .bottom) // subtle sway while walking
-        .rotationEffect(.degrees((gimmick == .walk || gimmick == .strut) ? (walkStep ? 3 : -3) : 0))
-        .offset(x: walkOffset)
-        .scaleEffect(x: 1.0, y: squashStretch, anchor: .bottom)
-        .scaleEffect(x: squashStretch > 1 ? 0.92 : (squashStretch < 1 ? 1.1 : 1.0),
+        // All transforms are zeroed when idle — no residual movement from gimmick cleanup
+        .scaleEffect(x: isIdle ? 1.0 : ((gimmick == .walk || gimmick == .strut) ? (walkStep ? -1 : 1) * 0.03 + 1 : 1.0),
+                     y: 1.0, anchor: .bottom)
+        .rotationEffect(.degrees(isIdle ? 0 : ((gimmick == .walk || gimmick == .strut) ? (walkStep ? 3 : -3) : 0)))
+        .offset(x: isIdle ? 0 : walkOffset)
+        .scaleEffect(x: 1.0, y: isIdle ? 1.0 : squashStretch, anchor: .bottom)
+        .scaleEffect(x: isIdle ? 1.0 : (squashStretch > 1 ? 0.92 : (squashStretch < 1 ? 1.1 : 1.0)),
                      y: 1.0, anchor: .center)
-        // Breathing removed — was causing perceived jumping
-        .scaleEffect(gimmick == .bounce ? 1.12 : 1.0)
-        .offset(y: gimmick == .bounce ? -2 : (jumpOffset + peekOffset))
-        .offset(x: gimmick == .dance ? (danceTick ? 1.5 : -1.5) : 0)
-        .rotationEffect(.degrees(gimmick == .dance ? (danceTick ? 5 : -5) : 0))
-        // Strut offset (walk left/right in place)
-        .offset(x: strutOffset + shiverOffset)
-        // Nod tilt
-        .rotationEffect(.degrees(nodAngle))
-        // Levitate
-        .offset(y: levitateOffset)
-        .scaleEffect(levitateScale)
-        .opacity(levitateOpacity)
-        // Spin
-        .rotationEffect(.degrees(spinAngle))
-        // Stretch gimmick — vertical elongation
-        .scaleEffect(x: 1.0, y: stretchScale, anchor: .bottom)
-        // Hiccup jolt
-        .offset(y: hiccupJolt)
-        // Idle animations removed — Chawd stays still between gimmicks
+        .scaleEffect(isIdle ? 1.0 : (gimmick == .bounce ? 1.12 : 1.0))
+        .offset(y: isIdle ? 0 : (gimmick == .bounce ? -2 : (jumpOffset + peekOffset)))
+        .offset(x: isIdle ? 0 : (gimmick == .dance ? (danceTick ? 1.5 : -1.5) : 0))
+        .rotationEffect(.degrees(isIdle ? 0 : (gimmick == .dance ? (danceTick ? 5 : -5) : 0)))
+        .offset(x: isIdle ? 0 : (strutOffset + shiverOffset))
+        .rotationEffect(.degrees(isIdle ? 0 : nodAngle))
+        .offset(y: isIdle ? 0 : levitateOffset)
+        .scaleEffect(isIdle ? 1.0 : levitateScale)
+        .opacity(isIdle ? 1.0 : levitateOpacity)
+        .rotationEffect(.degrees(isIdle ? 0 : spinAngle))
+        .scaleEffect(x: 1.0, y: isIdle ? 1.0 : stretchScale, anchor: .bottom)
+        .offset(y: isIdle ? 0 : hiccupJolt)
         .onChange(of: excited) { _, isExcited in
             if isExcited {
                 cancelWalk()
@@ -1115,9 +1111,7 @@ struct MiniChawdView: View {
 
         DispatchQueue.main.asyncAfter(deadline: .now() + duration) { [self] in
             guard isAlive else { return }
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                gimmick = .none
-            }
+            gimmick = .none
             scheduleNextGimmick()
         }
     }
@@ -1193,10 +1187,8 @@ struct MiniChawdView: View {
         // End
         DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [self] in
             guard isAlive else { return }
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                gimmick = .none
-                strutOffset = 0
-            }
+            gimmick = .none
+            strutOffset = 0
             scheduleNextGimmick()
         }
     }
@@ -1240,9 +1232,7 @@ struct MiniChawdView: View {
         // End
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [self] in
             guard isAlive else { return }
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                gimmick = .none
-            }
+            gimmick = .none
             scheduleNextGimmick()
         }
     }
@@ -1255,10 +1245,8 @@ struct MiniChawdView: View {
         // End
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [self] in
             guard isAlive else { return }
-            withAnimation(.spring(response: 0.2, dampingFraction: 0.6)) {
-                shiverOffset = 0
-                gimmick = .none
-            }
+            shiverOffset = 0
+            gimmick = .none
             scheduleNextGimmick()
         }
     }
@@ -1326,9 +1314,7 @@ struct MiniChawdView: View {
         // End
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.8) { [self] in
             guard isAlive else { return }
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                gimmick = .none
-            }
+            gimmick = .none
             scheduleNextGimmick()
         }
     }
@@ -1373,9 +1359,7 @@ struct MiniChawdView: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) { [self] in
             guard isAlive else { return }
             yawnPhase = .idle
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                gimmick = .none
-            }
+            gimmick = .none
             scheduleNextGimmick()
         }
     }
@@ -1391,10 +1375,8 @@ struct MiniChawdView: View {
             // End after all hiccups
             DispatchQueue.main.asyncAfter(deadline: .now() + delay + 0.3) { [self] in
                 guard isAlive else { return }
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                    gimmick = .none
-                    hiccupJolt = 0
-                }
+                gimmick = .none
+                hiccupJolt = 0
                 scheduleNextGimmick()
             }
             return
@@ -1463,10 +1445,8 @@ struct MiniChawdView: View {
         // End
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.3) { [self] in
             guard isAlive else { return }
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                gimmick = .none
-                spinAngle = 0
-            }
+            gimmick = .none
+            spinAngle = 0
             scheduleNextGimmick()
         }
     }
@@ -1516,9 +1496,7 @@ struct MiniChawdView: View {
         // End
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.3) { [self] in
             guard isAlive else { return }
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                gimmick = .none
-            }
+            gimmick = .none
             scheduleNextGimmick()
         }
     }
@@ -1575,9 +1553,7 @@ struct MiniChawdView: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [self] in
             guard isAlive else { return }
             sneezePhase = .idle
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                gimmick = .none
-            }
+            gimmick = .none
             scheduleNextGimmick()
         }
     }
@@ -1625,9 +1601,7 @@ struct MiniChawdView: View {
         // End
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.3) { [self] in
             guard isAlive else { return }
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                gimmick = .none
-            }
+            gimmick = .none
             scheduleNextGimmick()
         }
     }
@@ -1638,10 +1612,8 @@ struct MiniChawdView: View {
         walkTimer?.invalidate()
         walkTimer = nil
         walkPhase = .idle
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-            walkOffset = 0
-            gimmick = .none
-        }
+        walkOffset = 0
+        gimmick = .none
     }
 
     private func cancelGimmickState() {
@@ -1649,19 +1621,17 @@ struct MiniChawdView: View {
         yawnPhase = .idle
         levitateOpacity = 1.0
         levitateScale = 1.0
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-            peekOffset = 0
-            strutOffset = 0
-            nodAngle = 0
-            shiverOffset = 0
-            levitateOffset = 0
-            squashStretch = 1.0
-            jumpOffset = 0
-            hiccupJolt = 0
-            spinAngle = 0
-            stretchScale = 1.0
-            stretchArmOffset = 0
-        }
+        peekOffset = 0
+        strutOffset = 0
+        nodAngle = 0
+        shiverOffset = 0
+        levitateOffset = 0
+        squashStretch = 1.0
+        jumpOffset = 0
+        hiccupJolt = 0
+        spinAngle = 0
+        stretchScale = 1.0
+        stretchArmOffset = 0
     }
 
     private func doWalk() {
@@ -1715,9 +1685,7 @@ struct MiniChawdView: View {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [self] in
                         guard isAlive else { return }
                         walkPhase = .idle
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                            gimmick = .none
-                        }
+                        gimmick = .none
                         scheduleNextGimmick()
                     }
                 }
