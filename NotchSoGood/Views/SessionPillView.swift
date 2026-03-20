@@ -1119,7 +1119,7 @@ struct MiniChawdView: View {
         guard isAlive else { return }
         // Respect reduced motion — keep breathing but skip gimmicks
         guard !reduceMotion || forceGimmick != nil else { return }
-        let delay = forceGimmick != nil ? 3.0 : (isDrowsy ? Double.random(in: 5...9) : Double.random(in: 3...6))
+        let delay = forceGimmick != nil ? 3.0 : (isDrowsy ? Double.random(in: 8...14) : Double.random(in: 5...10))
         gimmickTimer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { _ in
             guard isAlive else { return }
             performRandomGimmick()

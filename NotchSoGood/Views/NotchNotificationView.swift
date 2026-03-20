@@ -60,10 +60,21 @@ struct NotchNotificationView: View {
 
     // MARK: - Animated gradient glow around the border
 
+    /// Glow shape with softer bottom corners — extra radius prevents hard edges after blur
+    private var glowShape: UnevenRoundedRectangle {
+        UnevenRoundedRectangle(
+            topLeadingRadius: 0,
+            bottomLeadingRadius: bottomRadius + 4,
+            bottomTrailingRadius: bottomRadius + 4,
+            topTrailingRadius: 0,
+            style: .continuous
+        )
+    }
+
     private func glowBorder(width: CGFloat, height: CGFloat) -> some View {
         ZStack {
             // Layer 1: Wider, softer outer glow
-            islandShape
+            glowShape
                 .stroke(
                     AngularGradient(
                         colors: [
@@ -79,16 +90,16 @@ struct NotchNotificationView: View {
                     ),
                     lineWidth: 6
                 )
-                .blur(radius: 8)
+                .blur(radius: 10)
                 .opacity(textRevealed ? 1 : 0)
 
             // Layer 2: Tighter, brighter inner glow
-            islandShape
+            glowShape
                 .stroke(
                     AngularGradient(
                         colors: [
                             notification.type.accentColor.opacity(0.0),
-                            notification.type.accentColor.opacity(0.25),
+                            notification.type.accentColor.opacity(0.2),
                             notification.type.accentColor.opacity(0.0),
                             notification.type.accentColor.opacity(0.0),
                         ],
@@ -98,7 +109,7 @@ struct NotchNotificationView: View {
                     ),
                     lineWidth: 2
                 )
-                .blur(radius: 3)
+                .blur(radius: 4)
                 .opacity(textRevealed ? 1 : 0)
         }
         .animation(.linear(duration: 6).repeatForever(autoreverses: false), value: glowRotation)
