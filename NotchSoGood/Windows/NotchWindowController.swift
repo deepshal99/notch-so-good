@@ -208,20 +208,26 @@ class NotchWindowController {
             return
         }
 
+        // Fast exit — Emil: "fast where the system is responding"
         NSAnimationContext.runAnimationGroup({ context in
-            context.duration = 0.25
-            context.timingFunction = CAMediaTimingFunction(name: .easeIn)
+            context.duration = 0.18
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
             panel.animator().alphaValue = 0
         }, completionHandler: { [weak self] in
             self?.panel?.orderOut(nil)
             self?.panel?.alphaValue = 1.0
             self?.isDismissing = false
 
-            // Restore pill after notification dismisses
+            // Restore pill gracefully after notification dismisses
             if let self, self.hasPillSession, let pillPanel = self.pillPanel {
-                pillPanel.alphaValue = 1.0
+                pillPanel.alphaValue = 0
                 pillPanel.orderFrontRegardless()
                 self.pillHoverMonitor.start(panel: pillPanel)
+                NSAnimationContext.runAnimationGroup({ ctx in
+                    ctx.duration = 0.3
+                    ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                    pillPanel.animator().alphaValue = 1.0
+                })
             }
         })
     }

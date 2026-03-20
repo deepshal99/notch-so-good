@@ -94,6 +94,7 @@ struct SessionPillView: View {
 
                         Text(elapsed)
                             .font(.system(size: hovered ? 11 : 10, weight: .semibold, design: .monospaced))
+                            .monospacedDigit()
                             .foregroundColor(.white.opacity(0.7))
                             .fixedSize(horizontal: true, vertical: false)
                     }
@@ -110,7 +111,7 @@ struct SessionPillView: View {
                         .padding(.horizontal, 10)
                         .padding(.bottom, 10)
                         .frame(width: pillWidth, alignment: .top)
-                        .transition(.opacity.combined(with: .offset(y: -4)))
+                        .transition(.opacity.combined(with: .offset(y: -4)).combined(with: .scale(scale: 0.97, anchor: .top)))
                 }
             }
             .frame(width: pillWidth, height: pillTotalHeight, alignment: .top)
@@ -118,8 +119,8 @@ struct SessionPillView: View {
             .onTapGesture {
                 onTap(sessions.first?.id)
             }
-            .scaleEffect(x: appeared ? 1 : 0.68, y: 1, anchor: .center)
-            .animation(.spring(response: 0.4, dampingFraction: 0.78), value: hovered)
+            .scaleEffect(x: appeared ? 1 : 0.85, y: 1, anchor: .center)
+            .animation(.spring(response: 0.35, dampingFraction: 0.72), value: hovered)
         }
         .frame(width: maxWidth, height: maxHeight, alignment: .top)
         .onAppear {
@@ -145,19 +146,51 @@ struct SessionPillView: View {
 
     private func expandedContent(now: Date) -> some View {
         VStack(spacing: 0) {
-            ForEach(sessionGroups) { group in
-                if group.sessions.count == 1 {
-                    // Single session — flat row with project name
-                    sessionRow(session: group.sessions[0], now: now)
-                } else {
-                    // Multiple sessions — project header + indented sub-rows
-                    projectHeader(name: group.projectName)
-                    ForEach(group.sessions, id: \.id) { session in
+            // Flatten to get stagger index across all rows
+            let allRows = buildRowList()
+            ForEach(Array(allRows.enumerated()), id: \.element.id) { index, row in
+                Group {
+                    switch row.kind {
+                    case .single(let session):
+                        sessionRow(session: session, now: now)
+                    case .header(let name):
+                        projectHeader(name: name)
+                    case .sub(let session):
                         subSessionRow(session: session, now: now)
                     }
                 }
+                .opacity(hovered ? 1 : 0)
+                .offset(y: hovered ? 0 : -4)
+                .animation(.spring(response: 0.3, dampingFraction: 0.75).delay(Double(index) * 0.035), value: hovered)
             }
         }
+    }
+
+    // Row type for stagger enumeration
+    private enum ExpandedRowKind {
+        case single(NotificationManager.SessionInfo)
+        case header(String)
+        case sub(NotificationManager.SessionInfo)
+    }
+
+    private struct ExpandedRow: Identifiable {
+        let id: String
+        let kind: ExpandedRowKind
+    }
+
+    private func buildRowList() -> [ExpandedRow] {
+        var rows: [ExpandedRow] = []
+        for group in sessionGroups {
+            if group.sessions.count == 1 {
+                rows.append(ExpandedRow(id: group.sessions[0].id, kind: .single(group.sessions[0])))
+            } else {
+                rows.append(ExpandedRow(id: "header-\(group.projectName)", kind: .header(group.projectName)))
+                for session in group.sessions {
+                    rows.append(ExpandedRow(id: session.id, kind: .sub(session)))
+                }
+            }
+        }
+        return rows
     }
 
     // MARK: - Full session row (single session per project)
@@ -318,6 +351,7 @@ struct MiniChawdView: View {
     var excited: Bool = false
     var forceGimmick: String? = nil
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isAlive = false  // guards recursive asyncAfter loops
     // Mouse eye tracking — updated by a lightweight internal timer
     @State private var mouseEyeX: CGFloat = 0
@@ -436,8 +470,8 @@ struct MiniChawdView: View {
         .scaleEffect(x: 1.0, y: squashStretch, anchor: .bottom)
         .scaleEffect(x: squashStretch > 1 ? 0.92 : (squashStretch < 1 ? 1.1 : 1.0),
                      y: 1.0, anchor: .center)
-        .scaleEffect(breathe ? 1.05 : 1.0)
-        .animation(.easeInOut(duration: 2.2).repeatForever(autoreverses: true), value: breathe)
+        .scaleEffect(breathe ? 1.04 : 1.0)
+        .animation(.easeInOut(duration: 2.8).repeatForever(autoreverses: true), value: breathe)
         .scaleEffect(gimmick == .bounce ? 1.12 : 1.0)
         .offset(y: gimmick == .bounce ? -2 : (jumpOffset + peekOffset))
         .offset(x: gimmick == .dance ? (danceTick ? 1.5 : -1.5) : 0)
@@ -520,6 +554,7 @@ struct MiniChawdView: View {
     // MARK: - Excited hopping (repeating while hovered)
 
     private func startHopping() {
+        guard !reduceMotion else { return }
         doOneHop()
         hopTimer = Timer.scheduledTimer(withTimeInterval: 0.95, repeats: true) { _ in
             guard isAlive else { return }
@@ -543,16 +578,16 @@ struct MiniChawdView: View {
         guard isAlive else { return }
         // Phase 1: Anticipation squash (crouch down)
         withAnimation(.easeIn(duration: 0.12)) {
-            squashStretch = 0.82
-            jumpOffset = 1
+            squashStretch = 0.88
+            jumpOffset = 0.8
         }
 
         // Phase 2: Launch up (stretch tall, fly up)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
             guard self.isAlive else { return }
             withAnimation(.easeOut(duration: 0.18)) {
-                squashStretch = 1.12
-                jumpOffset = -4.5
+                squashStretch = 1.08
+                jumpOffset = -4
             }
         }
 
@@ -578,8 +613,8 @@ struct MiniChawdView: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.56) {
             guard self.isAlive else { return }
             withAnimation(.spring(response: 0.15, dampingFraction: 0.45)) {
-                squashStretch = 0.86
-                jumpOffset = 0.5
+                squashStretch = 0.9
+                jumpOffset = 0.3
             }
         }
 
@@ -950,10 +985,12 @@ struct MiniChawdView: View {
             let newX = cos(angle) * scale * 0.6   // max ±0.6 px
             let newY = -sin(angle) * scale * 0.4  // max ±0.4 px, flip for SwiftUI
 
-            // Only update if changed enough to avoid unnecessary redraws
+            // Spring-interpolate for natural feel (Emil: "use spring to interpolate value changes")
             if abs(newX - mouseEyeX) > 0.05 || abs(newY - mouseEyeY) > 0.05 {
-                mouseEyeX = newX
-                mouseEyeY = newY
+                withAnimation(.spring(response: 0.25, dampingFraction: 0.7)) {
+                    mouseEyeX = newX
+                    mouseEyeY = newY
+                }
                 if !hasMouseTarget { hasMouseTarget = true }
             }
         }
@@ -1070,8 +1107,9 @@ struct MiniChawdView: View {
                 return
             }
             idleSeconds += 10
-            // Become drowsy after 2 minutes of idle
-            if idleSeconds >= 120 && !isDrowsy {
+            // Become drowsy after ~2 minutes of idle (±30s fuzz — precise thresholds feel robotic)
+            let drowsinessThreshold = 120 + Int.random(in: -30...30)
+            if idleSeconds >= drowsinessThreshold && !isDrowsy {
                 isDrowsy = true
             }
         }
@@ -1079,6 +1117,8 @@ struct MiniChawdView: View {
 
     private func scheduleNextGimmick() {
         guard isAlive else { return }
+        // Respect reduced motion — keep breathing but skip gimmicks
+        guard !reduceMotion || forceGimmick != nil else { return }
         let delay = forceGimmick != nil ? 3.0 : (isDrowsy ? Double.random(in: 5...9) : Double.random(in: 3...6))
         gimmickTimer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { _ in
             guard isAlive else { return }
@@ -1086,64 +1126,76 @@ struct MiniChawdView: View {
         }
     }
 
+    @State private var lastGimmick: ChawdGimmick = .none
+
     private func performRandomGimmick() {
-        let picked: ChawdGimmick
+        var picked: ChawdGimmick
         if let force = forceGimmick,
            let match = ChawdGimmick.allCases.first(where: { "\($0)" == force }) {
             picked = match
         } else if isDrowsy {
-            // When drowsy, heavily favor sleepy gimmicks
             let sleepyOptions: [ChawdGimmick] = [.doze, .doze, .doze, .yawn, .yawn, .nod, .stretch]
             picked = sleepyOptions.randomElement() ?? .doze
         } else {
             let options: [ChawdGimmick] = [.wave, .bounce, .lookAround, .dance, .doze, .sparkle, .walk, .sneeze, .peekaboo, .strut, .nod, .shiver, .levitate, .yawn, .hiccup, .spin, .stretch]
             picked = options.randomElement() ?? .wave
         }
+        // Avoid repeating the same gimmick twice (feels mechanical)
+        if picked == lastGimmick && forceGimmick == nil {
+            let fallbacks: [ChawdGimmick] = [.wave, .bounce, .lookAround, .sparkle, .nod]
+            picked = fallbacks.randomElement() ?? .wave
+        }
+        lastGimmick = picked
 
-        // These gimmicks handle their own lifecycle
+        // Personality-matched spring for each gimmick entrance
+        func enterSpring(_ r: Double, _ d: Double) -> Animation {
+            .spring(response: r, dampingFraction: d)
+        }
+
+        // Each gimmick gets a spring that matches its personality
         switch picked {
         case .walk:
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) { gimmick = .walk }
+            withAnimation(enterSpring(0.3, 0.65)) { gimmick = .walk }
             doWalk()
             return
         case .strut:
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) { gimmick = .strut }
+            withAnimation(enterSpring(0.25, 0.6)) { gimmick = .strut }
             doStrut()
             return
         case .nod:
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) { gimmick = .nod }
+            withAnimation(enterSpring(0.4, 0.75)) { gimmick = .nod } // relaxed
             doNod()
             return
         case .shiver:
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) { gimmick = .shiver }
+            withAnimation(enterSpring(0.15, 0.4)) { gimmick = .shiver } // snappy
             doShiver()
             return
         case .levitate:
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) { gimmick = .levitate }
+            withAnimation(enterSpring(0.5, 0.7)) { gimmick = .levitate } // floaty
             doLevitate()
             return
         case .yawn:
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) { gimmick = .yawn }
+            withAnimation(enterSpring(0.5, 0.8)) { gimmick = .yawn } // lazy
             doYawn()
             return
         case .hiccup:
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) { gimmick = .hiccup }
+            withAnimation(enterSpring(0.12, 0.3)) { gimmick = .hiccup } // snappy
             doHiccup()
             return
         case .spin:
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) { gimmick = .spin }
+            withAnimation(enterSpring(0.2, 0.45)) { gimmick = .spin } // bouncy
             doSpin()
             return
         case .stretch:
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) { gimmick = .stretch }
+            withAnimation(enterSpring(0.45, 0.7)) { gimmick = .stretch } // luxurious
             doStretch()
             return
         case .sneeze:
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) { gimmick = .sneeze }
+            withAnimation(enterSpring(0.25, 0.5)) { gimmick = .sneeze }
             doSneeze()
             return
         case .peekaboo:
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) { gimmick = .peekaboo }
+            withAnimation(enterSpring(0.3, 0.55)) { gimmick = .peekaboo }
             doPeekaboo()
             return
         default:
@@ -1156,7 +1208,7 @@ struct MiniChawdView: View {
         case .bounce: duration = 0.8
         case .lookAround: duration = 1.5
         case .dance: duration = 1.6
-        case .doze: duration = 2.5
+        case .doze: duration = 3.0  // longer — dozing should feel lazy
         case .sparkle: duration = 1.4
         default: duration = 0
         }

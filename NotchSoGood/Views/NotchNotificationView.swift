@@ -101,7 +101,7 @@ struct NotchNotificationView: View {
                 .blur(radius: 3)
                 .opacity(textRevealed ? 1 : 0)
         }
-        .animation(.linear(duration: 4).repeatForever(autoreverses: false), value: glowRotation)
+        .animation(.linear(duration: 6).repeatForever(autoreverses: false), value: glowRotation)
         .onAppear {
             glowRotation = 360
         }
@@ -131,7 +131,7 @@ struct NotchNotificationView: View {
                     .frame(width: 50, height: 46)
             }
             .opacity(contentAppeared ? 1 : 0)
-            .scaleEffect(contentAppeared ? 1 : 0.5)
+            .scaleEffect(contentAppeared ? 1 : 0.85)
 
             VStack(alignment: .leading, spacing: 5) {
                 HStack(spacing: 5) {
@@ -161,20 +161,20 @@ struct NotchNotificationView: View {
     // MARK: - Animation
 
     private func animateIn() {
-        // 1. Shape expands from notch size (scale preserves corner radius)
-        withAnimation(.spring(response: 0.5, dampingFraction: 0.78)) {
+        // 1. Shape expands — slight bounce for Dynamic Island feel
+        withAnimation(.spring(response: 0.45, dampingFraction: 0.72)) {
             expanded = true
         }
-        // 2. Mascot pops in
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-            withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
+        // 2. Mascot appears (stagger: first element)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
                 contentAppeared = true
             }
             glowVisible = true
         }
-        // 3. Text fades in
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+        // 3. Title fades in (stagger: 50ms after mascot)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                 textRevealed = true
             }
         }
