@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "skills": {
+    "linkedin-content": {
+      "source": "inferen-sh/skills",
+      "sourceType": "github",
+      "computedHash": "d4a4168f051d545039dcf8c34e69bbb0886027f5d1f50f0abe59faf1eada31c6"
+    }
+  }
+}
