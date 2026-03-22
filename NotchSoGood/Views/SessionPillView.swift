@@ -457,26 +457,9 @@ struct MiniChawdView: View {
 
             drawExtras(ctx: ctx, ox: ox, oy: oy, px: px)
         }
-        // All transforms are zeroed when idle — no residual movement from gimmick cleanup
-        .scaleEffect(x: isIdle ? 1.0 : ((gimmick == .walk || gimmick == .strut) ? (walkStep ? -1 : 1) * 0.03 + 1 : 1.0),
-                     y: 1.0, anchor: .bottom)
-        .rotationEffect(.degrees(isIdle ? 0 : ((gimmick == .walk || gimmick == .strut) ? (walkStep ? 3 : -3) : 0)))
-        .offset(x: isIdle ? 0 : walkOffset)
-        .scaleEffect(x: 1.0, y: isIdle ? 1.0 : squashStretch, anchor: .bottom)
-        .scaleEffect(x: isIdle ? 1.0 : (squashStretch > 1 ? 0.92 : (squashStretch < 1 ? 1.1 : 1.0)),
-                     y: 1.0, anchor: .center)
-        .scaleEffect(isIdle ? 1.0 : (gimmick == .bounce ? 1.12 : 1.0))
-        .offset(y: isIdle ? 0 : (gimmick == .bounce ? -2 : (jumpOffset + peekOffset)))
-        .offset(x: isIdle ? 0 : (gimmick == .dance ? (danceTick ? 1.5 : -1.5) : 0))
-        .rotationEffect(.degrees(isIdle ? 0 : (gimmick == .dance ? (danceTick ? 5 : -5) : 0)))
-        .offset(x: isIdle ? 0 : (strutOffset + shiverOffset))
-        .rotationEffect(.degrees(isIdle ? 0 : nodAngle))
-        .offset(y: isIdle ? 0 : levitateOffset)
-        .scaleEffect(isIdle ? 1.0 : levitateScale)
-        .opacity(isIdle ? 1.0 : levitateOpacity)
-        .rotationEffect(.degrees(isIdle ? 0 : spinAngle))
-        .scaleEffect(x: 1.0, y: isIdle ? 1.0 : stretchScale, anchor: .bottom)
-        .offset(y: isIdle ? 0 : hiccupJolt)
+        // Only apply transforms when excited (hovered) — idle is completely static
+        .offset(y: excited ? jumpOffset : 0)
+        .scaleEffect(x: 1.0, y: excited ? squashStretch : 1.0, anchor: .bottom)
         .onChange(of: excited) { _, isExcited in
             if isExcited {
                 cancelWalk()
@@ -512,9 +495,6 @@ struct MiniChawdView: View {
         .onAppear {
             isAlive = true
             startBlink()
-            startMouseTracking()
-            startDrowsinessTracker()
-            scheduleNextGimmick()
         }
         .onDisappear {
             isAlive = false
@@ -748,11 +728,9 @@ struct MiniChawdView: View {
             px_fill(ctx, ox: ox, oy: oy, px: px, x: 9, y: 1.8, w: 0.5, h: 1, color: .black)
             px_fill(ctx, ox: ox, oy: oy, px: px, x: 9.7, y: 1.8, w: 0.5, h: 1, color: .black)
         } else {
-            // Idle eyes — track mouse when available, otherwise subtle drift
-            let eyeX = hasMouseTarget ? mouseEyeX : idleEyeDrift
-            let eyeY = hasMouseTarget ? mouseEyeY : CGFloat(0)
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: 5 + eyeX, y: 1.5 + eyeY, w: 0.8, h: 2.5, color: .black)
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: 9 + eyeX, y: 1.5 + eyeY, w: 0.8, h: 2.5, color: .black)
+            // Static idle eyes
+            px_fill(ctx, ox: ox, oy: oy, px: px, x: 5, y: 1.5, w: 0.8, h: 2.5, color: .black)
+            px_fill(ctx, ox: ox, oy: oy, px: px, x: 9, y: 1.5, w: 0.8, h: 2.5, color: .black)
         }
     }
 
@@ -967,12 +945,9 @@ struct MiniChawdView: View {
             let newX = cos(angle) * scale * 0.6   // max ±0.6 px
             let newY = -sin(angle) * scale * 0.4  // max ±0.4 px, flip for SwiftUI
 
-            // Spring-interpolate for natural feel (Emil: "use spring to interpolate value changes")
             if abs(newX - mouseEyeX) > 0.05 || abs(newY - mouseEyeY) > 0.05 {
-                withAnimation(.spring(response: 0.25, dampingFraction: 0.7)) {
-                    mouseEyeX = newX
-                    mouseEyeY = newY
-                }
+                mouseEyeX = newX
+                mouseEyeY = newY
                 if !hasMouseTarget { hasMouseTarget = true }
             }
         }
@@ -1006,9 +981,9 @@ struct MiniChawdView: View {
 
     private func scheduleNextGimmick() {
         guard isAlive else { return }
-        // Respect reduced motion — keep breathing but skip gimmicks
-        guard !reduceMotion || forceGimmick != nil else { return }
-        let delay = forceGimmick != nil ? 3.0 : (isDrowsy ? Double.random(in: 8...14) : Double.random(in: 5...10))
+        // Only run gimmicks in demo/preview mode — idle pill stays completely still
+        guard forceGimmick != nil else { return }
+        let delay: Double = 3.0
         gimmickTimer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { _ in
             guard isAlive else { return }
             performRandomGimmick()
