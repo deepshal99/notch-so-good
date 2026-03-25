@@ -361,7 +361,7 @@ struct MiniChawdView: View {
     @State private var waveTick = false
     @State private var jumpOffset: CGFloat = 0
     @State private var squashStretch: CGFloat = 1.0  // <1 = squash, >1 = stretch
-    @State private var hopTimer: Timer?
+    @State private var excitedWiggleTimer: Timer?
     @State private var walkOffset: CGFloat = 0
     @State private var walkStep = false
     @State private var walkTimer: Timer?
@@ -432,8 +432,8 @@ struct MiniChawdView: View {
             drawMouth(ctx: ctx, ox: ox, oy: oy, px: px)
 
             let wiggle: CGFloat = 0
-            let danceL: CGFloat = gimmick == .dance ? 0.4 : 0
-            let danceR: CGFloat = gimmick == .dance ? -0.4 : 0
+            let danceL: CGFloat = gimmick == .dance ? 0.25 : 0
+            let danceR: CGFloat = gimmick == .dance ? -0.25 : 0
             // Walking legs: alternate forward/back (for walk and strut)
             let isWalking = (gimmick == .walk || gimmick == .strut) && walkStep
             let walkL: CGFloat = isWalking ? -1.0 : 0
@@ -460,8 +460,8 @@ struct MiniChawdView: View {
         // breathing removed — caused visible pulsing
         .scaleEffect(gimmick == .bounce ? 1.12 : 1.0)
         .offset(y: gimmick == .bounce ? -2 : (jumpOffset + peekOffset))
-        .offset(x: gimmick == .dance ? (danceTick ? 1.5 : -1.5) : 0)
-        .rotationEffect(.degrees(gimmick == .dance ? (danceTick ? 5 : -5) : 0))
+        .offset(x: gimmick == .dance ? (danceTick ? 0.8 : -0.8) : 0)
+        .rotationEffect(.degrees(gimmick == .dance ? (danceTick ? 3 : -3) : 0))
         // Strut offset (walk left/right in place)
         .offset(x: strutOffset + shiverOffset)
         // Nod tilt
@@ -488,25 +488,22 @@ struct MiniChawdView: View {
                     isDrowsy = false
                     idleSeconds = 0
                     wakeUpReaction = true
-                    // Quick startled jolt before hopping
                     withAnimation(.spring(response: 0.1, dampingFraction: 0.3)) {
                         squashStretch = 1.15
-                        jumpOffset = -2
                     }
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [self] in
                         guard isAlive else { return }
                         wakeUpReaction = false
                         withAnimation(.spring(response: 0.15, dampingFraction: 0.5)) {
                             squashStretch = 1.0
-                            jumpOffset = 0
                         }
-                        startHopping()
+                        startExcitedWiggle()
                     }
                 } else {
-                    startHopping()
+                    startExcitedWiggle()
                 }
             } else {
-                stopHopping()
+                stopExcitedWiggle()
             }
         }
         .onAppear {
@@ -521,8 +518,8 @@ struct MiniChawdView: View {
             blinkTimer = nil
             gimmickTimer?.invalidate()
             gimmickTimer = nil
-            hopTimer?.invalidate()
-            hopTimer = nil
+            excitedWiggleTimer?.invalidate()
+            excitedWiggleTimer = nil
             walkTimer?.invalidate()
             walkTimer = nil
             drowsinessTimer?.invalidate()
@@ -531,81 +528,35 @@ struct MiniChawdView: View {
         }
     }
 
-    // MARK: - Excited hopping (repeating while hovered)
+    // MARK: - Excited wiggle (happy dance while hovered — no vertical offset)
 
-    private func startHopping() {
+    private func startExcitedWiggle() {
         guard !reduceMotion else { return }
-        doOneHop()
-        hopTimer = Timer.scheduledTimer(withTimeInterval: 0.95, repeats: true) { _ in
+        danceTick = false
+        waveTick = false
+        withAnimation(.spring(response: 0.25, dampingFraction: 0.65)) {
+            gimmick = .dance
+        }
+        excitedWiggleTimer = Timer.scheduledTimer(withTimeInterval: 0.4, repeats: true) { _ in
             guard isAlive else { return }
-            doOneHop()
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.55)) {
+                danceTick.toggle()
+                waveTick = danceTick
+            }
         }
     }
 
-    private func stopHopping() {
-        hopTimer?.invalidate()
-        hopTimer = nil
-        // Settle back to ground
+    private func stopExcitedWiggle() {
+        excitedWiggleTimer?.invalidate()
+        excitedWiggleTimer = nil
         withAnimation(.spring(response: 0.2, dampingFraction: 0.6)) {
-            jumpOffset = 0
+            gimmick = .none
+            danceTick = false
+            waveTick = false
             squashStretch = 1.0
         }
         // Resume gimmick cycle after hover ends
         scheduleNextGimmick()
-    }
-
-    private func doOneHop() {
-        guard isAlive else { return }
-        // Phase 1: Anticipation squash (crouch down)
-        withAnimation(.easeIn(duration: 0.12)) {
-            squashStretch = 0.88
-            jumpOffset = 0.8
-        }
-
-        // Phase 2: Launch up (stretch tall, fly up)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
-            guard self.isAlive else { return }
-            withAnimation(.easeOut(duration: 0.18)) {
-                squashStretch = 1.08
-                jumpOffset = -4
-            }
-        }
-
-        // Phase 3: Airborne (hang at peak)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.30) {
-            guard self.isAlive else { return }
-            withAnimation(.easeInOut(duration: 0.12)) {
-                squashStretch = 1.0
-                jumpOffset = -4
-            }
-        }
-
-        // Phase 4: Fall down
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.42) {
-            guard self.isAlive else { return }
-            withAnimation(.easeIn(duration: 0.14)) {
-                squashStretch = 1.03
-                jumpOffset = 0
-            }
-        }
-
-        // Phase 5: Landing squash (absorb impact)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.56) {
-            guard self.isAlive else { return }
-            withAnimation(.spring(response: 0.15, dampingFraction: 0.45)) {
-                squashStretch = 0.9
-                jumpOffset = 0.3
-            }
-        }
-
-        // Phase 6: Recover to neutral
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.68) {
-            guard self.isAlive else { return }
-            withAnimation(.spring(response: 0.15, dampingFraction: 0.55)) {
-                squashStretch = 1.0
-                jumpOffset = 0
-            }
-        }
     }
 
     // MARK: - Eyes

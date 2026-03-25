@@ -74,8 +74,9 @@ class NotchWindowController {
                 dataSource: pillDataSource,
                 notchWidth: notchW,
                 notchHeight: notchH,
-                onTap: { sessionId in
-                    TerminalLauncher.focusClaudeCode(sessionId: sessionId, sourceBundleId: nil)
+                onTap: { [weak self] sessionId in
+                    let session = self?.pillDataSource.sessions.first(where: { $0.id == sessionId })
+                    TerminalLauncher.focusClaudeCode(sessionId: sessionId, sourceBundleId: session?.sourceBundleId, cwd: session?.cwd)
                 },
                 hoverMonitor: pillHoverMonitor
             )
@@ -124,7 +125,7 @@ class NotchWindowController {
 
     // MARK: - Notification (transient expand + auto-dismiss)
 
-    func showNotification(_ notification: NotchNotification) {
+    func showNotification(_ notification: NotchNotification, sessionSourceBundleId: String? = nil, sessionCwd: String? = nil) {
         dismissTimer?.invalidate()
 
         // Hide pill while notification is visible (cancel any in-progress fade animation)
@@ -157,6 +158,9 @@ class NotchWindowController {
             panel?.setFrame(frame, display: true)
         }
 
+        let resolvedBundleId = notification.sourceBundleId ?? sessionSourceBundleId
+        let resolvedCwd = sessionCwd
+
         let view = NotchNotificationView(
             notification: notification,
             hasNotch: hasNotch,
@@ -164,7 +168,7 @@ class NotchWindowController {
             notchHeight: notchH,
             onTap: { [weak self] in
                 self?.dismiss()
-                TerminalLauncher.focusClaudeCode(sessionId: notification.sessionId, sourceBundleId: notification.sourceBundleId)
+                TerminalLauncher.focusClaudeCode(sessionId: notification.sessionId, sourceBundleId: resolvedBundleId, cwd: resolvedCwd)
             },
             onDismiss: { [weak self] in
                 self?.dismiss()

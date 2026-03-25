@@ -38,6 +38,8 @@ class NotificationManager: ObservableObject {
         var projectName: String   // sanitized cwd or short UUID fallback
         var status: SessionStatus
         var lastMessage: String?
+        var sourceBundleId: String?  // bundle ID of the terminal/IDE that owns this session
+        var cwd: String?             // working directory for window matching
     }
     @Published var activeSessions: [SessionInfo] = []
 
@@ -92,7 +94,7 @@ class NotificationManager: ObservableObject {
         return raw
     }
 
-    func startSession(sessionId: String?, displayName: String? = nil) {
+    func startSession(sessionId: String?, displayName: String? = nil, sourceBundleId: String? = nil) {
         guard showSessionPill else { return }
 
         let sid = sessionId ?? UUID().uuidString
@@ -101,17 +103,23 @@ class NotificationManager: ObservableObject {
         endSessionWorkItems[sid]?.cancel()
         endSessionWorkItems.removeValue(forKey: sid)
 
-        // Don't add duplicate — but update project name if we now have one
+        // Don't add duplicate — but update project name and source app if we now have them
         if let idx = activeSessions.firstIndex(where: { $0.id == sid }) {
             if let name = displayName {
                 activeSessions[idx].projectName = sanitizedProjectName(name, sessionId: sid)
+            }
+            if let bundleId = sourceBundleId, !bundleId.isEmpty {
+                activeSessions[idx].sourceBundleId = bundleId
+            }
+            if let cwd = displayName, !cwd.isEmpty {
+                activeSessions[idx].cwd = cwd
             }
             refreshPill()
             return
         }
 
         let project = sanitizedProjectName(displayName, sessionId: sid)
-        activeSessions.append(SessionInfo(id: sid, startTime: Date(), projectName: project, status: .running))
+        activeSessions.append(SessionInfo(id: sid, startTime: Date(), projectName: project, status: .running, sourceBundleId: sourceBundleId, cwd: displayName))
         refreshPill()
 
         // Safety timeout — auto-end session after 1 hour to prevent zombie pills
@@ -200,7 +208,8 @@ class NotificationManager: ObservableObject {
             break
         }
 
-        windowController.showNotification(notification)
+        let session = activeSessions.first(where: { $0.id == notification.sessionId })
+        windowController.showNotification(notification, sessionSourceBundleId: session?.sourceBundleId, sessionCwd: session?.cwd)
 
         // End session on completion (cancellable if a new session starts)
         if notification.type == .complete, let sid = notification.sessionId {

@@ -81,7 +81,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         case "session_start":
             let displayName = params["cwd"]
-            NotificationManager.shared.startSession(sessionId: sessionId, displayName: displayName)
+            let sourceBundleId = params["source_app"]
+            NotificationManager.shared.startSession(sessionId: sessionId, displayName: displayName, sourceBundleId: sourceBundleId)
 
         case "session_end":
             // Only end a specific session — ignore if no session_id to prevent wiping all sessions
