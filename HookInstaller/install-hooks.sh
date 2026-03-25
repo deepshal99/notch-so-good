@@ -33,7 +33,7 @@ cp "$SETTINGS_FILE" "$SETTINGS_FILE.backup.$(date +%s)"
 # Each hook command: reads JSON from stdin via python3, extracts fields, URL-encodes, calls open -g
 
 read -r -d '' START_HOOK << 'HOOKEOF' || true
-[{"matcher":"","hooks":[{"type":"command","command":"INPUT=$(cat); eval $(echo \"$INPUT\" | python3 -c \"import sys,json,urllib.parse; d=json.load(sys.stdin); sid=d.get('session_id',''); cwd=d.get('cwd','') or ''; print(f'SID={sid}'); print(f'ECWD={urllib.parse.quote(cwd)}')\"); open -g \"notchsogood://session_start?session_id=$SID&cwd=$ECWD\"","timeout":5000}]}]
+[{"matcher":"","hooks":[{"type":"command","command":"INPUT=$(cat); eval $(echo \"$INPUT\" | python3 -c \"import sys,json,urllib.parse; d=json.load(sys.stdin); sid=d.get('session_id',''); cwd=d.get('cwd','') or ''; print(f'SID={sid}'); print(f'ECWD={urllib.parse.quote(cwd)}')\"); SRCAPP=${__CFBundleIdentifier:-${TERM_PROGRAM_BUNDLE_ID:-}}; open -g \"notchsogood://session_start?session_id=$SID&cwd=$ECWD&source_app=$SRCAPP\"","timeout":5000}]}]
 HOOKEOF
 
 read -r -d '' NOTIFICATION_HOOK << 'HOOKEOF' || true
@@ -41,7 +41,7 @@ read -r -d '' NOTIFICATION_HOOK << 'HOOKEOF' || true
 HOOKEOF
 
 read -r -d '' STOP_HOOK << 'HOOKEOF' || true
-[{"matcher":"","hooks":[{"type":"command","command":"INPUT=$(cat); eval $(echo \"$INPUT\" | python3 -c \"import sys,json,urllib.parse; d=json.load(sys.stdin); msg=urllib.parse.quote(d.get('last_assistant_message','Task completed')[:200]); sid=d.get('session_id',''); print(f'MSG={msg}'); print(f'SID={sid}')\"); open -g \"notchsogood://notify?type=complete&message=$MSG&session_id=$SID\"","timeout":5000}]}]
+[{"matcher":"","hooks":[{"type":"command","command":"INPUT=$(cat); eval $(echo \"$INPUT\" | python3 -c \"import sys,json,urllib.parse; d=json.load(sys.stdin); msg=urllib.parse.quote(d.get('last_assistant_message','Task completed')[:200]); sid=d.get('session_id',''); print(f'MSG={msg}'); print(f'SID={sid}')\"); open -g \"notchsogood://notify?type=complete&message=$MSG&session_id=$SID\"; (sleep 6 && open -g \"notchsogood://session_end?session_id=$SID\") &","timeout":5000}]}]
 HOOKEOF
 
 # Merge hooks into settings using python3 (replaces jq dependency)

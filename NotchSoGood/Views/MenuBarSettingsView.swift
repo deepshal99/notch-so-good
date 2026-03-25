@@ -3,285 +3,270 @@ import Sparkle
 
 struct MenuBarSettingsView: View {
     @ObservedObject var notificationManager: NotificationManager
-    @State private var hoveredPreview: NotificationType?
     let updater: SPUUpdater
 
-    private let bg = Color(hex: "1A1A1A")
-    private let cardBg = Color.white.opacity(0.05)
-    private let subtleText = Color.white.opacity(0.4)
-    private let bodyText = Color.white.opacity(0.85)
+    private let bg = Color(hex: "0E0E0E")
+    private let cardBg = Color.white.opacity(0.04)
+    private let dim = Color.white.opacity(0.3)
+    private let body_ = Color.white.opacity(0.78)
+    private let sep = Color.white.opacity(0.06)
 
     var body: some View {
         VStack(spacing: 0) {
-            // === HEADER with Chawd ===
-            header
-                .padding(.top, 16)
-                .padding(.bottom, 12)
+            // === HEADER ===
+            VStack(spacing: 6) {
+                MascotView(expression: .waving)
+                    .scaleEffect(0.55)
+                    .frame(width: 30, height: 26)
 
-            // === NOTIFICATION TOGGLES ===
-            sectionLabel("NOTIFICATIONS")
-                .padding(.horizontal, 16)
-                .padding(.bottom, 6)
-
-            VStack(spacing: 1) {
-                notifToggle(
-                    icon: "checkmark.circle.fill",
-                    label: "Task Complete",
-                    color: NotificationType.complete.accentColor,
-                    isOn: $notificationManager.showOnComplete
-                )
-                notifToggle(
-                    icon: "questionmark.circle.fill",
-                    label: "Questions",
-                    color: NotificationType.question.accentColor,
-                    isOn: $notificationManager.showOnQuestion
-                )
-                notifToggle(
-                    icon: "exclamationmark.lock.fill",
-                    label: "Permissions",
-                    color: NotificationType.permission.accentColor,
-                    isOn: $notificationManager.showOnPermission
-                )
+                Text("Notch So Good")
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .foregroundColor(.white)
             }
+            .frame(maxWidth: .infinity)
+            .padding(.top, 22)
+            .padding(.bottom, 14)
+
+            // === SETTINGS ===
+            VStack(spacing: 0) {
+                toggleRow(icon: "checkmark.circle", label: "Complete", isOn: $notificationManager.showOnComplete)
+                insetSep
+                toggleRow(icon: "questionmark.circle", label: "Questions", isOn: $notificationManager.showOnQuestion)
+                insetSep
+                toggleRow(icon: "lock.circle", label: "Permissions", isOn: $notificationManager.showOnPermission)
+                insetSep
+                toggleRow(icon: "speaker.wave.2", label: "Sounds", isOn: $notificationManager.soundEnabled)
+                insetSep
+                toggleRow(icon: "capsule", label: "Session Pill", isOn: $notificationManager.showSessionPill)
+            }
+            .background(cardBg)
             .clipShape(RoundedRectangle(cornerRadius: 10))
-            .padding(.horizontal, 12)
+            .padding(.horizontal, 10)
 
-            Spacer().frame(height: 14)
-
-            // === DISPLAY SETTINGS ===
-            sectionLabel("DISPLAY")
-                .padding(.horizontal, 16)
-                .padding(.bottom, 6)
-
-            VStack(spacing: 1) {
-                settingToggle(
-                    icon: "waveform",
-                    label: "Sound Effects",
-                    isOn: $notificationManager.soundEnabled
-                )
-                settingToggle(
-                    icon: "capsule.fill",
-                    label: "Session Pill",
-                    isOn: $notificationManager.showSessionPill
-                )
+            // === ACCESSIBILITY HINT ===
+            if !AXIsProcessTrusted() {
+                AccessibilityHintButton {
+                    if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
+                        NSWorkspace.shared.open(url)
+                    }
+                }
+                .padding(.horizontal, 10)
+                .padding(.top, 6)
             }
-            .clipShape(RoundedRectangle(cornerRadius: 10))
-            .padding(.horizontal, 12)
-
-            Spacer().frame(height: 14)
-
-            // === PREVIEW ===
-            sectionLabel("PREVIEW")
-                .padding(.horizontal, 16)
-                .padding(.bottom, 6)
-
-            HStack(spacing: 6) {
-                previewButton(type: .complete)
-                previewButton(type: .question)
-                previewButton(type: .permission)
-                previewButton(type: .general)
-            }
-            .padding(.horizontal, 12)
 
             Spacer().frame(height: 10)
 
             // === FOOTER ===
-            Divider()
-                .overlay(Color.white.opacity(0.06))
-                .padding(.horizontal, 12)
+            Rectangle().fill(sep).frame(height: 0.5).padding(.horizontal, 14)
 
-            Button {
+            Spacer().frame(height: 2)
+
+            footerRow(icon: "arrow.triangle.2.circlepath", label: "Update", trailing: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?") {
                 updater.checkForUpdates()
-            } label: {
-                HStack {
-                    Image(systemName: "arrow.triangle.2.circlepath")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(subtleText)
-                    Text("Check for Updates")
-                        .font(.system(size: 11.5, weight: .medium, design: .rounded))
-                        .foregroundColor(bodyText)
-                    Spacer()
-                    Text("v\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?")")
-                        .font(.system(size: 10, weight: .medium, design: .monospaced))
-                        .foregroundColor(subtleText)
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 10)
-                .contentShape(Rectangle())
             }
-            .buttonStyle(HoverButtonStyle())
 
-            Button {
+            footerRow(icon: "power", label: "Quit", trailing: "\u{2318}Q") {
                 NSApplication.shared.terminate(nil)
-            } label: {
-                HStack {
-                    Image(systemName: "power")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(subtleText)
-                    Text("Quit Notch So Good")
-                        .font(.system(size: 11.5, weight: .medium, design: .rounded))
-                        .foregroundColor(bodyText)
-                    Spacer()
-                    Text("⌘Q")
-                        .font(.system(size: 10, weight: .medium, design: .monospaced))
-                        .foregroundColor(subtleText)
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 10)
-                .contentShape(Rectangle())
             }
-            .buttonStyle(HoverButtonStyle())
             .keyboardShortcut("q")
-            .padding(.bottom, 4)
+
+            // === CREDIT ===
+            Button {
+                if let url = URL(string: "https://x.com/deepshal99") {
+                    NSWorkspace.shared.open(url)
+                }
+            } label: {
+                Text("made by Deepak")
+                    .font(.system(size: 10, weight: .medium, design: .rounded))
+                    .foregroundColor(Color.white.opacity(0.4))
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 4)
+                    .padding(.bottom, 8)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(CreditButtonStyle())
         }
-        .frame(width: 260)
+        .frame(width: 240)
         .background(bg)
         .preferredColorScheme(.dark)
     }
 
-    // MARK: - Header
+    // MARK: - Inset Separator
 
-    private var header: some View {
-        VStack(spacing: 8) {
-            MascotView(expression: .waving)
-                .frame(width: 44, height: 38)
-
-            VStack(spacing: 2) {
-                Text("Notch So Good")
-                    .font(.system(size: 14, weight: .bold, design: .rounded))
-                    .foregroundColor(.white)
-
-                Text("Dynamic Island for Claude Code")
-                    .font(.system(size: 10, weight: .medium, design: .rounded))
-                    .foregroundColor(subtleText)
-            }
-        }
-        .frame(maxWidth: .infinity)
+    private var insetSep: some View {
+        Rectangle().fill(sep).frame(height: 0.5).padding(.leading, 36)
     }
 
-    // MARK: - Section Label
+    // MARK: - Toggle Row
 
-    private func sectionLabel(_ text: String) -> some View {
-        Text(text)
-            .font(.system(size: 10, weight: .semibold, design: .rounded))
-            .foregroundColor(subtleText)
-            .tracking(0.8)
-    }
-
-    // MARK: - Notification Toggle Row
-
-    private func notifToggle(
-        icon: String,
-        label: String,
-        color: Color,
-        isOn: Binding<Bool>
-    ) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: icon)
-                .font(.system(size: 11, weight: .medium))
-                .foregroundColor(color)
-                .frame(width: 20)
-
-            Text(label)
-                .font(.system(size: 12, weight: .medium, design: .rounded))
-                .foregroundColor(bodyText)
-
-            Spacer()
-
-            Toggle("", isOn: isOn)
-                .toggleStyle(.switch)
-                .controlSize(.mini)
-                .labelsHidden()
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(cardBg)
-    }
-
-    // MARK: - Setting Toggle Row
-
-    private func settingToggle(
+    private func toggleRow(
         icon: String,
         label: String,
         isOn: Binding<Bool>
     ) -> some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
             Image(systemName: icon)
-                .font(.system(size: 11, weight: .medium))
-                .foregroundColor(Color.white.opacity(0.5))
-                .frame(width: 20)
+                .font(.system(size: 10, weight: .medium))
+                .foregroundColor(dim)
+                .frame(width: 16, alignment: .center)
 
             Text(label)
-                .font(.system(size: 12, weight: .medium, design: .rounded))
-                .foregroundColor(bodyText)
+                .font(.system(size: 12, weight: .regular, design: .rounded))
+                .foregroundColor(body_)
 
             Spacer()
 
-            Toggle("", isOn: isOn)
-                .toggleStyle(.switch)
-                .controlSize(.mini)
-                .labelsHidden()
+            MinimalToggle(isOn: isOn)
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(cardBg)
+        .padding(.vertical, 7)
     }
 
-    // MARK: - Preview Buttons
+    // MARK: - Footer Row
 
-    private func previewButton(type: NotificationType) -> some View {
-        let isHovered = hoveredPreview == type
+    private func footerRow(
+        icon: String,
+        label: String,
+        trailing: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundColor(dim)
+                    .frame(width: 16, alignment: .center)
 
-        return Button {
-            notificationManager.showTestNotification(type: type)
-        } label: {
-            VStack(spacing: 5) {
-                ZStack {
-                    Circle()
-                        .fill(type.accentColor.opacity(isHovered ? 0.2 : 0.1))
-                        .frame(width: 36, height: 36)
+                Text(label)
+                    .font(.system(size: 11.5, weight: .regular, design: .rounded))
+                    .foregroundColor(body_)
 
-                    Image(systemName: type.sfSymbol)
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(type.accentColor)
-                }
+                Spacer()
 
-                Text(type.defaultTitle)
-                    .font(.system(size: 9, weight: .medium, design: .rounded))
-                    .foregroundColor(isHovered ? type.accentColor : subtleText)
+                Text(trailing)
+                    .font(.system(size: 9.5, weight: .medium, design: .monospaced))
+                    .foregroundColor(dim)
             }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 8)
-            .background(
-                RoundedRectangle(cornerRadius: 10)
-                    .fill(cardBg.opacity(isHovered ? 1.5 : 1))
-            )
+            .padding(.horizontal, 14)
+            .padding(.vertical, 7)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .onHover { h in
-            withAnimation(.easeOut(duration: 0.15)) {
-                hoveredPreview = h ? type : nil
-            }
-        }
+        .buttonStyle(MenuRowButtonStyle())
     }
 }
 
-// MARK: - Hover Button Style
+// MARK: - Button Styles
 
-private struct HoverButtonStyle: ButtonStyle {
+private struct MenuRowButtonStyle: ButtonStyle {
     @State private var isHovered = false
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(.white.opacity(isHovered ? 0.06 : 0))
+                RoundedRectangle(cornerRadius: 5)
+                    .fill(.white.opacity(isHovered ? 0.05 : 0))
                     .padding(.horizontal, 4)
             )
-            .opacity(configuration.isPressed ? 0.7 : 1)
+            .scaleEffect(configuration.isPressed ? 0.98 : 1.0)
+            .opacity(configuration.isPressed ? 0.75 : 1)
+            .animation(.easeOut(duration: 0.1), value: configuration.isPressed)
             .onHover { h in
                 withAnimation(.easeOut(duration: 0.12)) { isHovered = h }
             }
+    }
+}
+
+// MARK: - Minimal Toggle
+
+private struct MinimalToggle: View {
+    @Binding var isOn: Bool
+
+    private let trackWidth: CGFloat = 28
+    private let trackHeight: CGFloat = 16
+    private let thumbSize: CGFloat = 12
+    private let thumbPadding: CGFloat = 2
+
+    var body: some View {
+        let onColor = Color.white.opacity(0.9)
+        let offTrack = Color.white.opacity(0.1)
+        let onTrack = Color.white.opacity(0.25)
+
+        Button {
+            withAnimation(.easeOut(duration: 0.15)) {
+                isOn.toggle()
+            }
+        } label: {
+            ZStack(alignment: isOn ? .trailing : .leading) {
+                Capsule()
+                    .fill(isOn ? onTrack : offTrack)
+                    .frame(width: trackWidth, height: trackHeight)
+
+                Circle()
+                    .fill(isOn ? onColor : Color.white.opacity(0.35))
+                    .frame(width: thumbSize, height: thumbSize)
+                    .padding(.horizontal, thumbPadding)
+            }
+        }
+        .buttonStyle(.plain)
+        .frame(width: trackWidth, height: trackHeight)
+    }
+}
+
+// MARK: - Accessibility Hint Button
+
+private struct AccessibilityHintButton: View {
+    let action: () -> Void
+    @State private var isHovered = false
+
+    private let orangeTint = Color.orange
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 0) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Grant Accessibility Access")
+                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .foregroundColor(Color.white.opacity(0.8))
+                    Text("For precise window targeting")
+                        .font(.system(size: 9.5, weight: .regular, design: .rounded))
+                        .foregroundColor(Color.white.opacity(0.35))
+                }
+
+                Spacer()
+
+                Image(systemName: "arrow.up.forward")
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundColor(orangeTint.opacity(0.6))
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 9)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(orangeTint.opacity(isHovered ? 0.12 : 0.06))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .strokeBorder(orangeTint.opacity(isHovered ? 0.2 : 0.1), lineWidth: 0.5)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .scaleEffect(isHovered ? 1.0 : 1.0)
+        .onHover { h in
+            withAnimation(.easeOut(duration: 0.15)) { isHovered = h }
+        }
+    }
+}
+
+private struct CreditButtonStyle: ButtonStyle {
+    @State private var isHovered = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .opacity(isHovered ? 0.8 : 0.6)
+            .scaleEffect(configuration.isPressed ? 0.97 : 1.0)
+            .animation(.easeOut(duration: 0.1), value: configuration.isPressed)
+            .animation(.easeOut(duration: 0.12), value: isHovered)
+            .onHover { h in isHovered = h }
     }
 }
