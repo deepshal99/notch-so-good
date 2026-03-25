@@ -19,6 +19,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Auto-install hooks on first launch / version update
+        NotificationManager.shared.installHooksIfNeeded()
+
+        // Start permission server for approve/deny from the notch
+        PermissionServer.shared.start()
+
         // Observe app deactivation to track the last active app before us
         frontmostObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didActivateApplicationNotification,

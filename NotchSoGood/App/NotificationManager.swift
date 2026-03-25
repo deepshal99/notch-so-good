@@ -84,14 +84,39 @@ class NotificationManager: ObservableObject {
         "Desktop", "Documents", "Downloads",
     ]
 
+    // Generic container folders that shouldn't appear as parent context
+    private static let genericParents: Set<String> = [
+        "Documents", "Desktop", "Downloads", "Projects", "repos", "Repos",
+        "code", "Code", "dev", "Dev", "src", "workspace", "workspaces",
+        "Workspace", "Workspaces", "Sites", "sites", "home", "Home",
+        "Users", "tmp", "var", "opt",
+    ]
+
     private func sanitizedProjectName(_ raw: String?, sessionId: String) -> String {
-        guard let raw, !raw.isEmpty, !Self.unhelpfulNames.contains(raw) else {
+        guard let raw, !raw.isEmpty else {
             return String(sessionId.prefix(6))
         }
+        // Walk up from the last component, skipping generic/unhelpful folders
+        let components = raw.split(separator: "/", omittingEmptySubsequences: true).map(String.init)
         let home = NSHomeDirectory()
         let homeBase = (home as NSString).lastPathComponent
-        if raw == homeBase { return String(sessionId.prefix(6)) }
-        return raw
+
+        // Get the project folder (last component)
+        guard let project = components.last,
+              !Self.unhelpfulNames.contains(project),
+              project != homeBase else {
+            return String(sessionId.prefix(6))
+        }
+
+        // Find a meaningful parent (skip generic containers)
+        if components.count >= 2 {
+            let parent = components[components.count - 2]
+            if !Self.genericParents.contains(parent) && parent != homeBase {
+                return "\(parent) / \(project)"
+            }
+        }
+
+        return project
     }
 
     func startSession(sessionId: String?, displayName: String? = nil, sourceBundleId: String? = nil) {
@@ -257,6 +282,19 @@ class NotificationManager: ObservableObject {
         }
     }
 
+    // MARK: - Auto-setup
+
+    /// Install hooks on first launch and on every version update (so new hooks like PreToolUse get added).
+    func installHooksIfNeeded() {
+        let currentVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0"
+        let installedVersion = UserDefaults.standard.string(forKey: "hooksInstalledVersion") ?? ""
+
+        if installedVersion != currentVersion {
+            installHooks()
+            UserDefaults.standard.set(currentVersion, forKey: "hooksInstalledVersion")
+        }
+    }
+
     func installHooks() {
         let bundle = Bundle.main
         if let script = bundle.path(forResource: "install-hooks", ofType: "sh") {
@@ -265,5 +303,34 @@ class NotificationManager: ObservableObject {
             task.arguments = [script]
             try? task.run()
         }
+    }
+
+    // MARK: - Permission requests (from PermissionServer)
+
+    func showPermissionRequest(requestId: String, toolName: String, toolInput: String, sessionId: String?) {
+        // Update session status
+        if let sid = sessionId {
+            updateSessionStatus(sessionId: sid, status: .needsPermission, message: "Wants to use \(toolName)")
+        }
+
+        guard showOnPermission else {
+            // If permission notifications are disabled, auto-approve
+            PermissionServer.shared.respond(requestId: requestId, approve: true)
+            return
+        }
+
+        let message = toolInput.isEmpty ? "Claude wants to use \(toolName)" : toolInput
+
+        let notification = NotchNotification(
+            type: .permission,
+            message: message,
+            title: nil,
+            sessionId: sessionId,
+            permissionRequestId: requestId,
+            toolName: toolName
+        )
+
+        let session = activeSessions.first(where: { $0.id == sessionId })
+        windowController.showNotification(notification, sessionSourceBundleId: session?.sourceBundleId, sessionCwd: session?.cwd)
     }
 }

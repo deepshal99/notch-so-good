@@ -6,17 +6,17 @@
         <description>Automatic updates for Notch So Good</description>
         <language>en</language>
         <item>
-            <title>Version 1.4.0</title>
-            <pubDate>Thu, 26 Mar 2026 02:09:12 +0530</pubDate>
-            <sparkle:version>9</sparkle:version>
-            <sparkle:shortVersionString>1.4.0</sparkle:shortVersionString>
-            <description><![CDATA[<h2>What's New in 1.4.0</h2><p>Redesigned settings menu — sleek monochrome UI, custom toggles, maker credit. Fixed hover wiggle animation. Improved terminal window targeting with accessibility support.</p>]]></description>
+            <title>Version 2.0.0</title>
+            <pubDate>Thu, 26 Mar 2026 02:49:33 +0530</pubDate>
+            <sparkle:version>10</sparkle:version>
+            <sparkle:shortVersionString>2.0.0</sparkle:shortVersionString>
+            <description><![CDATA[<h2>What's New in 2.0.0</h2><p>Permission approvals from the notch — Allow/Deny tool executions without switching to the terminal. Auto-setup hooks on first launch. 18 Chawd animations.</p>]]></description>
             <enclosure
-                url="https://github.com/deepshal99/notch-so-good/releases/download/v1.4.0/NotchSoGood-1.4.0.zip"
-                sparkle:version="9"
-                sparkle:shortVersionString="1.4.0"
-                sparkle:edSignature="Bke0n/ff+bVcHLB0zRKizd7sM2RCDWccof7vgFTAFYvM2x4jdnhXyxlgJctJLsN5M/g4gVyrd6vMNLC8oH1HAQ=="
-                length="1774481"
+                url="https://github.com/deepshal99/notch-so-good/releases/download/v2.0.0/NotchSoGood-2.0.0.zip"
+                sparkle:version="10"
+                sparkle:shortVersionString="2.0.0"
+                sparkle:edSignature="qgOmmVyIugx39lossInUreGNiM2U6ysFM+ACArquCNpTirjZzX8JopwgBYCpKOCLZGSdJHGMCXCkC8DDPfoUAw=="
+                length="1808275"
                 type="application/octet-stream"
             />
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>

@@ -47,20 +47,41 @@ curl -fsSL https://raw.githubusercontent.com/deepshal99/notch-so-good/main/get.s
 
 **He tells you things.** When Claude needs input, your notch expands into a notification. Color-coded by type — green for done, blue for questions, amber for permissions. Click anywhere to jump back to your terminal.
 
+**He approves things.** When Claude wants to run a command or edit a file, Allow/Deny buttons appear right in the notch. No need to switch to the terminal — approve tool executions without leaving what you're doing.
+
+```
+         ┌──────────────────────────────────────┐
+         │             [ N O T C H ]             │
+         │                                       │
+         │  🦀  PERMISSION                       │
+         │      ⚡ Bash                           │
+         │      rm -rf node_modules              │
+         │                                       │
+         │     [ Deny ]        [ Allow ]         │
+         └──────────────────────────────────────┘
+```
+
 **He multitasks.** Running 5 Claude sessions? Hover the pill to see all of them, grouped by project, each with its own timer and status dot.
+
+**He sets himself up.** Hooks install automatically on first launch. No manual setup, no config files to edit.
 
 ---
 
 ## How It Works
 
-Hooks into [Claude Code's hook system](https://docs.anthropic.com/en/docs/claude-code/hooks) via URL scheme callbacks. No server, no polling, no network requests.
+Hooks into [Claude Code's hook system](https://docs.anthropic.com/en/docs/claude-code/hooks) via URL scheme callbacks and a local permission server. No cloud, no polling, no network requests.
 
 ```
-  Claude starts  →  🦀 Chawd appears
-  Claude works   →  🦀 Chawd does tricks, timer ticks
-  Claude asks    →  🔔 Notch expands with notification
-  Claude done    →  ✅ Completion notification, pill fades
+  Claude starts    →  🦀 Chawd appears
+  Claude works     →  🦀 Chawd does tricks, timer ticks
+  Claude asks      →  🔔 Notch expands with notification
+  Claude needs ok  →  🔐 Approve/Deny buttons in the notch
+  Claude done      →  ✅ Completion notification, pill fades
 ```
+
+### Permission Approvals
+
+Safe tools (Read, Grep, Glob, etc.) are auto-approved instantly — zero friction. When Claude wants to run Bash commands, edit files, or write new ones, you get interactive Allow/Deny buttons right in the notch. If the app isn't running, Claude Code falls back to its normal terminal-based permission flow.
 
 ---
 
