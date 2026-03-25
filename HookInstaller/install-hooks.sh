@@ -44,6 +44,14 @@ read -r -d '' STOP_HOOK << 'HOOKEOF' || true
 [{"matcher":"","hooks":[{"type":"command","command":"INPUT=$(cat); eval $(echo \"$INPUT\" | python3 -c \"import sys,json,urllib.parse; d=json.load(sys.stdin); msg=urllib.parse.quote(d.get('last_assistant_message','Task completed')[:200]); sid=d.get('session_id',''); print(f'MSG={msg}'); print(f'SID={sid}')\"); open -g \"notchsogood://notify?type=complete&message=$MSG&session_id=$SID\"; (sleep 6 && open -g \"notchsogood://session_end?session_id=$SID\") &","timeout":5000}]}]
 HOOKEOF
 
+# PreToolUse hook: sends tool details to Notch So Good's permission server.
+# Safe tools (Read, Grep, etc.) are auto-approved instantly (<1ms).
+# Dangerous tools (Bash, Edit, Write) block until user clicks Allow/Deny in the notch.
+# If the app isn't running, curl fails immediately and hook outputs nothing (normal Claude flow).
+read -r -d '' PRETOOLUSE_HOOK << 'HOOKEOF' || true
+[{"matcher":"","hooks":[{"type":"command","command":"INPUT=$(cat); PORT=$(cat /tmp/notchsogood.port 2>/dev/null); if [ -n \"$PORT\" ]; then BODY=$(echo \"$INPUT\" | python3 -c \"import sys,json; d=json.load(sys.stdin); tn=d.get('tool_name',''); ti=d.get('tool_input',{}); sid=d.get('session_id',''); s=ti.get('command','') if tn=='Bash' else ti.get('file_path','') if tn in ('Edit','Write','Read','NotebookEdit') else ti.get('pattern','') if tn=='Grep' else json.dumps(ti)[:200]; print(json.dumps({'tool_name':tn,'tool_input':s[:200],'session_id':sid}))\"); RESP=$(echo \"$BODY\" | curl -s --max-time 120 -X POST -H 'Content-Type: application/json' -d @- \"http://localhost:$PORT/permission\" 2>/dev/null); [ -n \"$RESP\" ] && echo \"$RESP\"; fi","timeout":300000}]}]
+HOOKEOF
+
 # Merge hooks into settings using python3 (replaces jq dependency)
 UPDATED=$(python3 -c "
 import json, sys
@@ -52,6 +60,7 @@ settings_path = sys.argv[1]
 start_hook = json.loads(sys.argv[2])
 notif_hook = json.loads(sys.argv[3])
 stop_hook = json.loads(sys.argv[4])
+pretooluse_hook = json.loads(sys.argv[5])
 
 with open(settings_path) as f:
     settings = json.load(f)
@@ -60,10 +69,11 @@ hooks = settings.get('hooks', {})
 hooks['SessionStart'] = start_hook
 hooks['Notification'] = notif_hook
 hooks['Stop'] = stop_hook
+hooks['PreToolUse'] = pretooluse_hook
 settings['hooks'] = hooks
 
 print(json.dumps(settings, indent=2))
-" "$SETTINGS_FILE" "$START_HOOK" "$NOTIFICATION_HOOK" "$STOP_HOOK")
+" "$SETTINGS_FILE" "$START_HOOK" "$NOTIFICATION_HOOK" "$STOP_HOOK" "$PRETOOLUSE_HOOK")
 
 if [ -z "$UPDATED" ]; then
     echo "Error: Failed to update settings — restoring backup"
@@ -76,6 +86,7 @@ echo "$UPDATED" > "$SETTINGS_FILE"
 
 echo "Claude Code hooks installed!"
 echo "  Settings: $SETTINGS_FILE"
-echo "  Hooks: SessionStart, Notification, Stop"
+echo "  Hooks: SessionStart, Notification, Stop, PreToolUse"
 echo ""
 echo "  Make sure Notch So Good is running to receive notifications."
+echo "  Permission approvals work automatically when the app is running."

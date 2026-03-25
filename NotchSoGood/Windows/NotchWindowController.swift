@@ -17,6 +17,9 @@ class NotchWindowController {
     private let notifHoverMonitor = NotificationHoverMonitor()
     private let pillDataSource = PillDataSource()
 
+    // Track current permission notification so we can dismiss it programmatically
+    private var activePermissionRequestId: String?
+
     // Pill sizing constants (must match SessionPillView)
     private let wingExpanded: CGFloat = 110
     private let wingCollapsed: CGFloat = 56
@@ -33,18 +36,14 @@ class NotchWindowController {
         let notchW = geo?.notchWidth ?? 185
         let notchH = geo?.notchHeight ?? 32
 
-        // Panel stays at max size for smooth SwiftUI animations
-        // Must match SessionPillView's maxWidth/maxHeight
         let maxWidth = notchW + (wingExpanded * 2)
-        let maxHeight = notchH + 300  // Match SessionPillView.maxContentHeight
+        let maxHeight = notchH + 300
 
         let panelFrame = calculateFrame(panelWidth: maxWidth, panelHeight: maxHeight, hasNotch: hasNotch, geo: geo)
 
-        // Compute pill screen rects for hover detection
         let collapsedW = notchW + (wingCollapsed * 2)
         let expandedW = maxWidth
-        // Estimate expanded content height based on session count (matches SessionPillView row sizing)
-        let dropPad: CGFloat = 4 + 10  // top + bottom padding
+        let dropPad: CGFloat = 4 + 10
         let rowH: CGFloat = 36 * CGFloat(min(sessions.count, 6))
         let expandedH = notchH + dropPad + rowH
         let centerX = panelFrame.origin.x + maxWidth / 2
@@ -62,7 +61,6 @@ class NotchWindowController {
             height: expandedH
         )
 
-        // Update data source — SwiftUI observes changes without recreating the view
         pillDataSource.sessions = sessions
         pillDataSource.primaryStartTime = primaryStartTime
 
@@ -128,7 +126,7 @@ class NotchWindowController {
     func showNotification(_ notification: NotchNotification, sessionSourceBundleId: String? = nil, sessionCwd: String? = nil) {
         dismissTimer?.invalidate()
 
-        // Hide pill while notification is visible (cancel any in-progress fade animation)
+        // Hide pill while notification is visible
         pillPanel?.animator().alphaValue = 0
         pillPanel?.orderOut(nil)
         pillHoverMonitor.stop()
@@ -139,7 +137,9 @@ class NotchWindowController {
         let notchH = geo?.notchHeight ?? 32
         let notchW = geo?.notchWidth ?? 185
 
-        let contentHeight: CGFloat = 76
+        // Permission notifications are taller to fit buttons
+        let isPermission = notification.isInteractivePermission
+        let contentHeight: CGFloat = isPermission ? 130 : 76
         let panelWidth: CGFloat = hasNotch ? notchW + 200 : 380
         let panelHeight: CGFloat = hasNotch ? (notchH + contentHeight) : contentHeight
 
@@ -161,6 +161,8 @@ class NotchWindowController {
         let resolvedBundleId = notification.sourceBundleId ?? sessionSourceBundleId
         let resolvedCwd = sessionCwd
 
+        activePermissionRequestId = notification.permissionRequestId
+
         let view = NotchNotificationView(
             notification: notification,
             hasNotch: hasNotch,
@@ -172,7 +174,19 @@ class NotchWindowController {
             },
             onDismiss: { [weak self] in
                 self?.dismiss()
-            }
+            },
+            onApprove: isPermission ? { [weak self] in
+                guard let reqId = self?.activePermissionRequestId else { return }
+                PermissionServer.shared.respond(requestId: reqId, approve: true)
+                self?.activePermissionRequestId = nil
+                self?.dismiss()
+            } : nil,
+            onDeny: isPermission ? { [weak self] in
+                guard let reqId = self?.activePermissionRequestId else { return }
+                PermissionServer.shared.respond(requestId: reqId, approve: false)
+                self?.activePermissionRequestId = nil
+                self?.dismiss()
+            } : nil
         )
 
         let hostingView = TransparentHostingView(rootView: AnyView(view))
@@ -180,8 +194,7 @@ class NotchWindowController {
         panel?.alphaValue = 1.0
         panel?.orderFrontRegardless()
 
-        // Set up hover monitor — only the visible content area below the notch is interactive.
-        // The top notchH pixels overlap the physical notch and should always be click-through.
+        // Hover monitor — content area below the notch
         notifHoverMonitor.contentScreenRect = NSRect(
             x: frame.origin.x,
             y: frame.origin.y,
@@ -194,14 +207,18 @@ class NotchWindowController {
 
         SoundManager.shared.play(for: notification.type)
 
-        dismissTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: false) { [weak self] _ in
-            self?.dismiss()
+        // Auto-dismiss after 5s for regular notifications, NO auto-dismiss for permission
+        if !isPermission {
+            dismissTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: false) { [weak self] _ in
+                self?.dismiss()
+            }
         }
     }
 
     func dismiss() {
         guard !isDismissing else { return }
         isDismissing = true
+        activePermissionRequestId = nil
 
         dismissTimer?.invalidate()
         dismissTimer = nil
@@ -212,7 +229,7 @@ class NotchWindowController {
             return
         }
 
-        // Fast exit — Emil: "fast where the system is responding"
+        // Fast exit
         NSAnimationContext.runAnimationGroup({ context in
             context.duration = 0.18
             context.timingFunction = CAMediaTimingFunction(name: .easeOut)
@@ -222,7 +239,7 @@ class NotchWindowController {
             self?.panel?.alphaValue = 1.0
             self?.isDismissing = false
 
-            // Restore pill gracefully after notification dismisses
+            // Restore pill gracefully
             if let self, self.hasPillSession, let pillPanel = self.pillPanel {
                 pillPanel.alphaValue = 0
                 pillPanel.orderFrontRegardless()
