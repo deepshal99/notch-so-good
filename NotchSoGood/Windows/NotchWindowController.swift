@@ -20,6 +20,10 @@ class NotchWindowController {
     // Track current permission notification so we can dismiss it programmatically
     private var activePermissionRequestId: String?
 
+    // Permission queue — when multiple tools need approval simultaneously
+    private var permissionQueue: [NotchNotification] = []
+    private var permissionQueueMeta: [(sourceBundleId: String?, cwd: String?)] = []
+
     // Pill sizing constants (must match SessionPillView)
     private let wingExpanded: CGFloat = 110
     private let wingCollapsed: CGFloat = 56
@@ -43,10 +47,10 @@ class NotchWindowController {
 
         let collapsedW = notchW + (wingCollapsed * 2)
         let expandedW = maxWidth
-        let dropPad: CGFloat = 4 + 10
-        let rowH: CGFloat = 36 * CGFloat(min(sessions.count, 6))
-        let expandedH = notchH + dropPad + rowH
         let centerX = panelFrame.origin.x + maxWidth / 2
+
+        // Calculate expanded height matching SessionPillView's expandedContentHeight
+        let expandedH = Self.computeExpandedHeight(sessions: sessions, notchH: notchH)
 
         pillHoverMonitor.collapsedScreenRect = NSRect(
             x: centerX - collapsedW / 2,
@@ -124,6 +128,13 @@ class NotchWindowController {
     // MARK: - Notification (transient expand + auto-dismiss)
 
     func showNotification(_ notification: NotchNotification, sessionSourceBundleId: String? = nil, sessionCwd: String? = nil) {
+        // Queue concurrent permission requests instead of replacing
+        if notification.isInteractivePermission && activePermissionRequestId != nil {
+            permissionQueue.append(notification)
+            permissionQueueMeta.append((sourceBundleId: sessionSourceBundleId, cwd: sessionCwd))
+            return
+        }
+
         dismissTimer?.invalidate()
 
         // Hide pill while notification is visible
@@ -221,6 +232,28 @@ class NotchWindowController {
         }
     }
 
+    /// Show next queued permission notification (called after responding to current one)
+    func showNextQueuedPermission() {
+        guard !permissionQueue.isEmpty else { return }
+        let next = permissionQueue.removeFirst()
+        let meta = permissionQueueMeta.removeFirst()
+        showNotification(next, sessionSourceBundleId: meta.sourceBundleId, sessionCwd: meta.cwd)
+    }
+
+    /// Dismiss a specific permission by request ID (e.g. on timeout)
+    func dismissPermission(requestId: String) {
+        // Remove from queue if it hasn't been shown yet
+        if let idx = permissionQueue.firstIndex(where: { $0.permissionRequestId == requestId }) {
+            permissionQueue.remove(at: idx)
+            permissionQueueMeta.remove(at: idx)
+            return
+        }
+        // If it's the active one, dismiss the notification
+        if activePermissionRequestId == requestId {
+            dismiss()
+        }
+    }
+
     func dismiss() {
         guard !isDismissing else { return }
         isDismissing = true
@@ -257,6 +290,40 @@ class NotchWindowController {
                 })
             }
         })
+    }
+
+    /// Compute the expanded pill height, matching SessionPillView's layout exactly.
+    private static func computeExpandedHeight(sessions: [NotificationManager.SessionInfo], notchH: CGFloat) -> CGFloat {
+        let dropPad: CGFloat = 4 + 10
+        let sessionRowH: CGFloat = 36
+        let groupHeaderH: CGFloat = 22
+        let subSessionRowH: CGFloat = 32
+        let subagentRowH: CGFloat = 24
+
+        // Group sessions by project (same logic as SessionGroup.from)
+        var groups: [String: [NotificationManager.SessionInfo]] = [:]
+        var order: [String] = []
+        for s in sessions {
+            if groups[s.projectName] == nil { order.append(s.projectName) }
+            groups[s.projectName, default: []].append(s)
+        }
+
+        var contentH: CGFloat = dropPad
+        for name in order {
+            let groupSessions = groups[name] ?? []
+            if groupSessions.count == 1 {
+                contentH += sessionRowH
+                contentH += subagentRowH * CGFloat(groupSessions[0].subagents.count)
+            } else {
+                contentH += groupHeaderH
+                for s in groupSessions {
+                    contentH += subSessionRowH
+                    contentH += subagentRowH * CGFloat(s.subagents.count)
+                }
+            }
+        }
+
+        return notchH + contentH
     }
 
     private func calculateFrame(panelWidth: CGFloat, panelHeight: CGFloat,

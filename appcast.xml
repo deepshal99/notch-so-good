@@ -6,6 +6,31 @@
         <description>Automatic updates for Notch So Good</description>
         <language>en</language>
         <item>
+            <title>Version 3.0.0</title>
+            <pubDate>Thu, 27 Mar 2026 01:00:00 +0530</pubDate>
+            <sparkle:version>11</sparkle:version>
+            <sparkle:shortVersionString>3.0.0</sparkle:shortVersionString>
+            <description><![CDATA[<h2>What's New in 3.0.0</h2>
+<ul>
+<li><b>Unix socket protocol</b> — Faster, more secure communication (replaces TCP)</li>
+<li><b>10 hook events</b> — PostToolUse, SessionEnd, SubagentStart/Stop, PreCompact, UserPromptSubmit</li>
+<li><b>Phase icons</b> — Animated SF Symbols show what Claude is doing (Reading, Editing, Running...)</li>
+<li><b>Subagent display</b> — See nested agents with tree connectors in the session pill</li>
+<li><b>Concurrent permissions</b> — Multiple permission requests queue properly</li>
+<li><b>Interrupt detection</b> — JSONL watcher dismisses permission dialogs on Ctrl+C</li>
+<li><b>Compacting status</b> — Violet spinning icon during context compaction</li>
+</ul>]]></description>
+            <enclosure
+                url="https://github.com/deepshal99/notch-so-good/releases/download/v3.0.0/NotchSoGood-3.0.0.zip"
+                sparkle:version="11"
+                sparkle:shortVersionString="3.0.0"
+                sparkle:edSignature="TyZJQstceVPhlQC6T3mC1/swYNlF2ribMBzbVKuU3B3htbhuFKtSlFgCqTR5G2ezzXhMg2ZZyXtS+CPmjmwgDQ=="
+                length="1877546"
+                type="application/octet-stream"
+            />
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+        </item>
+        <item>
             <title>Version 2.0.0</title>
             <pubDate>Thu, 26 Mar 2026 02:49:33 +0530</pubDate>
             <sparkle:version>10</sparkle:version>

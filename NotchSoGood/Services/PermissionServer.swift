@@ -1,29 +1,40 @@
 import Foundation
-import Network
 
-/// Local TCP server that receives permission requests from Claude Code's PreToolUse hook.
-/// Safe tools (Read, Grep, etc.) are auto-approved instantly.
-/// Dangerous tools (Bash, Edit, Write) block until the user clicks Approve/Deny in the notch.
+/// Unix domain socket server that receives ALL events from Claude Code hooks.
+/// Replaces the previous TCP server with a more secure, faster Unix socket.
+///
+/// Event types handled:
+/// - PreToolUse: Auto-approve safe tools, show UI for dangerous ones (bidirectional)
+/// - PostToolUse: Update session status back to running
+/// - SessionStart: Start session tracking
+/// - SessionEnd: Clean session end
+/// - Stop: Session completed
+/// - Notification: Show notification in notch
+/// - UserPromptSubmit: User sent a message (session active)
+/// - PreCompact: Context compaction starting
+/// - SubagentStop: Subagent finished
 class PermissionServer {
     static let shared = PermissionServer()
+    static let socketPath = "/tmp/notchsogood.sock"
 
-    private var listener: NWListener?
-    private let queue = DispatchQueue(label: "com.notchsogood.permission-server")
-    private let port: UInt16 = 27182
+    private var serverSocket: Int32 = -1
+    private var acceptSource: DispatchSourceRead?
+    private let queue = DispatchQueue(label: "com.notchsogood.socket", qos: .userInitiated)
 
     struct PendingRequest {
         let id: String
         let toolName: String
         let toolInput: String
         let sessionId: String?
-        let connection: NWConnection
+        let clientSocket: Int32
+        let receivedAt: Date
     }
 
+    /// Pending permission requests indexed by request ID — supports concurrent requests
     private var pendingRequests: [String: PendingRequest] = [:]
     private let lock = NSLock()
 
     /// All settings files Claude Code reads (global + global local).
-    /// Project-level settings are checked in the hook via git root.
     private static let settingsPaths: [String] = [
         NSHomeDirectory() + "/.claude/settings.json",
         NSHomeDirectory() + "/.claude/settings.local.json",
@@ -31,11 +42,10 @@ class PermissionServer {
 
     // MARK: - Settings cache (avoid re-reading disk on every tool call)
 
-    /// Cached settings state — refreshed at most once per `cacheTTL` seconds.
     private static var cachedDangerousMode: Bool = false
     private static var cachedAllowRules: [String] = []
     private static var cacheTimestamp: Date = .distantPast
-    private static let cacheTTL: TimeInterval = 5 // re-read settings at most every 5s
+    private static let cacheTTL: TimeInterval = 5
 
     private static func refreshCacheIfNeeded() {
         guard Date().timeIntervalSince(cacheTimestamp) > cacheTTL else { return }
@@ -56,19 +66,17 @@ class PermissionServer {
         cacheTimestamp = Date()
     }
 
-    /// Returns true if the user has enabled dangerous mode / bypass permissions in Claude Code.
     static var isDangerousModeEnabled: Bool {
         refreshCacheIfNeeded()
         return cachedDangerousMode
     }
 
-    /// Collect all `permissions.allow` rules from Claude Code settings.
     static var allowRules: [String] {
         refreshCacheIfNeeded()
         return cachedAllowRules
     }
 
-    // Built-in Claude Code tools that never need user approval (read-only / non-destructive)
+    // Built-in Claude Code tools that never need user approval
     static let safeTools: Set<String> = [
         "Read", "Glob", "Grep", "LSP", "Agent", "ToolSearch",
         "EnterPlanMode", "ExitPlanMode", "EnterWorktree", "ExitWorktree",
@@ -81,25 +89,14 @@ class PermissionServer {
         "mcp__conductor__GetWorkspaceDiff",
     ]
 
-    /// Keywords in MCP tool function names that indicate read-only operations.
-    /// Used as a heuristic fallback so we don't need to hardcode every MCP server's tools.
     private static let readOnlyKeywords = [
         "get_", "list_", "search_", "read_", "find_", "query_",
         "resolve", "snapshot", "watch", "fetch",
     ]
 
-    /// Check if a tool is safe (no approval needed) using multiple strategies:
-    /// 1. Built-in safe tools list
-    /// 2. User's permissions.allow rules (tool already allowed in Claude Code)
-    /// 3. MCP read-only heuristic (function name contains get/list/search/etc.)
     static func isToolApproved(_ toolName: String, toolInput: String) -> Bool {
-        // 1. Built-in safe tools
         if safeTools.contains(toolName) { return true }
-
-        // 2. Check user's allow rules from Claude Code settings
         if isAllowedByRules(toolName: toolName, toolInput: toolInput) { return true }
-
-        // 3. MCP read-only heuristic — extract the function part after the last "__"
         if toolName.hasPrefix("mcp__") {
             let parts = toolName.split(separator: "__", omittingEmptySubsequences: true)
             if let funcName = parts.last {
@@ -109,115 +106,263 @@ class PermissionServer {
                 }
             }
         }
-
         return false
     }
 
-    /// Match a tool against the user's `permissions.allow` patterns.
-    /// Supports: "Edit", "Bash(git commit:*)", "mcp__pencil" (prefix), etc.
     private static func isAllowedByRules(toolName: String, toolInput: String) -> Bool {
         let rules = allowRules
         for rule in rules {
             if let parenIdx = rule.firstIndex(of: "(") {
-                // Pattern rule: "Bash(git commit:*)"
                 let ruleTool = String(rule[rule.startIndex..<parenIdx])
                 guard toolName == ruleTool else { continue }
                 let patternStart = rule.index(after: parenIdx)
                 guard let parenEnd = rule.lastIndex(of: ")") else { continue }
                 let pattern = String(rule[patternStart..<parenEnd])
-
                 if pattern == "*" { return true }
                 if pattern.hasSuffix(":*") {
                     let prefix = String(pattern.dropLast(2))
                     if toolInput.hasPrefix(prefix) { return true }
                 }
             } else {
-                // Simple rule: "Edit" or prefix: "mcp__pencil"
                 if toolName == rule { return true }
-                // Prefix match for MCP namespaces: "mcp__pencil" matches "mcp__pencil__batch_design"
                 if toolName.hasPrefix(rule + "__") { return true }
             }
         }
         return false
     }
 
+    // MARK: - Server lifecycle
+
     func start() {
-        guard listener == nil else { return }
-
-        do {
-            let params = NWParameters.tcp
-            params.allowLocalEndpointReuse = true
-            listener = try NWListener(using: params, on: NWEndpoint.Port(rawValue: port)!)
-
-            listener?.stateUpdateHandler = { [weak self] state in
-                guard let self else { return }
-                switch state {
-                case .ready:
-                    try? String(self.port).write(
-                        toFile: "/tmp/notchsogood.port",
-                        atomically: true,
-                        encoding: .utf8
-                    )
-                case .failed(let error):
-                    print("PermissionServer failed: \(error)")
-                    // Try to restart after a brief delay
-                    self.listener = nil
-                    self.queue.asyncAfter(deadline: .now() + 2) { [weak self] in
-                        self?.start()
-                    }
-                default:
-                    break
-                }
-            }
-
-            listener?.newConnectionHandler = { [weak self] connection in
-                self?.handleConnection(connection)
-            }
-
-            listener?.start(queue: queue)
-        } catch {
-            print("PermissionServer: Failed to start on port \(port): \(error)")
+        queue.async { [weak self] in
+            self?.startServer()
         }
     }
 
+    private func startServer() {
+        guard serverSocket < 0 else { return }
+
+        // Remove stale socket file
+        unlink(Self.socketPath)
+        // Also clean up legacy TCP port file
+        unlink("/tmp/notchsogood.port")
+
+        serverSocket = socket(AF_UNIX, SOCK_STREAM, 0)
+        guard serverSocket >= 0 else {
+            print("PermissionServer: failed to create socket: \(errno)")
+            return
+        }
+
+        // Non-blocking mode
+        let flags = fcntl(serverSocket, F_GETFL)
+        _ = fcntl(serverSocket, F_SETFL, flags | O_NONBLOCK)
+
+        var addr = sockaddr_un()
+        addr.sun_family = sa_family_t(AF_UNIX)
+        Self.socketPath.withCString { ptr in
+            withUnsafeMutablePointer(to: &addr.sun_path) { pathPtr in
+                let buf = UnsafeMutableRawPointer(pathPtr).assumingMemoryBound(to: CChar.self)
+                strcpy(buf, ptr)
+            }
+        }
+
+        let bindResult = withUnsafePointer(to: &addr) { ptr in
+            ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockaddrPtr in
+                bind(serverSocket, sockaddrPtr, socklen_t(MemoryLayout<sockaddr_un>.size))
+            }
+        }
+
+        guard bindResult == 0 else {
+            print("PermissionServer: failed to bind socket: \(errno)")
+            close(serverSocket)
+            serverSocket = -1
+            return
+        }
+
+        // Allow all local users to connect (hooks run as same user anyway)
+        chmod(Self.socketPath, 0o700)
+
+        guard listen(serverSocket, 10) == 0 else {
+            print("PermissionServer: failed to listen: \(errno)")
+            close(serverSocket)
+            serverSocket = -1
+            return
+        }
+
+        print("PermissionServer: listening on \(Self.socketPath)")
+
+        acceptSource = DispatchSource.makeReadSource(fileDescriptor: serverSocket, queue: queue)
+        acceptSource?.setEventHandler { [weak self] in
+            self?.acceptConnection()
+        }
+        acceptSource?.setCancelHandler { [weak self] in
+            if let fd = self?.serverSocket, fd >= 0 {
+                close(fd)
+                self?.serverSocket = -1
+            }
+        }
+        acceptSource?.resume()
+    }
+
     func stop() {
-        listener?.cancel()
-        listener = nil
-        try? FileManager.default.removeItem(atPath: "/tmp/notchsogood.port")
+        acceptSource?.cancel()
+        acceptSource = nil
+        unlink(Self.socketPath)
+
+        lock.lock()
+        for (_, pending) in pendingRequests {
+            close(pending.clientSocket)
+        }
+        pendingRequests.removeAll()
+        lock.unlock()
     }
 
     // MARK: - Connection handling
 
-    private func handleConnection(_ connection: NWConnection) {
-        connection.start(queue: queue)
+    private func acceptConnection() {
+        let clientSocket = accept(serverSocket, nil, nil)
+        guard clientSocket >= 0 else { return }
 
-        // Read the full HTTP request in one chunk (requests are tiny, <2KB)
-        connection.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [weak self] data, _, _, error in
-            guard let self, let data, error == nil,
-                  let raw = String(data: data, encoding: .utf8) else {
-                connection.cancel()
-                return
-            }
+        // Prevent SIGPIPE on write to closed socket
+        var nosigpipe: Int32 = 1
+        setsockopt(clientSocket, SOL_SOCKET, SO_NOSIGPIPE, &nosigpipe, socklen_t(MemoryLayout<Int32>.size))
 
-            // Extract body from HTTP POST
-            guard let bodyRange = raw.range(of: "\r\n\r\n") else {
-                // Might be a health check or incomplete request
-                self.sendHTTPResponse(connection: connection, body: "{}")
-                return
-            }
-
-            let body = String(raw[bodyRange.upperBound...])
-            self.processRequest(body: body, connection: connection)
-        }
+        handleClient(clientSocket)
     }
 
-    private func processRequest(body: String, connection: NWConnection) {
-        guard let data = body.data(using: .utf8),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            sendHTTPResponse(connection: connection, body: "{}")
+    private func handleClient(_ clientSocket: Int32) {
+        // Set non-blocking
+        let flags = fcntl(clientSocket, F_GETFL)
+        _ = fcntl(clientSocket, F_SETFL, flags | O_NONBLOCK)
+
+        var allData = Data()
+        var buffer = [UInt8](repeating: 0, count: 65536)
+        var pollFd = pollfd(fd: clientSocket, events: Int16(POLLIN), revents: 0)
+
+        // Read with timeout — hooks send small JSON payloads
+        let startTime = Date()
+        while Date().timeIntervalSince(startTime) < 0.5 {
+            let pollResult = poll(&pollFd, 1, 50)
+
+            if pollResult > 0 && (pollFd.revents & Int16(POLLIN)) != 0 {
+                let bytesRead = read(clientSocket, &buffer, buffer.count)
+                if bytesRead > 0 {
+                    allData.append(contentsOf: buffer[0..<bytesRead])
+                } else if bytesRead == 0 {
+                    break // EOF — sender closed write end
+                } else if errno != EAGAIN && errno != EWOULDBLOCK {
+                    break
+                }
+            } else if pollResult == 0 {
+                if !allData.isEmpty { break }
+            } else {
+                break
+            }
+        }
+
+        guard !allData.isEmpty,
+              let json = try? JSONSerialization.jsonObject(with: allData) as? [String: Any] else {
+            close(clientSocket)
             return
         }
 
+        let event = json["event"] as? String ?? ""
+        let sessionId = json["session_id"] as? String
+        let cwd = json["cwd"] as? String
+        let sourceBundleId = json["source_app"] as? String
+
+        switch event {
+        case "PreToolUse":
+            handlePreToolUse(json: json, clientSocket: clientSocket)
+
+        case "PostToolUse":
+            close(clientSocket)
+            let toolName = json["tool_name"] as? String ?? ""
+            DispatchQueue.main.async {
+                NotificationManager.shared.handlePostToolUse(sessionId: sessionId, toolName: toolName)
+            }
+
+        case "SubagentStart":
+            close(clientSocket)
+            let subagentId = json["subagent_id"] as? String
+            let description = json["description"] as? String
+            DispatchQueue.main.async {
+                NotificationManager.shared.handleSubagentStart(sessionId: sessionId, subagentId: subagentId, description: description)
+            }
+
+        case "SessionStart":
+            close(clientSocket)
+            DispatchQueue.main.async {
+                NotificationManager.shared.startSession(sessionId: sessionId, displayName: cwd, sourceBundleId: sourceBundleId)
+            }
+
+        case "SessionEnd":
+            close(clientSocket)
+            DispatchQueue.main.async {
+                NotificationManager.shared.endSession(sessionId: sessionId)
+            }
+
+        case "Stop":
+            close(clientSocket)
+            let message = json["last_assistant_message"] as? String ?? "Task completed"
+            DispatchQueue.main.async {
+                let notification = NotchNotification(
+                    type: .complete,
+                    message: String(message.prefix(200)),
+                    sessionId: sessionId
+                )
+                NotificationManager.shared.handleNotification(notification)
+            }
+
+        case "Notification":
+            close(clientSocket)
+            let notifType = json["notification_type"] as? String ?? "general"
+            let message = json["message"] as? String ?? "Claude needs attention"
+            let title = json["title"] as? String
+            let type: NotificationType = {
+                switch notifType {
+                case "permission_prompt": return .permission
+                case "idle_prompt": return .question
+                default: return .general
+                }
+            }()
+            DispatchQueue.main.async {
+                let notification = NotchNotification(
+                    type: type,
+                    message: String(message.prefix(200)),
+                    title: title,
+                    sessionId: sessionId
+                )
+                NotificationManager.shared.handleNotification(notification)
+            }
+
+        case "UserPromptSubmit":
+            close(clientSocket)
+            DispatchQueue.main.async {
+                NotificationManager.shared.handleUserPromptSubmit(sessionId: sessionId)
+            }
+
+        case "PreCompact":
+            close(clientSocket)
+            DispatchQueue.main.async {
+                NotificationManager.shared.updateSessionStatus(sessionId: sessionId, status: .compacting)
+            }
+
+        case "SubagentStop":
+            close(clientSocket)
+            let subagentId = json["subagent_id"] as? String
+            DispatchQueue.main.async {
+                NotificationManager.shared.handleSubagentStop(sessionId: sessionId, subagentId: subagentId)
+            }
+
+        default:
+            close(clientSocket)
+        }
+    }
+
+    // MARK: - PreToolUse (bidirectional — keeps socket open for response)
+
+    private func handlePreToolUse(json: [String: Any], clientSocket: Int32) {
         let toolName = json["tool_name"] as? String ?? "Unknown"
         let toolInput = json["tool_input"] as? String ?? ""
         let sessionId = json["session_id"] as? String
@@ -227,17 +372,19 @@ class PermissionServer {
         let forceTest = false
         #endif
 
-        // Skip auto-approve checks when force_test is set (debug UI testing only)
+        // Track active tool for phase labels (even for auto-approved tools)
+        let detail = toolInput.isEmpty ? nil : String(toolInput.prefix(60))
+        DispatchQueue.main.async {
+            NotificationManager.shared.handlePreToolUse(sessionId: sessionId, toolName: toolName, toolDetail: detail)
+        }
+
         if !forceTest {
-            // Auto-approve everything if user has dangerous mode enabled
             if Self.isDangerousModeEnabled {
-                sendHTTPResponse(connection: connection, body: "{\"decision\":\"approve\"}")
+                sendSocketResponse(clientSocket: clientSocket, body: "{\"decision\":\"approve\"}")
                 return
             }
-
-            // Auto-approve safe tools and tools already allowed in Claude Code settings
             if Self.isToolApproved(toolName, toolInput: toolInput) {
-                sendHTTPResponse(connection: connection, body: "{\"decision\":\"approve\"}")
+                sendSocketResponse(clientSocket: clientSocket, body: "{\"decision\":\"approve\"}")
                 return
             }
         }
@@ -249,14 +396,14 @@ class PermissionServer {
             toolName: toolName,
             toolInput: toolInput,
             sessionId: sessionId,
-            connection: connection
+            clientSocket: clientSocket,
+            receivedAt: Date()
         )
 
         lock.lock()
         pendingRequests[requestId] = request
         lock.unlock()
 
-        // Show approval UI on main thread
         DispatchQueue.main.async {
             NotificationManager.shared.showPermissionRequest(
                 requestId: requestId,
@@ -266,20 +413,19 @@ class PermissionServer {
             )
         }
 
-        // Timeout after 2 minutes — send empty response so hook outputs nothing
-        // (Claude Code falls back to its normal terminal permission flow)
+        // Timeout after 2 minutes — close socket so hook outputs nothing
         queue.asyncAfter(deadline: .now() + 120) { [weak self] in
             self?.timeoutRequest(requestId: requestId)
         }
     }
+
+    // MARK: - Permission response
 
     enum PermissionResponse {
         case allow
         case allowAlways
         case deny
     }
-
-    // MARK: - User response
 
     func respond(requestId: String, response: PermissionResponse) {
         lock.lock()
@@ -291,20 +437,22 @@ class PermissionServer {
 
         switch response {
         case .allowAlways:
-            // Add rule to Claude Code settings so it never asks again
             let rule = Self.buildAllowRule(toolName: request.toolName, toolInput: request.toolInput)
             Self.addToAllowList(rule: rule)
             fallthrough
         case .allow:
-            let body = "{\"decision\":\"approve\"}"
             queue.async {
-                self.sendHTTPResponse(connection: request.connection, body: body)
+                self.sendSocketResponse(clientSocket: request.clientSocket, body: "{\"decision\":\"approve\"}")
             }
         case .deny:
-            let body = "{\"decision\":\"deny\",\"reason\":\"Denied from Notch So Good\"}"
             queue.async {
-                self.sendHTTPResponse(connection: request.connection, body: body)
+                self.sendSocketResponse(clientSocket: request.clientSocket, body: "{\"decision\":\"deny\",\"reason\":\"Denied from Notch So Good\"}")
             }
+        }
+
+        // After responding, check if there's another queued permission to show
+        DispatchQueue.main.async {
+            NotificationManager.shared.windowController.showNextQueuedPermission()
         }
     }
 
@@ -313,64 +461,70 @@ class PermissionServer {
         respond(requestId: requestId, response: approve ? .allow : .deny)
     }
 
-    /// Build a permission rule string for the allow list.
-    /// e.g. "Edit", "Bash(git commit:*)", "mcp__pencil__batch_design"
+    /// Get count of pending permission requests (for queue management)
+    var pendingCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return pendingRequests.count
+    }
+
+    /// Get all pending request IDs for a session
+    func pendingRequestIds(for sessionId: String?) -> [String] {
+        lock.lock()
+        defer { lock.unlock() }
+        return pendingRequests.values
+            .filter { $0.sessionId == sessionId || sessionId == nil }
+            .sorted { $0.receivedAt < $1.receivedAt }
+            .map { $0.id }
+    }
+
+    // MARK: - Allow list management
+
     private static func buildAllowRule(toolName: String, toolInput: String) -> String {
         switch toolName {
         case "Bash":
-            // Extract the command prefix (first word or first two words)
             let cmd = toolInput.trimmingCharacters(in: .whitespacesAndNewlines)
             let words = cmd.split(separator: " ", maxSplits: 2).map(String.init)
             if let first = words.first {
-                // Use first two words as prefix for common commands: "git commit:*", "npm install:*"
                 let prefix = words.count >= 2 ? "\(first) \(words[1])" : first
                 return "Bash(\(prefix):*)"
             }
             return "Bash"
         case "Edit", "Write", "NotebookEdit":
-            // Allow the tool entirely (file-level granularity isn't useful for "always")
             return toolName
         default:
             return toolName
         }
     }
 
-    /// Add a permission rule to ~/.claude/settings.json.
-    /// Returns true on success. Invalidates the settings cache so the new rule takes effect immediately.
     @discardableResult
     private static func addToAllowList(rule: String) -> Bool {
         let path = NSHomeDirectory() + "/.claude/settings.json"
         guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
               var json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            print("PermissionServer: failed to read settings for 'Always Allow'")
             return false
         }
 
         var permissions = json["permissions"] as? [String: Any] ?? [:]
         var allow = permissions["allow"] as? [String] ?? []
-
-        // Don't add duplicates
         guard !allow.contains(rule) else { return true }
         allow.append(rule)
         permissions["allow"] = allow
         json["permissions"] = permissions
 
         guard let updated = try? JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted, .sortedKeys]),
-              let str = String(data: updated, encoding: .utf8) else {
-            print("PermissionServer: failed to serialize settings for 'Always Allow'")
-            return false
-        }
+              let str = String(data: updated, encoding: .utf8) else { return false }
 
         do {
             try str.write(toFile: path, atomically: true, encoding: .utf8)
-            // Invalidate cache so the new rule is picked up immediately
             cacheTimestamp = .distantPast
             return true
         } catch {
-            print("PermissionServer: failed to write settings for 'Always Allow': \(error)")
             return false
         }
     }
+
+    // MARK: - Timeout & socket I/O
 
     private func timeoutRequest(requestId: String) {
         lock.lock()
@@ -380,29 +534,23 @@ class PermissionServer {
         }
         lock.unlock()
 
-        // Empty body → hook outputs nothing → Claude Code uses normal terminal flow
-        let response = "HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
-        request.connection.send(
-            content: response.data(using: .utf8),
-            contentContext: .finalMessage,
-            isComplete: true,
-            completion: .contentProcessed { _ in request.connection.cancel() }
-        )
+        // Close socket without response — hook outputs nothing, Claude Code uses normal flow
+        close(request.clientSocket)
 
         DispatchQueue.main.async {
-            NotificationManager.shared.windowController.dismiss()
+            NotificationManager.shared.windowController.dismissPermission(requestId: requestId)
         }
     }
 
-    // MARK: - HTTP response
-
-    private func sendHTTPResponse(connection: NWConnection, body: String) {
-        let http = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: \(body.utf8.count)\r\nConnection: close\r\n\r\n\(body)"
-        connection.send(
-            content: http.data(using: .utf8),
-            contentContext: .finalMessage,
-            isComplete: true,
-            completion: .contentProcessed { _ in connection.cancel() }
-        )
+    private func sendSocketResponse(clientSocket: Int32, body: String) {
+        guard let data = body.data(using: .utf8) else {
+            close(clientSocket)
+            return
+        }
+        data.withUnsafeBytes { bytes in
+            guard let base = bytes.baseAddress else { return }
+            _ = write(clientSocket, base, data.count)
+        }
+        close(clientSocket)
     }
 }
