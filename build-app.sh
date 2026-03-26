@@ -57,6 +57,10 @@ else
     echo "⚠️  Sparkle.framework not found in build artifacts — auto-update won't work"
 fi
 
+# Code-sign the app bundle (ad-hoc) so Sparkle can validate updates
+codesign --force --deep --sign - "$APP_BUNDLE"
+echo "Code-signed app bundle (ad-hoc)"
+
 # Register URL scheme by touching the app
 /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$APP_BUNDLE" 2>/dev/null || true
 

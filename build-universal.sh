@@ -72,6 +72,10 @@ else
     echo -e "  ${DIM}Warning: Sparkle.framework not found${RESET}"
 fi
 
+# Code-sign the app bundle (ad-hoc) so Sparkle can validate updates
+codesign --force --deep --sign - "$APP_BUNDLE"
+echo -e "  ${GREEN}✓${RESET} Code-signed (ad-hoc)"
+
 # Remove quarantine flag
 xattr -cr "$APP_BUNDLE" 2>/dev/null || true
 
