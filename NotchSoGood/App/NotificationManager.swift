@@ -308,9 +308,11 @@ class NotificationManager: ObservableObject {
     // MARK: - Permission requests (from PermissionServer)
 
     func showPermissionRequest(requestId: String, toolName: String, toolInput: String, sessionId: String?) {
+        let (action, detail) = Self.sanitizePermission(toolName: toolName, toolInput: toolInput)
+
         // Update session status
         if let sid = sessionId {
-            updateSessionStatus(sessionId: sid, status: .needsPermission, message: "Wants to use \(toolName)")
+            updateSessionStatus(sessionId: sid, status: .needsPermission, message: action)
         }
 
         guard showOnPermission else {
@@ -319,12 +321,10 @@ class NotificationManager: ObservableObject {
             return
         }
 
-        let message = toolInput.isEmpty ? "Claude wants to use \(toolName)" : toolInput
-
         let notification = NotchNotification(
             type: .permission,
-            message: message,
-            title: nil,
+            message: detail,
+            title: action,
             sessionId: sessionId,
             permissionRequestId: requestId,
             toolName: toolName
@@ -332,5 +332,135 @@ class NotificationManager: ObservableObject {
 
         let session = activeSessions.first(where: { $0.id == sessionId })
         windowController.showNotification(notification, sessionSourceBundleId: session?.sourceBundleId, sessionCwd: session?.cwd)
+    }
+
+    // MARK: - Permission sanitization
+
+    /// Returns a human-readable (action, detail) pair for a tool permission request.
+    /// Action = short verb phrase for the title, Detail = the most useful context.
+    static func sanitizePermission(toolName: String, toolInput: String) -> (action: String, detail: String) {
+        switch toolName {
+        case "Bash":
+            let cmd = toolInput.trimmingCharacters(in: .whitespacesAndNewlines)
+            let short = Self.shortCommand(cmd)
+            return ("Run command", short)
+
+        case "Edit":
+            return ("Edit file", Self.shortPath(toolInput))
+
+        case "Write":
+            return ("Create file", Self.shortPath(toolInput))
+
+        case "NotebookEdit":
+            return ("Edit notebook", Self.shortPath(toolInput))
+
+        case "CronCreate":
+            return ("Create cron job", toolInput.isEmpty ? "Scheduled task" : String(toolInput.prefix(80)))
+
+        case "CronDelete":
+            return ("Delete cron job", toolInput.isEmpty ? "Scheduled task" : String(toolInput.prefix(80)))
+
+        default:
+            // MCP write tools or unknown
+            let friendly = Self.friendlyMcpName(toolName)
+            let detail = toolInput.isEmpty ? "Waiting for approval" : String(toolInput.prefix(100))
+            return (friendly, detail)
+        }
+    }
+
+    /// Extract just the meaningful command from a potentially long bash string.
+    /// "cd /long/path && git commit -m 'foo'" → "git commit -m 'foo'"
+    /// "INPUT=$(cat); eval ..." → first recognizable command
+    private static func shortCommand(_ raw: String) -> String {
+        let cmd = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cmd.isEmpty else { return "Terminal command" }
+
+        // If the input looks like raw JSON (hook sent unsanitized data), extract something useful
+        if cmd.hasPrefix("{") || cmd.contains("\"tool_name\"") || cmd.contains("\"tool_input\"") {
+            return "Terminal command"
+        }
+
+        // Split on && or ; and take the last meaningful segment
+        let segments = cmd.components(separatedBy: "&&")
+            .flatMap { $0.components(separatedBy: ";") }
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { seg in
+                let lower = seg.lowercased()
+                // Skip noise: cd, variable assignments, echo of JSON, pipe chains
+                return !seg.isEmpty
+                    && !lower.hasPrefix("cd ")
+                    && !lower.hasPrefix("input=")
+                    && !lower.hasPrefix("eval ")
+                    && !lower.hasPrefix("export ")
+                    && !lower.hasPrefix("echo '{")
+                    && !lower.hasPrefix("echo \"{")
+                    && !(lower.hasPrefix("echo ") && lower.contains("tool_name"))
+            }
+
+        let best = segments.last ?? "Terminal command"
+
+        // If we filtered everything out, show generic
+        if best == cmd && best.count > 100 {
+            // Try to get first word as the command name
+            let firstWord = best.split(separator: " ").first.map(String.init) ?? "Terminal command"
+            return firstWord
+        }
+
+        // Truncate long commands but keep enough context
+        if best.count > 80 {
+            return String(best.prefix(77)) + "..."
+        }
+        return best
+    }
+
+    /// "/Users/foo/project/src/Views/MyView.swift" → "MyView.swift"
+    /// or "src/Views/MyView.swift" if short enough
+    private static func shortPath(_ raw: String) -> String {
+        let path = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !path.isEmpty else { return "Unknown file" }
+
+        let components = path.split(separator: "/", omittingEmptySubsequences: true)
+        guard let filename = components.last else { return path }
+
+        // If 3 or fewer components, show as-is
+        if components.count <= 3 {
+            return path
+        }
+
+        // Show last 2 components for context: "Views/MyView.swift"
+        if components.count >= 2 {
+            let parent = components[components.count - 2]
+            return "\(parent)/\(filename)"
+        }
+
+        return String(filename)
+    }
+
+    /// "mcp__pencil__batch_design" → "Design update"
+    /// "mcp__conductor__SomeAction" → "Some Action"
+    private static func friendlyMcpName(_ toolName: String) -> String {
+        // Known MCP tool friendly names
+        let known: [String: String] = [
+            "mcp__pencil__batch_design": "Design update",
+            "mcp__pencil__open_document": "Open document",
+            "mcp__pencil__set_variables": "Set design variables",
+            "mcp__pencil__replace_all_matching_properties": "Replace design properties",
+            "mcp__pencil__export_nodes": "Export design",
+            "mcp__agentation__agentation_reply": "Send reply",
+            "mcp__agentation__agentation_resolve": "Resolve request",
+            "mcp__agentation__agentation_acknowledge": "Acknowledge",
+            "mcp__agentation__agentation_dismiss": "Dismiss",
+        ]
+        if let friendly = known[toolName] { return friendly }
+
+        // Generic: strip mcp__ prefix, replace underscores with spaces, capitalize
+        var name = toolName
+        if name.hasPrefix("mcp__") {
+            // "mcp__foo__bar_baz" → "bar baz"
+            let parts = name.split(separator: "__", omittingEmptySubsequences: true)
+            name = parts.count >= 3 ? String(parts[2...].joined(separator: " ")) :
+                   parts.count >= 2 ? String(parts.last!) : name
+        }
+        return name.replacingOccurrences(of: "_", with: " ").capitalized
     }
 }

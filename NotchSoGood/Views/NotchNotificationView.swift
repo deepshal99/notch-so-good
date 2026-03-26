@@ -8,6 +8,7 @@ struct NotchNotificationView: View {
     let onTap: () -> Void
     let onDismiss: () -> Void
     let onApprove: (() -> Void)?
+    let onAlwaysAllow: (() -> Void)?
     let onDeny: (() -> Void)?
 
     @State private var expanded = false
@@ -29,6 +30,7 @@ struct NotchNotificationView: View {
         onTap: @escaping () -> Void,
         onDismiss: @escaping () -> Void,
         onApprove: (() -> Void)? = nil,
+        onAlwaysAllow: (() -> Void)? = nil,
         onDeny: (() -> Void)? = nil
     ) {
         self.notification = notification
@@ -38,6 +40,7 @@ struct NotchNotificationView: View {
         self.onTap = onTap
         self.onDismiss = onDismiss
         self.onApprove = onApprove
+        self.onAlwaysAllow = onAlwaysAllow
         self.onDeny = onDeny
     }
 
@@ -178,35 +181,38 @@ struct NotchNotificationView: View {
             .scaleEffect(contentAppeared ? 1 : 0.85)
 
             VStack(alignment: .leading, spacing: 5) {
-                HStack(spacing: 5) {
-                    Image(systemName: notification.type.sfSymbol)
-                        .foregroundColor(notification.type.accentColor)
-                        .font(.system(size: 9, weight: .bold))
-
-                    Text(notification.displayTitle.uppercased())
-                        .font(.system(size: 9, weight: .bold, design: .rounded))
-                        .foregroundColor(notification.type.accentColor.opacity(0.8))
-                        .tracking(0.8)
-                }
-                .opacity(textRevealed ? 1 : 0)
-
                 if isPermission, let tool = notification.toolName {
-                    // Tool name badge
-                    HStack(spacing: 4) {
+                    // Permission: show action title + tool icon badge
+                    HStack(spacing: 5) {
                         Image(systemName: toolIcon(for: tool))
-                            .font(.system(size: 9, weight: .semibold))
-                            .foregroundColor(notification.type.accentColor.opacity(0.6))
-                        Text(tool)
-                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                            .foregroundColor(.white.opacity(0.7))
+                            .foregroundColor(notification.type.accentColor)
+                            .font(.system(size: 9, weight: .bold))
+
+                        Text(notification.displayTitle.uppercased())
+                            .font(.system(size: 9, weight: .bold, design: .rounded))
+                            .foregroundColor(notification.type.accentColor.opacity(0.8))
+                            .tracking(0.8)
+                    }
+                    .opacity(textRevealed ? 1 : 0)
+                } else {
+                    // Non-permission: standard title
+                    HStack(spacing: 5) {
+                        Image(systemName: notification.type.sfSymbol)
+                            .foregroundColor(notification.type.accentColor)
+                            .font(.system(size: 9, weight: .bold))
+
+                        Text(notification.displayTitle.uppercased())
+                            .font(.system(size: 9, weight: .bold, design: .rounded))
+                            .foregroundColor(notification.type.accentColor.opacity(0.8))
+                            .tracking(0.8)
                     }
                     .opacity(textRevealed ? 1 : 0)
                 }
 
                 Text(notification.message)
-                    .font(.system(size: isPermission ? 12 : 13, weight: .medium, design: .rounded))
+                    .font(.system(size: isPermission ? 12 : 13, weight: isPermission ? .semibold : .medium, design: isPermission ? .monospaced : .rounded))
                     .foregroundColor(.white.opacity(0.88))
-                    .lineLimit(isPermission ? 2 : 2)
+                    .lineLimit(2)
                     .lineSpacing(2)
                     .opacity(textRevealed ? 1 : 0)
             }
@@ -218,7 +224,7 @@ struct NotchNotificationView: View {
     // MARK: - Permission buttons
 
     private var permissionButtons: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 6) {
             PermissionButton(
                 label: "Deny",
                 icon: "xmark",
@@ -233,6 +239,14 @@ struct NotchNotificationView: View {
                 style: .approve
             ) {
                 onApprove?()
+            }
+
+            PermissionButton(
+                label: "Always",
+                icon: "checkmark.circle.fill",
+                style: .alwaysAllow
+            ) {
+                onAlwaysAllow?()
             }
         }
     }
@@ -283,7 +297,7 @@ struct NotchNotificationView: View {
 // MARK: - Permission Button
 
 private struct PermissionButton: View {
-    enum Style { case approve, deny }
+    enum Style { case approve, alwaysAllow, deny }
 
     let label: String
     let icon: String
@@ -296,6 +310,7 @@ private struct PermissionButton: View {
     private var bgColor: Color {
         switch style {
         case .approve: return Color(hex: "34D399") // emerald
+        case .alwaysAllow: return Color(hex: "60A5FA") // blue
         case .deny: return Color.white
         }
     }
@@ -303,6 +318,7 @@ private struct PermissionButton: View {
     private var bgOpacity: Double {
         switch style {
         case .approve: return isHovered ? 0.3 : 0.2
+        case .alwaysAllow: return isHovered ? 0.3 : 0.2
         case .deny: return isHovered ? 0.1 : 0.06
         }
     }
@@ -310,6 +326,7 @@ private struct PermissionButton: View {
     private var textColor: Color {
         switch style {
         case .approve: return .white
+        case .alwaysAllow: return .white
         case .deny: return .white.opacity(0.6)
         }
     }
@@ -331,7 +348,7 @@ private struct PermissionButton: View {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .strokeBorder(bgColor.opacity(style == .approve ? 0.3 : 0.08), lineWidth: 0.5)
+                    .strokeBorder(bgColor.opacity(style == .deny ? 0.08 : 0.3), lineWidth: 0.5)
             )
             .contentShape(RoundedRectangle(cornerRadius: 8))
         }
