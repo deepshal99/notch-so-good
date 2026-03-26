@@ -177,13 +177,19 @@ class NotchWindowController {
             },
             onApprove: isPermission ? { [weak self] in
                 guard let reqId = self?.activePermissionRequestId else { return }
-                PermissionServer.shared.respond(requestId: reqId, approve: true)
+                PermissionServer.shared.respond(requestId: reqId, response: .allow)
+                self?.activePermissionRequestId = nil
+                self?.dismiss()
+            } : nil,
+            onAlwaysAllow: isPermission ? { [weak self] in
+                guard let reqId = self?.activePermissionRequestId else { return }
+                PermissionServer.shared.respond(requestId: reqId, response: .allowAlways)
                 self?.activePermissionRequestId = nil
                 self?.dismiss()
             } : nil,
             onDeny: isPermission ? { [weak self] in
                 guard let reqId = self?.activePermissionRequestId else { return }
-                PermissionServer.shared.respond(requestId: reqId, approve: false)
+                PermissionServer.shared.respond(requestId: reqId, response: .deny)
                 self?.activePermissionRequestId = nil
                 self?.dismiss()
             } : nil
