@@ -32,13 +32,21 @@ struct SessionPillView: View {
         SessionGroup.from(sessions)
     }
 
+    private let subagentRowHeight: CGFloat = 24
+
     private var expandedContentHeight: CGFloat {
         var h: CGFloat = dropTopPad + dropBottomPad
         for group in sessionGroups {
             if group.sessions.count == 1 {
+                let session = group.sessions[0]
                 h += sessionRowHeight
+                h += subagentRowHeight * CGFloat(session.subagents.count)
             } else {
-                h += groupHeaderHeight + (subSessionRowHeight * CGFloat(group.sessions.count))
+                h += groupHeaderHeight
+                for session in group.sessions {
+                    h += subSessionRowHeight
+                    h += subagentRowHeight * CGFloat(session.subagents.count)
+                }
             }
         }
         return h
@@ -84,13 +92,17 @@ struct SessionPillView: View {
                     Spacer()
                         .frame(width: notchWidth)
 
-                    // Right wing — Timer + status dot
-                    HStack(spacing: 5) {
-                        let primaryStatus = sessions.first?.status ?? .running
-                        Circle()
-                            .fill(primaryStatus.dotColor)
-                            .frame(width: hovered ? 5 : 4, height: hovered ? 5 : 4)
-                            .modifier(primaryStatus.shouldPulse ? PulseModifier() : PulseModifier(disabled: true))
+                    // Right wing — Phase icon + Timer
+                    HStack(spacing: 4) {
+                        let primary = sessions.first
+                        let primaryStatus = primary?.status ?? .running
+
+                        PhaseIconView(
+                            status: primaryStatus,
+                            toolName: primary?.activeToolName,
+                            size: hovered ? 10 : 8,
+                            compact: true
+                        )
 
                         Text(elapsed)
                             .font(.system(size: hovered ? 11 : 10, weight: .semibold, design: .monospaced))
@@ -115,6 +127,7 @@ struct SessionPillView: View {
                 }
             }
             .frame(width: pillWidth, height: pillTotalHeight, alignment: .top)
+            .clipShape(pillShape)
             .contentShape(pillShape)
             .onTapGesture {
                 onTap(sessions.first?.id)
@@ -157,6 +170,8 @@ struct SessionPillView: View {
                         projectHeader(name: name)
                     case .sub(let session):
                         subSessionRow(session: session, now: now)
+                    case .subagent(let sub):
+                        subagentRow(sub: sub, now: now)
                     }
                 }
                 .opacity(hovered ? 1 : 0)
@@ -171,6 +186,7 @@ struct SessionPillView: View {
         case single(NotificationManager.SessionInfo)
         case header(String)
         case sub(NotificationManager.SessionInfo)
+        case subagent(NotificationManager.SubagentInfo)
     }
 
     private struct ExpandedRow: Identifiable {
@@ -182,11 +198,19 @@ struct SessionPillView: View {
         var rows: [ExpandedRow] = []
         for group in sessionGroups {
             if group.sessions.count == 1 {
-                rows.append(ExpandedRow(id: group.sessions[0].id, kind: .single(group.sessions[0])))
+                let session = group.sessions[0]
+                rows.append(ExpandedRow(id: session.id, kind: .single(session)))
+                // Add subagent rows under this session
+                for sub in session.subagents {
+                    rows.append(ExpandedRow(id: "sub-\(sub.id)", kind: .subagent(sub)))
+                }
             } else {
                 rows.append(ExpandedRow(id: "header-\(group.projectName)", kind: .header(group.projectName)))
                 for session in group.sessions {
                     rows.append(ExpandedRow(id: session.id, kind: .sub(session)))
+                    for sub in session.subagents {
+                        rows.append(ExpandedRow(id: "sub-\(sub.id)", kind: .subagent(sub)))
+                    }
                 }
             }
         }
@@ -200,10 +224,11 @@ struct SessionPillView: View {
             onTap(session.id)
         } label: {
             HStack(spacing: 8) {
-                Circle()
-                    .fill(session.status.dotColor)
-                    .frame(width: 5, height: 5)
-                    .modifier(PulseModifier(disabled: !session.status.shouldPulse))
+                PhaseIconView(
+                    status: session.status,
+                    toolName: session.activeToolName,
+                    size: 11
+                )
 
                 VStack(alignment: .leading, spacing: 1) {
                     let secs = Int(now.timeIntervalSince(session.startTime))
@@ -218,18 +243,22 @@ struct SessionPillView: View {
                             .font(.system(size: 9, weight: .regular, design: .monospaced))
                             .foregroundColor(.white.opacity(0.35))
 
-                        if let statusLabel = session.status.label {
-                            Text("·")
-                                .font(.system(size: 9, weight: .bold))
-                                .foregroundColor(.white.opacity(0.2))
-                            Text(statusLabel)
-                                .font(.system(size: 9, weight: .medium))
-                                .foregroundColor(session.status.dotColor.opacity(0.8))
-                        }
+                        Text("·")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundColor(.white.opacity(0.15))
+
+                        Text(session.status.phaseLabel(toolName: session.activeToolName, toolDetail: session.activeToolDetail))
+                            .font(.system(size: 9, weight: .medium))
+                            .foregroundColor(session.status.dotColor.opacity(0.8))
+                            .lineLimit(1)
                     }
                 }
 
                 Spacer(minLength: 4)
+
+                if !session.subagents.isEmpty {
+                    SubagentBadge(count: session.subagents.filter { $0.status == .running }.count)
+                }
 
                 Image(systemName: "arrow.up.right")
                     .font(.system(size: 7, weight: .bold))
@@ -269,18 +298,14 @@ struct SessionPillView: View {
             onTap(session.id)
         } label: {
             HStack(spacing: 6) {
-                // Indent to align under project header text
                 Spacer().frame(width: 6)
 
-                Circle()
-                    .fill(session.status.dotColor)
-                    .frame(width: 5, height: 5)
-                    .modifier(PulseModifier(disabled: !session.status.shouldPulse))
-
-                // Short session ID for identification
-                Text(String(session.id.prefix(6)))
-                    .font(.system(size: 9, weight: .medium, design: .monospaced))
-                    .foregroundColor(.white.opacity(0.35))
+                PhaseIconView(
+                    status: session.status,
+                    toolName: session.activeToolName,
+                    size: 9,
+                    compact: true
+                )
 
                 let secs = Int(now.timeIntervalSince(session.startTime))
 
@@ -288,16 +313,20 @@ struct SessionPillView: View {
                     .font(.system(size: 10, weight: .medium, design: .monospaced))
                     .foregroundColor(.white.opacity(0.6))
 
-                if let statusLabel = session.status.label {
-                    Text("·")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundColor(.white.opacity(0.15))
-                    Text(statusLabel)
-                        .font(.system(size: 9, weight: .medium))
-                        .foregroundColor(session.status.dotColor.opacity(0.8))
-                }
+                Text("·")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundColor(.white.opacity(0.15))
+
+                Text(session.status.phaseLabel(toolName: session.activeToolName, toolDetail: session.activeToolDetail))
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundColor(session.status.dotColor.opacity(0.8))
+                    .lineLimit(1)
 
                 Spacer(minLength: 4)
+
+                if !session.subagents.isEmpty {
+                    SubagentBadge(count: session.subagents.filter { $0.status == .running }.count)
+                }
 
                 Image(systemName: "arrow.up.right")
                     .font(.system(size: 7, weight: .bold))
@@ -310,6 +339,50 @@ struct SessionPillView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(SessionRowButtonStyle())
+    }
+
+    // MARK: - Subagent row (nested under parent session with tree connector)
+
+    private func subagentRow(sub: NotificationManager.SubagentInfo, now: Date) -> some View {
+        HStack(spacing: 0) {
+            // Tree connector — L-shaped line
+            HStack(spacing: 0) {
+                Spacer().frame(width: 14)
+                VStack(spacing: 0) {
+                    Rectangle()
+                        .fill(.white.opacity(0.08))
+                        .frame(width: 1, height: 12)
+                    HStack(spacing: 0) {
+                        Rectangle()
+                            .fill(.white.opacity(0.08))
+                            .frame(width: 8, height: 1)
+                        Spacer(minLength: 0)
+                    }
+                }
+                .frame(width: 10, height: 13, alignment: .topLeading)
+            }
+
+            PhaseIconView(
+                status: sub.status,
+                size: 8,
+                compact: true
+            )
+
+            Text(sub.description)
+                .font(.system(size: 9, weight: .medium))
+                .foregroundColor(.white.opacity(0.45))
+                .lineLimit(1)
+                .padding(.leading, 4)
+
+            Spacer(minLength: 4)
+
+            let secs = Int(now.timeIntervalSince(sub.startTime))
+            Text(formatElapsed(secs))
+                .font(.system(size: 8, weight: .regular, design: .monospaced))
+                .foregroundColor(.white.opacity(0.25))
+                .padding(.trailing, 8)
+        }
+        .padding(.vertical, 3)
     }
 
     // MARK: - Format

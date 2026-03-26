@@ -32,6 +32,14 @@ class NotificationManager: ObservableObject {
     }
 
     // Active session tracking — supports multiple concurrent sessions
+    struct SubagentInfo: Identifiable {
+        let id: String             // subagent/task ID
+        let parentSessionId: String
+        var description: String    // short task description
+        var status: SessionStatus
+        let startTime: Date
+    }
+
     struct SessionInfo: Identifiable {
         let id: String
         let startTime: Date
@@ -40,6 +48,9 @@ class NotificationManager: ObservableObject {
         var lastMessage: String?
         var sourceBundleId: String?  // bundle ID of the terminal/IDE that owns this session
         var cwd: String?             // working directory for window matching
+        var activeToolName: String?  // currently running tool (for phase label)
+        var activeToolDetail: String? // short detail about the tool (file path, command)
+        var subagents: [SubagentInfo] = []
     }
     @Published var activeSessions: [SessionInfo] = []
 
@@ -147,6 +158,9 @@ class NotificationManager: ObservableObject {
         activeSessions.append(SessionInfo(id: sid, startTime: Date(), projectName: project, status: .running, sourceBundleId: sourceBundleId, cwd: displayName))
         refreshPill()
 
+        // Start watching JSONL file for interrupts
+        SessionFileWatcher.shared.startWatching(sessionId: sid, cwd: displayName)
+
         // Safety timeout — auto-end session after 1 hour to prevent zombie pills
         sessionTimeoutTimers[sid]?.invalidate()
         sessionTimeoutTimers[sid] = Timer.scheduledTimer(withTimeInterval: sessionTimeoutInterval, repeats: false) { [weak self] _ in
@@ -162,12 +176,14 @@ class NotificationManager: ObservableObject {
             endSessionWorkItems.removeValue(forKey: sid)
             sessionTimeoutTimers[sid]?.invalidate()
             sessionTimeoutTimers.removeValue(forKey: sid)
+            SessionFileWatcher.shared.stopWatching(sessionId: sid)
         } else {
             // No ID — end all sessions
             activeSessions.removeAll()
             endSessionWorkItems.removeAll()
             sessionTimeoutTimers.values.forEach { $0.invalidate() }
             sessionTimeoutTimers.removeAll()
+            SessionFileWatcher.shared.stopAll()
         }
 
         if activeSessions.isEmpty {
@@ -198,6 +214,14 @@ class NotificationManager: ObservableObject {
         activeSessions[idx].status = status
         if let msg = message {
             activeSessions[idx].lastMessage = msg
+        }
+        // Clear transient state when session completes or goes idle
+        if status == .completed || status == .needsInput {
+            activeSessions[idx].activeToolName = nil
+            activeSessions[idx].activeToolDetail = nil
+        }
+        if status == .completed {
+            activeSessions[idx].subagents.removeAll()
         }
         refreshPill()
     }
@@ -236,15 +260,8 @@ class NotificationManager: ObservableObject {
         let session = activeSessions.first(where: { $0.id == notification.sessionId })
         windowController.showNotification(notification, sessionSourceBundleId: session?.sourceBundleId, sessionCwd: session?.cwd)
 
-        // End session on completion (cancellable if a new session starts)
-        if notification.type == .complete, let sid = notification.sessionId {
-            endSessionWorkItems[sid]?.cancel()
-            let workItem = DispatchWorkItem { [weak self] in
-                self?.endSession(sessionId: sid)
-            }
-            endSessionWorkItems[sid] = workItem
-            DispatchQueue.main.asyncAfter(deadline: .now() + 5.5, execute: workItem)
-        }
+        // Session end is handled by the SessionEnd hook — no auto-end timer needed.
+        // The pill stays visible (showing "Done") until SessionEnd arrives.
     }
 
     func showTestNotification(type: NotificationType) {
@@ -270,7 +287,7 @@ class NotificationManager: ObservableObject {
 
         windowController.showNotification(notification)
 
-        // Auto-end test session after complete (cancellable)
+        // For test sessions, auto-end after 8s since there's no real SessionEnd hook
         if type == .complete {
             let sid = "test-session"
             endSessionWorkItems[sid]?.cancel()
@@ -278,8 +295,89 @@ class NotificationManager: ObservableObject {
                 self?.endSession(sessionId: sid)
             }
             endSessionWorkItems[sid] = workItem
-            DispatchQueue.main.asyncAfter(deadline: .now() + 5.5, execute: workItem)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 8, execute: workItem)
         }
+    }
+
+    // MARK: - New event handlers (from socket server)
+
+    /// PreToolUse: tool about to run — track active tool name for phase label
+    func handlePreToolUse(sessionId: String?, toolName: String, toolDetail: String?) {
+        guard let sid = sessionId,
+              let idx = activeSessions.firstIndex(where: { $0.id == sid }) else { return }
+        activeSessions[idx].activeToolName = toolName
+        activeSessions[idx].activeToolDetail = toolDetail
+        if activeSessions[idx].status != .needsPermission {
+            activeSessions[idx].status = .running
+        }
+        refreshPill()
+    }
+
+    /// PostToolUse: tool finished running — clear active tool, update status
+    func handlePostToolUse(sessionId: String?, toolName: String) {
+        guard let sid = sessionId,
+              let idx = activeSessions.firstIndex(where: { $0.id == sid }) else { return }
+        activeSessions[idx].activeToolName = nil
+        activeSessions[idx].activeToolDetail = nil
+        let current = activeSessions[idx].status
+        if current == .needsPermission || current == .compacting {
+            activeSessions[idx].status = .running
+        }
+        refreshPill()
+    }
+
+    /// SubagentStart: a subagent was spawned
+    func handleSubagentStart(sessionId: String?, subagentId: String?, description: String?) {
+        guard let sid = sessionId,
+              let idx = activeSessions.firstIndex(where: { $0.id == sid }) else { return }
+        let agentId = subagentId ?? UUID().uuidString
+        // Don't add duplicates
+        if activeSessions[idx].subagents.contains(where: { $0.id == agentId }) { return }
+        let sub = SubagentInfo(
+            id: agentId,
+            parentSessionId: sid,
+            description: description ?? "Agent task",
+            status: .running,
+            startTime: Date()
+        )
+        activeSessions[idx].subagents.append(sub)
+        refreshPill()
+    }
+
+    /// SubagentStop: a subagent finished
+    func handleSubagentStop(sessionId: String?, subagentId: String?) {
+        guard let sid = sessionId,
+              let idx = activeSessions.firstIndex(where: { $0.id == sid }) else { return }
+        if let subId = subagentId,
+           let subIdx = activeSessions[idx].subagents.firstIndex(where: { $0.id == subId }) {
+            activeSessions[idx].subagents[subIdx].status = .completed
+        }
+        // Remove completed subagents after a brief delay
+        let capturedSid = sid
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
+            guard let self, let idx = self.activeSessions.firstIndex(where: { $0.id == capturedSid }) else { return }
+            self.activeSessions[idx].subagents.removeAll { $0.status == .completed }
+            self.refreshPill()
+        }
+        refreshPill()
+    }
+
+    /// UserPromptSubmit: user sent a message — session is active, clear stale tool state
+    func handleUserPromptSubmit(sessionId: String?) {
+        guard let sid = sessionId else { return }
+
+        // Auto-start session if needed
+        if !activeSessions.contains(where: { $0.id == sid }) && showSessionPill {
+            startSession(sessionId: sid)
+        }
+
+        // New user turn — clear previous tool state
+        if let idx = activeSessions.firstIndex(where: { $0.id == sid }) {
+            activeSessions[idx].activeToolName = nil
+            activeSessions[idx].activeToolDetail = nil
+        }
+
+        updateSessionStatus(sessionId: sid, status: .running)
     }
 
     // MARK: - Auto-setup
