@@ -269,24 +269,24 @@ struct NotchNotificationView: View {
     // MARK: - Animation
 
     private func animateIn() {
-        withAnimation(.spring(response: 0.45, dampingFraction: 0.72)) {
+        withAnimation(.smooth) {
             expanded = true
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
+            withAnimation(.smooth) {
                 contentAppeared = true
             }
             glowVisible = true
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+            withAnimation(.smooth) {
                 textRevealed = true
             }
         }
         // Staggered button reveal (permission only)
         if isPermission {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                withAnimation(.smooth) {
                     buttonsRevealed = true
                 }
             }
@@ -354,8 +354,8 @@ private struct PermissionButton: View {
         }
         .buttonStyle(.plain)
         .scaleEffect(isPressed ? 0.95 : (isHovered ? 1.02 : 1.0))
-        .animation(.spring(response: 0.2, dampingFraction: 0.7), value: isHovered)
-        .animation(.spring(response: 0.15, dampingFraction: 0.6), value: isPressed)
+        .animation(.snappy, value: isHovered)
+        .animation(.snappy, value: isPressed)
         .onHover { h in isHovered = h }
         .simultaneousGesture(
             DragGesture(minimumDistance: 0)
