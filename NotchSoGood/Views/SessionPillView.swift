@@ -1,5 +1,16 @@
 import SwiftUI
 
+// MARK: - Spring Presets
+
+extension Animation {
+    /// Quick UI responses — hover states, press feedback, small toggles
+    static let snappy = Animation.spring(response: 0.2, dampingFraction: 0.7)
+    /// Standard transitions — expand/collapse, appear/disappear, layout changes
+    static let smooth = Animation.spring(response: 0.35, dampingFraction: 0.75)
+    /// Playful character motion — bounces, wiggles, celebration
+    static let bouncy = Animation.spring(response: 0.25, dampingFraction: 0.5)
+}
+
 /// A Dynamic Island pill that extends the notch left and right while Claude is active.
 /// On hover, it expands fluidly to show session details.
 struct SessionPillView: View {
@@ -133,11 +144,11 @@ struct SessionPillView: View {
                 onTap(sessions.first?.id)
             }
             .scaleEffect(x: appeared ? 1 : 0.85, y: 1, anchor: .center)
-            .animation(.spring(response: 0.35, dampingFraction: 0.72), value: hovered)
+            .animation(.smooth, value: hovered)
         }
         .frame(width: maxWidth, height: maxHeight, alignment: .top)
         .onAppear {
-            withAnimation(.spring(response: 0.45, dampingFraction: 0.75)) {
+            withAnimation(.smooth) {
                 appeared = true
             }
         }
@@ -176,7 +187,7 @@ struct SessionPillView: View {
                 }
                 .opacity(hovered ? 1 : 0)
                 .offset(y: hovered ? 0 : -4)
-                .animation(.spring(response: 0.3, dampingFraction: 0.75).delay(Double(index) * 0.035), value: hovered)
+                .animation(.smooth.delay(Double(index) * 0.035), value: hovered)
             }
         }
     }
@@ -251,6 +262,8 @@ struct SessionPillView: View {
                             .font(.system(size: 9, weight: .medium))
                             .foregroundColor(session.status.dotColor.opacity(0.8))
                             .lineLimit(1)
+                            .contentTransition(.interpolate)
+                            .animation(.snappy, value: session.status)
                     }
                 }
 
@@ -321,6 +334,8 @@ struct SessionPillView: View {
                     .font(.system(size: 9, weight: .medium))
                     .foregroundColor(session.status.dotColor.opacity(0.8))
                     .lineLimit(1)
+                    .contentTransition(.interpolate)
+                    .animation(.snappy, value: session.status)
 
                 Spacer(minLength: 4)
 
@@ -413,7 +428,7 @@ private struct SessionRowButtonStyle: ButtonStyle {
             )
             .scaleEffect(configuration.isPressed ? 0.97 : 1.0)
             .onHover { h in
-                withAnimation(.easeOut(duration: 0.15)) { isHovered = h }
+                withAnimation(.snappy) { isHovered = h }
             }
     }
 }
@@ -553,7 +568,7 @@ struct MiniChawdView: View {
         .onChange(of: excited) { _, isExcited in
             if isExcited {
                 cancelWalk()
-                cancelGimmickState()
+                cancelGimmickState(animated: true)
                 gimmickTimer?.invalidate()
                 gimmickTimer = nil
                 // Wake-up reaction if drowsy
@@ -607,7 +622,7 @@ struct MiniChawdView: View {
         guard !reduceMotion else { return }
         danceTick = false
         waveTick = false
-        withAnimation(.spring(response: 0.25, dampingFraction: 0.65)) {
+        withAnimation(.bouncy) {
             gimmick = .dance
         }
         excitedWiggleTimer = Timer.scheduledTimer(withTimeInterval: 0.4, repeats: true) { _ in
@@ -622,7 +637,7 @@ struct MiniChawdView: View {
     private func stopExcitedWiggle() {
         excitedWiggleTimer?.invalidate()
         excitedWiggleTimer = nil
-        withAnimation(.spring(response: 0.2, dampingFraction: 0.6)) {
+        withAnimation(.snappy) {
             gimmick = .none
             danceTick = false
             waveTick = false
@@ -979,11 +994,21 @@ struct MiniChawdView: View {
         }
     }
 
+    @State private var isFirstGimmick = true
+
     private func scheduleNextGimmick() {
         guard isAlive else { return }
         // Respect reduced motion — keep breathing but skip gimmicks
         guard !reduceMotion || forceGimmick != nil else { return }
-        let delay = forceGimmick != nil ? 3.0 : (isDrowsy ? Double.random(in: 8...14) : Double.random(in: 5...10))
+        let delay: Double
+        if forceGimmick != nil && isFirstGimmick {
+            delay = 0.3  // fire immediately on first appear for demo/preview
+            isFirstGimmick = false
+        } else if forceGimmick != nil {
+            delay = 3.0
+        } else {
+            delay = isDrowsy ? Double.random(in: 8...14) : Double.random(in: 5...10)
+        }
         gimmickTimer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { _ in
             guard isAlive else { return }
             performRandomGimmick()
@@ -1077,7 +1102,7 @@ struct MiniChawdView: View {
         default: duration = 0
         }
 
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
+        withAnimation(.bouncy) {
             gimmick = picked
         }
 
@@ -1591,22 +1616,40 @@ struct MiniChawdView: View {
         gimmick = .none
     }
 
-    private func cancelGimmickState() {
+    private func cancelGimmickState(animated: Bool = false) {
         sneezePhase = .idle
         yawnPhase = .idle
-        levitateOpacity = 1.0
-        levitateScale = 1.0
-        peekOffset = 0
-        strutOffset = 0
-        nodAngle = 0
-        shiverOffset = 0
-        levitateOffset = 0
-        squashStretch = 1.0
-        jumpOffset = 0
-        hiccupJolt = 0
-        spinAngle = 0
-        stretchScale = 1.0
-        stretchArmOffset = 0
+        if animated {
+            withAnimation(.smooth) {
+                levitateOpacity = 1.0
+                levitateScale = 1.0
+                peekOffset = 0
+                strutOffset = 0
+                nodAngle = 0
+                shiverOffset = 0
+                levitateOffset = 0
+                squashStretch = 1.0
+                jumpOffset = 0
+                hiccupJolt = 0
+                spinAngle = 0
+                stretchScale = 1.0
+                stretchArmOffset = 0
+            }
+        } else {
+            levitateOpacity = 1.0
+            levitateScale = 1.0
+            peekOffset = 0
+            strutOffset = 0
+            nodAngle = 0
+            shiverOffset = 0
+            levitateOffset = 0
+            squashStretch = 1.0
+            jumpOffset = 0
+            hiccupJolt = 0
+            spinAngle = 0
+            stretchScale = 1.0
+            stretchArmOffset = 0
+        }
     }
 
     private func doWalk() {

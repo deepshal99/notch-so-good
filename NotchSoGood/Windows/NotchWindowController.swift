@@ -70,7 +70,7 @@ class NotchWindowController {
 
         if pillPanel == nil {
             pillPanel = NotchPanel(contentRect: panelFrame)
-            pillPanel?.level = .statusBar + 1
+            pillPanel?.level = .popUpMenu
 
             let pillView = SessionPillView(
                 dataSource: pillDataSource,
@@ -163,7 +163,7 @@ class NotchWindowController {
 
         if panel == nil {
             panel = NotchPanel(contentRect: frame)
-            panel?.level = .statusBar + 2
+            panel?.level = .popUpMenu + 1
             panel?.onCancel = { [weak self] in self?.dismiss() }
         } else {
             panel?.setFrame(frame, display: true)
@@ -265,6 +265,8 @@ class NotchWindowController {
 
         guard let panel else {
             isDismissing = false
+            // Even without a panel, check if pill needs restoring
+            restorePillIfNeeded()
             return
         }
 
@@ -277,19 +279,41 @@ class NotchWindowController {
             self?.panel?.orderOut(nil)
             self?.panel?.alphaValue = 1.0
             self?.isDismissing = false
+            self?.restorePillIfNeeded()
+        })
+    }
 
-            // Restore pill gracefully
-            if let self, self.hasPillSession, let pillPanel = self.pillPanel {
+    /// Restore the session pill after a notification dismisses, but only if sessions are still active.
+    /// Uses NotificationManager as the source of truth instead of the local hasPillSession flag.
+    private func restorePillIfNeeded() {
+        Task { @MainActor in
+            let manager = NotificationManager.shared
+            guard manager.hasActiveSession, manager.showSessionPill else {
+                if hasPillSession {
+                    hideSessionPill()
+                }
+                return
+            }
+
+            // Sessions are active — restore the pill panel
+            if let pillPanel {
+                hasPillSession = true
                 pillPanel.alphaValue = 0
                 pillPanel.orderFrontRegardless()
-                self.pillHoverMonitor.start(panel: pillPanel)
+                pillHoverMonitor.start(panel: pillPanel)
                 NSAnimationContext.runAnimationGroup({ ctx in
                     ctx.duration = 0.3
                     ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
                     pillPanel.animator().alphaValue = 1.0
                 })
+            } else {
+                // Pill panel was never created — rebuild via the manager's refresh path
+                let sessions = manager.activeSessions
+                if let first = sessions.first {
+                    showSessionPill(sessions: sessions, primaryStartTime: first.startTime)
+                }
             }
-        })
+        }
     }
 
     /// Compute the expanded pill height, matching SessionPillView's layout exactly.
