@@ -5,6 +5,8 @@ struct MenuBarSettingsView: View {
     @ObservedObject var notificationManager: NotificationManager
     let updater: SPUUpdater
 
+    @State private var axTrusted = AXIsProcessTrusted()
+
     private let bg = Color(hex: "0E0E0E")
     private let cardBg = Color.white.opacity(0.04)
     private let dim = Color.white.opacity(0.3)
@@ -43,8 +45,8 @@ struct MenuBarSettingsView: View {
             .clipShape(RoundedRectangle(cornerRadius: 10))
             .padding(.horizontal, 10)
 
-            // === ACCESSIBILITY HINT ===
-            if !AXIsProcessTrusted() {
+            // === ACCESSIBILITY HINT (re-checks every time menu opens) ===
+            if !axTrusted {
                 AccessibilityHintButton {
                     if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
                         NSWorkspace.shared.open(url)
@@ -63,6 +65,10 @@ struct MenuBarSettingsView: View {
 
             footerRow(icon: "arrow.triangle.2.circlepath", label: "Update", trailing: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?") {
                 updater.checkForUpdates()
+            }
+
+            footerRow(icon: "terminal", label: "Reinstall Hooks", trailing: "Claude + Codex") {
+                notificationManager.installHooks()
             }
 
             footerRow(icon: "power", label: "Quit", trailing: "\u{2318}Q") {
@@ -89,6 +95,7 @@ struct MenuBarSettingsView: View {
         .frame(width: 240)
         .background(bg)
         .preferredColorScheme(.dark)
+        .onAppear { axTrusted = AXIsProcessTrusted() }
     }
 
     // MARK: - Inset Separator

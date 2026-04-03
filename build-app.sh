@@ -37,9 +37,13 @@ cp "$BUILD_DIR/$APP_NAME" "$MACOS/$APP_NAME"
 # Copy Info.plist
 cp "NotchSoGood/Info.plist" "$CONTENTS/Info.plist"
 
-# Copy hook installer script
+# Copy hook installer scripts
 cp "HookInstaller/install-hooks.sh" "$RESOURCES/install-hooks.sh"
 chmod +x "$RESOURCES/install-hooks.sh"
+if [ -f "HookInstaller/install-codex-hooks.sh" ]; then
+    cp "HookInstaller/install-codex-hooks.sh" "$RESOURCES/install-codex-hooks.sh"
+    chmod +x "$RESOURCES/install-codex-hooks.sh"
+fi
 
 # Copy app icon
 if [ -f "AppIcon.icns" ]; then
@@ -70,5 +74,6 @@ echo ""
 echo "To run:  open $APP_BUNDLE"
 echo "To install: cp -r $APP_BUNDLE /Applications/"
 echo ""
-echo "After running, install Claude Code hooks:"
-echo "  bash HookInstaller/install-hooks.sh"
+echo "After running, install hooks for your agents:"
+echo "  bash HookInstaller/install-hooks.sh        # Claude Code"
+echo "  bash HookInstaller/install-codex-hooks.sh  # Codex CLI"

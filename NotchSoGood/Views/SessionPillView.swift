@@ -11,7 +11,7 @@ extension Animation {
     static let bouncy = Animation.spring(response: 0.25, dampingFraction: 0.5)
 }
 
-/// A Dynamic Island pill that extends the notch left and right while Claude is active.
+/// A Dynamic Island pill that extends the notch left and right while an AI agent is active.
 /// On hover, it expands fluidly to show session details.
 struct SessionPillView: View {
     @ObservedObject var dataSource: PillDataSource
@@ -107,7 +107,6 @@ struct SessionPillView: View {
                     HStack(spacing: 4) {
                         let primary = sessions.first
                         let primaryStatus = primary?.status ?? .running
-
                         PhaseIconView(
                             status: primaryStatus,
                             toolName: primary?.activeToolName,
@@ -244,10 +243,14 @@ struct SessionPillView: View {
                 VStack(alignment: .leading, spacing: 1) {
                     let secs = Int(now.timeIntervalSince(session.startTime))
 
-                    Text(session.projectName)
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(.white.opacity(0.8))
-                        .lineLimit(1)
+                    HStack(spacing: 4) {
+                        Text(session.projectName)
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundColor(.white.opacity(0.8))
+                            .lineLimit(1)
+
+                        AgentBadge(source: session.agentSource)
+                    }
 
                     HStack(spacing: 4) {
                         Text(formatElapsed(secs))
@@ -336,6 +339,8 @@ struct SessionPillView: View {
                     .lineLimit(1)
                     .contentTransition(.interpolate)
                     .animation(.snappy, value: session.status)
+
+                AgentBadge(source: session.agentSource)
 
                 Spacer(minLength: 4)
 
@@ -1756,6 +1761,23 @@ struct SessionGroup: Identifiable {
             guard let sessions = map[name] else { return nil }
             return SessionGroup(id: name, projectName: name, sessions: sessions)
         }
+    }
+}
+
+// MARK: - Agent source badge (tiny pill showing Claude/Codex)
+
+struct AgentBadge: View {
+    let source: AgentSource
+
+    var body: some View {
+        Text(source.displayName)
+            .font(.system(size: 7, weight: .semibold, design: .rounded))
+            .foregroundColor(source.accentColor.opacity(0.9))
+            .padding(.horizontal, 4)
+            .padding(.vertical, 1)
+            .background(
+                Capsule().fill(source.accentColor.opacity(0.12))
+            )
     }
 }
 

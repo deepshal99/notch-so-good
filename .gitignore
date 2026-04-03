@@ -9,3 +9,52 @@ DerivedData/
 firebase-debug.log
 *.backup.*
 Notch So Good.app/
+
+# Release artifacts
+NotchSoGood-*.zip
+
+# Secrets & signing
+.env
+.env.*
+*.p12
+*.mobileprovision
+*.cer
+
+# Xcode
+*.xcworkspace/
+*.xcuserdata
+
+# Build
+build/
+
+# AI tool configs (not project files)
+.adal/
+.agents/
+.augment/
+.codebuddy/
+.commandcode/
+.continue/
+.cortex/
+.crush/
+.factory/
+.goose/
+.gstack/
+.iflow/
+.junie/
+.kilocode/
+.kiro/
+.kode/
+.mcpjam/
+.mux/
+.neovate/
+.openhands/
+.pi/
+.pochi/
+.qoder/
+.qwen/
+.roo/
+.trae/
+.vibe/
+.windsurf/
+.zencoder/
+skills/
