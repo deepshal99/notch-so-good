@@ -51,6 +51,7 @@ class NotificationManager: ObservableObject {
         var activeToolName: String?  // currently running tool (for phase label)
         var activeToolDetail: String? // short detail about the tool (file path, command)
         var subagents: [SubagentInfo] = []
+        var agentSource: AgentSource = .claude
     }
     @Published var activeSessions: [SessionInfo] = []
 
@@ -130,7 +131,7 @@ class NotificationManager: ObservableObject {
         return project
     }
 
-    func startSession(sessionId: String?, displayName: String? = nil, sourceBundleId: String? = nil) {
+    func startSession(sessionId: String?, displayName: String? = nil, sourceBundleId: String? = nil, sourceApp: String? = nil, model: String? = nil) {
         guard showSessionPill else { return }
 
         let sid = sessionId ?? UUID().uuidString
@@ -155,7 +156,8 @@ class NotificationManager: ObservableObject {
         }
 
         let project = sanitizedProjectName(displayName, sessionId: sid)
-        activeSessions.append(SessionInfo(id: sid, startTime: Date(), projectName: project, status: .running, sourceBundleId: sourceBundleId, cwd: displayName))
+        let agent = AgentSource.detect(sourceApp: sourceApp, model: model)
+        activeSessions.append(SessionInfo(id: sid, startTime: Date(), projectName: project, status: .running, sourceBundleId: sourceBundleId, cwd: displayName, agentSource: agent))
         refreshPill()
 
         // Start watching JSONL file for interrupts
@@ -395,7 +397,15 @@ class NotificationManager: ObservableObject {
 
     func installHooks() {
         let bundle = Bundle.main
+        // Install Claude Code hooks
         if let script = bundle.path(forResource: "install-hooks", ofType: "sh") {
+            let task = Process()
+            task.executableURL = URL(fileURLWithPath: "/bin/bash")
+            task.arguments = [script]
+            try? task.run()
+        }
+        // Install Codex CLI hooks
+        if let script = bundle.path(forResource: "install-codex-hooks", ofType: "sh") {
             let task = Process()
             task.executableURL = URL(fileURLWithPath: "/bin/bash")
             task.arguments = [script]

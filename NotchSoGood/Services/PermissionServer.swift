@@ -292,8 +292,10 @@ class PermissionServer {
 
         case "SessionStart":
             close(clientSocket)
+            let model = json["model"] as? String
+            let sourceApp = json["source_app"] as? String
             DispatchQueue.main.async {
-                NotificationManager.shared.startSession(sessionId: sessionId, displayName: cwd, sourceBundleId: sourceBundleId)
+                NotificationManager.shared.startSession(sessionId: sessionId, displayName: cwd, sourceBundleId: sourceBundleId, sourceApp: sourceApp, model: model)
             }
 
         case "SessionEnd":
