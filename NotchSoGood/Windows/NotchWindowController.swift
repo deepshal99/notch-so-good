@@ -131,6 +131,38 @@ class NotchWindowController {
         pillPanel?.isVisible ?? false
     }
 
+    /// Rebuild/reposition panels after display configuration changes
+    /// (monitor plugged/unplugged, resolution change — notch geometry may differ).
+    @MainActor func handleScreenChange() {
+        let hasNotch = NotchGeometry.hasNotch
+        let geo = NotchGeometry.calculate()
+
+        // Reposition an on-screen notification (permission dialogs persist indefinitely)
+        if isNotificationActive, let panel {
+            let notchH = geo?.notchHeight ?? 32
+            let notchW = geo?.notchWidth ?? 185
+            let contentHeight: CGFloat = activePermissionRequestId != nil ? 130 : 76
+            let panelWidth: CGFloat = hasNotch ? notchW + 200 : 380
+            let panelHeight: CGFloat = hasNotch ? (notchH + contentHeight) : contentHeight
+            let frame = calculateFrame(panelWidth: panelWidth, panelHeight: panelHeight, hasNotch: hasNotch, geo: geo)
+            panel.setFrame(frame, display: true)
+            notifHoverMonitor.contentScreenRect = NSRect(
+                x: frame.origin.x, y: frame.origin.y,
+                width: frame.width, height: contentHeight
+            )
+        }
+
+        // Rebuild the pill — its notch dimensions are baked into the SwiftUI view
+        pillHoverMonitor.stop()
+        pillPanel?.orderOut(nil)
+        pillPanel = nil
+
+        let manager = NotificationManager.shared
+        if manager.hasActiveSession, manager.showSessionPill, let first = manager.activeSessions.first {
+            showSessionPill(sessions: manager.activeSessions, primaryStartTime: first.startTime)
+        }
+    }
+
     // MARK: - Notification (transient expand + auto-dismiss)
 
     func showNotification(_ notification: NotchNotification, sessionSourceBundleId: String? = nil, sessionCwd: String? = nil) {

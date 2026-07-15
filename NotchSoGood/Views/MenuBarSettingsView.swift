@@ -1,11 +1,31 @@
 import SwiftUI
 import Sparkle
+import ServiceManagement
 
 struct MenuBarSettingsView: View {
     @ObservedObject var notificationManager: NotificationManager
     let updater: SPUUpdater
 
     @State private var axTrusted = AXIsProcessTrusted()
+    @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
+
+    private var launchAtLoginBinding: Binding<Bool> {
+        Binding(
+            get: { launchAtLogin },
+            set: { enable in
+                do {
+                    if enable {
+                        try SMAppService.mainApp.register()
+                    } else {
+                        try SMAppService.mainApp.unregister()
+                    }
+                    launchAtLogin = enable
+                } catch {
+                    launchAtLogin = SMAppService.mainApp.status == .enabled
+                }
+            }
+        )
+    }
 
     private let bg = Color(hex: "0E0E0E")
     private let cardBg = Color.white.opacity(0.04)
@@ -40,10 +60,42 @@ struct MenuBarSettingsView: View {
                 toggleRow(icon: "speaker.wave.2", label: "Sounds", isOn: $notificationManager.soundEnabled)
                 insetSep
                 toggleRow(icon: "capsule", label: "Session Pill", isOn: $notificationManager.showSessionPill)
+                insetSep
+                toggleRow(icon: "bell.badge", label: "Nudge When Waiting", isOn: $notificationManager.nudgeEnabled)
+                insetSep
+                toggleRow(icon: "play.circle", label: "Launch at Login", isOn: launchAtLoginBinding)
             }
             .background(cardBg)
             .clipShape(RoundedRectangle(cornerRadius: 10))
             .padding(.horizontal, 10)
+
+            // === RECENT NOTIFICATIONS ===
+            if !notificationManager.history.isEmpty {
+                VStack(spacing: 0) {
+                    HStack {
+                        Text("RECENT")
+                            .font(.system(size: 8.5, weight: .bold, design: .rounded))
+                            .foregroundColor(dim)
+                            .tracking(0.8)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.top, 10)
+                    .padding(.bottom, 4)
+
+                    VStack(spacing: 0) {
+                        ForEach(notificationManager.history.prefix(5)) { item in
+                            historyRow(item)
+                            if item.id != notificationManager.history.prefix(5).last?.id {
+                                insetSep
+                            }
+                        }
+                    }
+                    .background(cardBg)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .padding(.horizontal, 10)
+                }
+            }
 
             // === ACCESSIBILITY HINT (re-checks every time menu opens) ===
             if !axTrusted {
@@ -96,6 +148,44 @@ struct MenuBarSettingsView: View {
         .background(bg)
         .preferredColorScheme(.dark)
         .onAppear { axTrusted = AXIsProcessTrusted() }
+    }
+
+    // MARK: - History Row
+
+    private func historyRow(_ item: NotchNotification) -> some View {
+        Button {
+            TerminalLauncher.focusClaudeCode(sessionId: item.sessionId, sourceBundleId: item.sourceBundleId)
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: item.type.sfSymbol)
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundColor(item.type.accentColor.opacity(0.8))
+                    .frame(width: 16, alignment: .center)
+
+                Text(item.message)
+                    .font(.system(size: 11, weight: .regular, design: .rounded))
+                    .foregroundColor(body_)
+                    .lineLimit(1)
+
+                Spacer(minLength: 4)
+
+                Text(relativeTime(item.timestamp))
+                    .font(.system(size: 9, weight: .medium, design: .monospaced))
+                    .foregroundColor(dim)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(MenuRowButtonStyle())
+    }
+
+    private func relativeTime(_ date: Date) -> String {
+        let secs = Int(-date.timeIntervalSinceNow)
+        if secs < 60 { return "now" }
+        if secs < 3600 { return "\(secs / 60)m" }
+        if secs < 86400 { return "\(secs / 3600)h" }
+        return "\(secs / 86400)d"
     }
 
     // MARK: - Inset Separator

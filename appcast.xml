@@ -6,17 +6,17 @@
         <description>Automatic updates for Notch So Good</description>
         <language>en</language>
         <item>
-            <title>Version 3.1.0</title>
-            <pubDate>Sat, 04 Apr 2026 01:55:16 +0530</pubDate>
-            <sparkle:version>12</sparkle:version>
-            <sparkle:shortVersionString>3.1.0</sparkle:shortVersionString>
-            <description><![CDATA[<h2>What's New in 3.1.0</h2><p>Codex CLI support — Chawd now watches OpenAI Codex sessions too. Green badge for Codex, orange for Claude. Reinstall Hooks button in menu bar.</p>]]></description>
+            <title>Version 4.0.0</title>
+            <pubDate>Wed, 15 Jul 2026 23:18:49 +0530</pubDate>
+            <sparkle:version>13</sparkle:version>
+            <sparkle:shortVersionString>4.0.0</sparkle:shortVersionString>
+            <description><![CDATA[<h2>What's New in 4.0.0</h2><p>Real completion summaries from your session transcript, nudge when Claude waits on you, menu bar attention dot + notification history, Launch at Login, Gemini badge, Homebrew install, and a big robustness pass (display changes, long sessions, event-driven hover, faster socket handling).</p>]]></description>
             <enclosure
-                url="https://github.com/deepshal99/notch-so-good/releases/download/v3.1.0/NotchSoGood-3.1.0.zip"
-                sparkle:version="12"
-                sparkle:shortVersionString="3.1.0"
-                sparkle:edSignature="BxbJL2m/bAVc20W7wlV9vb2aFRKLx6PCyGv85SsF8hiASN0NVfqQddbePJztqFRCCx7t3Et8lnZHNJPbKzW3DA=="
-                length="1890289"
+                url="https://github.com/deepshal99/notch-so-good/releases/download/v4.0.0/NotchSoGood-4.0.0.zip"
+                sparkle:version="13"
+                sparkle:shortVersionString="4.0.0"
+                sparkle:edSignature="dA18KzXlvNm+ulMt8Em+P3+oU8oUWwhTcGxVh6YeFt/2PX+TjXfGi9tValEII56N/lYJBchNBy4gBZNA3i4PDA=="
+                length="1915626"
                 type="application/octet-stream"
             />
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>

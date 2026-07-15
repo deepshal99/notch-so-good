@@ -43,6 +43,8 @@ class NotchPanel: NSPanel {
         hidesOnDeactivate = false
         animationBehavior = .none
         ignoresMouseEvents = true
+        // Needed so local mouseMoved monitors fire while the panel is interactive
+        acceptsMouseMovedEvents = true
     }
 
     override var canBecomeKey: Bool { false }
@@ -57,12 +59,14 @@ class NotchPanel: NSPanel {
     }
 }
 
-/// Polls mouse position at 30fps. Toggles `ignoresMouseEvents` so the panel
+/// Event-driven hover tracking — fires only when the mouse actually moves
+/// (no fixed-rate polling). Toggles `ignoresMouseEvents` so the panel
 /// is click-through everywhere except the pill area. Drives hover state for SwiftUI.
 class PillHoverMonitor: ObservableObject {
     @Published var isHovered = false
 
-    private var timer: Timer?
+    private var globalMonitor: Any?
+    private var localMonitor: Any?
     private weak var panel: NotchPanel?
 
     /// Collapsed pill rect in screen coordinates — used to detect hover-in.
@@ -75,17 +79,23 @@ class PillHoverMonitor: ObservableObject {
         self.panel = panel
         panel.ignoresMouseEvents = true
 
-        // Use Timer + RunLoop.main .common mode directly (not scheduledTimer, which would double-add)
-        let t = Timer(timeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
+        // Global monitor: mouse moves over other apps (panel is click-through).
+        // Local monitor: mouse moves over our own interactive panel.
+        globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged]) { [weak self] _ in
             self?.update()
         }
-        RunLoop.main.add(t, forMode: .common)
-        timer = t
+        localMonitor = NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged]) { [weak self] event in
+            self?.update()
+            return event
+        }
+        update()
     }
 
     func stop() {
-        timer?.invalidate()
-        timer = nil
+        if let m = globalMonitor { NSEvent.removeMonitor(m) }
+        if let m = localMonitor { NSEvent.removeMonitor(m) }
+        globalMonitor = nil
+        localMonitor = nil
         panel?.ignoresMouseEvents = true
     }
 
@@ -111,10 +121,11 @@ class PillHoverMonitor: ObservableObject {
     deinit { stop() }
 }
 
-/// Lightweight hover monitor for the notification panel.
+/// Lightweight event-driven hover monitor for the notification panel.
 /// Makes the panel click-through except when the mouse is over the visible content.
 class NotificationHoverMonitor {
-    private var timer: Timer?
+    private var globalMonitor: Any?
+    private var localMonitor: Any?
     private weak var panel: NotchPanel?
 
     /// The visible notification rect in screen coordinates.
@@ -125,16 +136,21 @@ class NotificationHoverMonitor {
         self.panel = panel
         panel.ignoresMouseEvents = true
 
-        let t = Timer(timeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
+        globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged]) { [weak self] _ in
             self?.update()
         }
-        RunLoop.main.add(t, forMode: .common)
-        timer = t
+        localMonitor = NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged]) { [weak self] event in
+            self?.update()
+            return event
+        }
+        update()
     }
 
     func stop() {
-        timer?.invalidate()
-        timer = nil
+        if let m = globalMonitor { NSEvent.removeMonitor(m) }
+        if let m = localMonitor { NSEvent.removeMonitor(m) }
+        globalMonitor = nil
+        localMonitor = nil
         panel?.ignoresMouseEvents = true
     }
 

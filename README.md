@@ -20,12 +20,17 @@ Meet **Chawd**. He's a mass of pixels. He lives in your MacBook's notch. And he 
 ## Install
 
 ```bash
-npx notch-so-good
+brew install --cask deepshal99/tap/notch-so-good
 ```
 
 That's it. 10 seconds. No Xcode, no dependencies, no sign-up.
 
-Also works with curl:
+Also works with:
+```bash
+npx notch-so-good
+```
+
+Or curl:
 ```bash
 curl -fsSL https://raw.githubusercontent.com/deepshal99/notch-so-good/main/get.sh | bash
 ```
@@ -64,6 +69,19 @@ curl -fsSL https://raw.githubusercontent.com/deepshal99/notch-so-good/main/get.s
 **He multitasks.** Running 5 Claude sessions? Hover the pill to see all of them, grouped by project, each with its own timer and status dot.
 
 **He sets himself up.** Hooks install automatically on first launch. No manual setup, no config files to edit.
+
+---
+
+## What's New in 4.0.0
+
+- **Real completion summaries** — Stop notifications now show Claude's actual last message pulled from the session transcript.
+- **Nudge mode** — If a session waits on you for 2+ minutes, Chawd pings you again (toggle in menu bar).
+- **Menu bar attention dot** — Amber dot appears on the crab when any session needs you.
+- **Recent notifications history** — Click the menu bar popover to see and jump back to recent notifications.
+- **Launch at Login toggle** — Control auto-start from the menu bar.
+- **Gemini CLI support** — Gemini sessions get their own badge alongside Claude.
+- **Robustness improvements** — Survives monitor/resolution changes, long sessions no longer vanish at 1 hour, event-driven hover tracking (no more constant polling), faster hook socket handling.
+- **Fixed** — iTerm2/Terminal tab deep-linking now prompts for Automation permission properly.
 
 ---
 
