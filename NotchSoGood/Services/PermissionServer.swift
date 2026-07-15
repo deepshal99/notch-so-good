@@ -20,6 +20,8 @@ class PermissionServer {
     private var serverSocket: Int32 = -1
     private var acceptSource: DispatchSourceRead?
     private let queue = DispatchQueue(label: "com.notchsogood.socket", qos: .userInitiated)
+    /// Clients are read on a concurrent queue so one slow sender can't stall the accept loop.
+    private let clientQueue = DispatchQueue(label: "com.notchsogood.socket.clients", qos: .userInitiated, attributes: .concurrent)
 
     struct PendingRequest {
         let id: String
@@ -227,7 +229,9 @@ class PermissionServer {
         var nosigpipe: Int32 = 1
         setsockopt(clientSocket, SOL_SOCKET, SO_NOSIGPIPE, &nosigpipe, socklen_t(MemoryLayout<Int32>.size))
 
-        handleClient(clientSocket)
+        clientQueue.async { [weak self] in
+            self?.handleClient(clientSocket)
+        }
     }
 
     private func handleClient(_ clientSocket: Int32) {

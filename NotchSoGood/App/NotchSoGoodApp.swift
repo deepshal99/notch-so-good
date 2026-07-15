@@ -11,9 +11,26 @@ struct NotchSoGoodApp: App {
                 updater: appDelegate.updaterController.updater
             )
         } label: {
-            Image(nsImage: ChawdMenuBarIcon.shared)
+            MenuBarIconView()
         }
         .menuBarExtraStyle(.window)
+    }
+}
+
+/// Menu bar label — pixel Chawd, with an amber dot when a session is waiting on the user.
+struct MenuBarIconView: View {
+    @ObservedObject private var manager = NotificationManager.shared
+
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            Image(nsImage: ChawdMenuBarIcon.shared)
+            if manager.needsAttention {
+                Circle()
+                    .fill(Color(hex: "FBBF24"))
+                    .frame(width: 5, height: 5)
+                    .offset(x: 1, y: -1)
+            }
+        }
     }
 }
 

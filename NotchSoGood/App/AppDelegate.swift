@@ -25,6 +25,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Start permission server for approve/deny from the notch
         PermissionServer.shared.start()
 
+        // Reposition notch panels when displays change (monitor swap, resolution change)
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.didChangeScreenParametersNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            Task { @MainActor in
+                NotificationManager.shared.windowController.handleScreenChange()
+            }
+        }
+
         // Observe app deactivation to track the last active app before us
         frontmostObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didActivateApplicationNotification,

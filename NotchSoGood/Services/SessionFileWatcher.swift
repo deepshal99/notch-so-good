@@ -58,24 +58,30 @@ class SessionFileWatcher {
         }
         lock.unlock()
 
-        // Find the JSONL file — try direct path construction first, then glob
+        // Find the JSONL file — try direct path construction first, then glob.
+        // The file may not exist yet; retry with backoff (2s, 4s, 8s, 16s, 32s).
         guard let filePath = findJsonlFile(sessionId: sessionId, cwd: cwd) else {
-            // File might not exist yet — retry after a delay
-            queue.asyncAfter(deadline: .now() + 2) { [weak self] in
-                guard let self else { return }
-                self.lock.lock()
-                let alreadyWatching = self.watchers[sessionId] != nil
-                self.lock.unlock()
-                if !alreadyWatching {
-                    if let path = self.findJsonlFile(sessionId: sessionId, cwd: cwd) {
-                        self.beginWatching(sessionId: sessionId, filePath: path)
-                    }
-                }
-            }
+            retryWatch(sessionId: sessionId, cwd: cwd, attempt: 1)
             return
         }
 
         beginWatching(sessionId: sessionId, filePath: filePath)
+    }
+
+    private func retryWatch(sessionId: String, cwd: String?, attempt: Int) {
+        guard attempt <= 5 else { return }
+        queue.asyncAfter(deadline: .now() + Double(1 << attempt)) { [weak self] in
+            guard let self else { return }
+            self.lock.lock()
+            let alreadyWatching = self.watchers[sessionId] != nil
+            self.lock.unlock()
+            guard !alreadyWatching else { return }
+            if let path = self.findJsonlFile(sessionId: sessionId, cwd: cwd) {
+                self.beginWatching(sessionId: sessionId, filePath: path)
+            } else {
+                self.retryWatch(sessionId: sessionId, cwd: cwd, attempt: attempt + 1)
+            }
+        }
     }
 
     private func beginWatching(sessionId: String, filePath: String) {
@@ -139,11 +145,17 @@ class SessionFileWatcher {
         guard let fileHandle = FileHandle(forReadingAtPath: state.filePath) else { return }
         defer { fileHandle.closeFile() }
 
-        fileHandle.seek(toFileOffset: state.fileOffset)
+        // Handle truncation/rewrite — if the file shrank, start over from the top
+        let endOffset = fileHandle.seekToEndOfFile()
+        var readFrom = state.fileOffset
+        if endOffset < readFrom {
+            readFrom = 0
+        }
+        fileHandle.seek(toFileOffset: readFrom)
         let newData = fileHandle.readDataToEndOfFile()
         guard !newData.isEmpty else { return }
 
-        let newOffset = state.fileOffset + UInt64(newData.count)
+        let newOffset = readFrom + UInt64(newData.count)
 
         // Update offset
         lock.lock()

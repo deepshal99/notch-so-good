@@ -30,6 +30,18 @@ class NotificationManager: ObservableObject {
             }
         }
     }
+    @Published var nudgeEnabled: Bool {
+        didSet { UserDefaults.standard.set(nudgeEnabled, forKey: "nudgeEnabled") }
+    }
+
+    /// Recent notifications, newest first (for menu bar history).
+    @Published var history: [NotchNotification] = []
+    private static let historyLimit = 20
+
+    /// True when any session is waiting on the user (drives menu bar attention state).
+    var needsAttention: Bool {
+        activeSessions.contains { $0.status == .needsInput || $0.status == .needsPermission }
+    }
 
     // Active session tracking — supports multiple concurrent sessions
     struct SubagentInfo: Identifiable {
@@ -57,7 +69,9 @@ class NotificationManager: ObservableObject {
 
     private var endSessionWorkItems: [String: DispatchWorkItem] = [:]
     private var sessionTimeoutTimers: [String: Timer] = [:]
-    private let sessionTimeoutInterval: TimeInterval = 3600 // 1 hour max session
+    private let sessionTimeoutInterval: TimeInterval = 3600 // 1 hour without any activity
+    private var nudgeTimers: [String: Timer] = [:]
+    private let nudgeInterval: TimeInterval = 120
     let windowController = NotchWindowController()
 
     init() {
@@ -78,12 +92,16 @@ class NotificationManager: ObservableObject {
         if defaults.object(forKey: "showSessionPill") == nil {
             defaults.set(true, forKey: "showSessionPill")
         }
+        if defaults.object(forKey: "nudgeEnabled") == nil {
+            defaults.set(true, forKey: "nudgeEnabled")
+        }
 
         soundEnabled = defaults.bool(forKey: "soundEnabled")
         showOnComplete = defaults.bool(forKey: "showOnComplete")
         showOnQuestion = defaults.bool(forKey: "showOnQuestion")
         showOnPermission = defaults.bool(forKey: "showOnPermission")
         showSessionPill = defaults.bool(forKey: "showSessionPill")
+        nudgeEnabled = defaults.bool(forKey: "nudgeEnabled")
 
         SoundManager.shared.isEnabled = soundEnabled
     }
@@ -163,7 +181,12 @@ class NotificationManager: ObservableObject {
         // Start watching JSONL file for interrupts
         SessionFileWatcher.shared.startWatching(sessionId: sid, cwd: displayName)
 
-        // Safety timeout — auto-end session after 1 hour to prevent zombie pills
+        // Safety timeout — auto-end session after 1 hour of silence to prevent zombie pills
+        resetSessionTimeout(sessionId: sid)
+    }
+
+    /// (Re)arm the zombie-pill timeout. Called on every event so long active sessions survive.
+    private func resetSessionTimeout(sessionId sid: String) {
         sessionTimeoutTimers[sid]?.invalidate()
         sessionTimeoutTimers[sid] = Timer.scheduledTimer(withTimeInterval: sessionTimeoutInterval, repeats: false) { [weak self] _ in
             Task { @MainActor in
@@ -178,6 +201,8 @@ class NotificationManager: ObservableObject {
             endSessionWorkItems.removeValue(forKey: sid)
             sessionTimeoutTimers[sid]?.invalidate()
             sessionTimeoutTimers.removeValue(forKey: sid)
+            nudgeTimers[sid]?.invalidate()
+            nudgeTimers.removeValue(forKey: sid)
             SessionFileWatcher.shared.stopWatching(sessionId: sid)
         } else {
             // No ID — end all sessions
@@ -185,6 +210,8 @@ class NotificationManager: ObservableObject {
             endSessionWorkItems.removeAll()
             sessionTimeoutTimers.values.forEach { $0.invalidate() }
             sessionTimeoutTimers.removeAll()
+            nudgeTimers.values.forEach { $0.invalidate() }
+            nudgeTimers.removeAll()
             SessionFileWatcher.shared.stopAll()
         }
 
@@ -225,10 +252,37 @@ class NotificationManager: ObservableObject {
         if status == .completed {
             activeSessions[idx].subagents.removeAll()
         }
+        resetSessionTimeout(sessionId: sid)
+        scheduleNudgeIfNeeded(sessionId: sid, status: status)
         refreshPill()
     }
 
+    // MARK: - Nudge (gentle re-alert when a session waits too long)
+
+    private func scheduleNudgeIfNeeded(sessionId sid: String, status: SessionStatus) {
+        nudgeTimers[sid]?.invalidate()
+        nudgeTimers.removeValue(forKey: sid)
+        guard nudgeEnabled, status == .needsInput || status == .needsPermission else { return }
+
+        nudgeTimers[sid] = Timer.scheduledTimer(withTimeInterval: nudgeInterval, repeats: false) { [weak self] _ in
+            Task { @MainActor in
+                guard let self,
+                      let session = self.activeSessions.first(where: { $0.id == sid }),
+                      session.status == .needsInput || session.status == .needsPermission else { return }
+                let notification = NotchNotification(
+                    type: .general,
+                    message: "Still waiting on you — \(session.projectName)",
+                    title: "Psst",
+                    sessionId: sid
+                )
+                self.windowController.showNotification(notification, sessionSourceBundleId: session.sourceBundleId, sessionCwd: session.cwd)
+            }
+        }
+    }
+
     func handleNotification(_ notification: NotchNotification) {
+        recordHistory(notification)
+
         // Auto-start session pill if not already showing
         if !hasActiveSession && showSessionPill {
             startSession(sessionId: notification.sessionId)
@@ -303,6 +357,14 @@ class NotificationManager: ObservableObject {
 
     // MARK: - New event handlers (from socket server)
 
+    /// Append to menu bar history, newest first.
+    private func recordHistory(_ notification: NotchNotification) {
+        history.insert(notification, at: 0)
+        if history.count > Self.historyLimit {
+            history.removeLast(history.count - Self.historyLimit)
+        }
+    }
+
     /// PreToolUse: tool about to run — track active tool name for phase label
     func handlePreToolUse(sessionId: String?, toolName: String, toolDetail: String?) {
         guard let sid = sessionId,
@@ -312,6 +374,7 @@ class NotificationManager: ObservableObject {
         if activeSessions[idx].status != .needsPermission {
             activeSessions[idx].status = .running
         }
+        resetSessionTimeout(sessionId: sid)
         refreshPill()
     }
 
@@ -325,6 +388,7 @@ class NotificationManager: ObservableObject {
         if current == .needsPermission || current == .compacting {
             activeSessions[idx].status = .running
         }
+        resetSessionTimeout(sessionId: sid)
         refreshPill()
     }
 
@@ -437,6 +501,7 @@ class NotificationManager: ObservableObject {
             permissionRequestId: requestId,
             toolName: toolName
         )
+        recordHistory(notification)
 
         let session = activeSessions.first(where: { $0.id == sessionId })
         windowController.showNotification(notification, sessionSourceBundleId: session?.sourceBundleId, sessionCwd: session?.cwd)
