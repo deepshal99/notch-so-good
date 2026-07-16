@@ -76,6 +76,13 @@ struct NotchNotificationView: View {
                                 .padding(.top, 10)
                                 .opacity(buttonsRevealed ? 1 : 0)
                                 .offset(y: buttonsRevealed ? 0 : 6)
+
+                            Text("⌃⌥A allow   ·   ⌃⌥D deny")
+                                .font(.system(size: 8.5, weight: .medium, design: .rounded))
+                                .foregroundColor(.white.opacity(0.28))
+                                .padding(.top, 6)
+                                .opacity(buttonsRevealed ? 1 : 0)
+                                .allowsHitTesting(false)
                         }
                     }
                     .padding(.top, hasNotch ? notchHeight + 10 : 12)
@@ -100,14 +107,8 @@ struct NotchNotificationView: View {
 
     // MARK: - Glow
 
-    private var glowShape: UnevenRoundedRectangle {
-        UnevenRoundedRectangle(
-            topLeadingRadius: 0,
-            bottomLeadingRadius: bottomRadius + 4,
-            bottomTrailingRadius: bottomRadius + 4,
-            topTrailingRadius: 0,
-            style: .continuous
-        )
+    private var glowShape: NotchShape {
+        NotchShape(topRadius: 10, bottomRadius: bottomRadius + 4)
     }
 
     private func glowBorder(width: CGFloat, height: CGFloat) -> some View {
@@ -155,14 +156,8 @@ struct NotchNotificationView: View {
         }
     }
 
-    private var islandShape: UnevenRoundedRectangle {
-        UnevenRoundedRectangle(
-            topLeadingRadius: 0,
-            bottomLeadingRadius: bottomRadius,
-            bottomTrailingRadius: bottomRadius,
-            topTrailingRadius: 0,
-            style: .continuous
-        )
+    private var islandShape: NotchShape {
+        NotchShape(topRadius: 9, bottomRadius: bottomRadius)
     }
 
     // MARK: - Info content

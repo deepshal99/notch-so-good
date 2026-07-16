@@ -33,6 +33,9 @@ class NotificationManager: ObservableObject {
     @Published var nudgeEnabled: Bool {
         didSet { UserDefaults.standard.set(nudgeEnabled, forKey: "nudgeEnabled") }
     }
+    @Published var telemetryEnabled: Bool {
+        didSet { UserDefaults.standard.set(telemetryEnabled, forKey: "telemetryEnabled") }
+    }
 
     /// Recent notifications, newest first (for menu bar history).
     @Published var history: [NotchNotification] = []
@@ -95,6 +98,9 @@ class NotificationManager: ObservableObject {
         if defaults.object(forKey: "nudgeEnabled") == nil {
             defaults.set(true, forKey: "nudgeEnabled")
         }
+        if defaults.object(forKey: "telemetryEnabled") == nil {
+            defaults.set(true, forKey: "telemetryEnabled")
+        }
 
         soundEnabled = defaults.bool(forKey: "soundEnabled")
         showOnComplete = defaults.bool(forKey: "showOnComplete")
@@ -102,6 +108,7 @@ class NotificationManager: ObservableObject {
         showOnPermission = defaults.bool(forKey: "showOnPermission")
         showSessionPill = defaults.bool(forKey: "showSessionPill")
         nudgeEnabled = defaults.bool(forKey: "nudgeEnabled")
+        telemetryEnabled = defaults.bool(forKey: "telemetryEnabled")
 
         SoundManager.shared.isEnabled = soundEnabled
     }
@@ -176,6 +183,7 @@ class NotificationManager: ObservableObject {
         let project = sanitizedProjectName(displayName, sessionId: sid)
         let agent = AgentSource.detect(sourceApp: sourceApp, model: model)
         activeSessions.append(SessionInfo(id: sid, startTime: Date(), projectName: project, status: .running, sourceBundleId: sourceBundleId, cwd: displayName, agentSource: agent))
+        StatsStore.shared.recordSessionStarted()
         refreshPill()
 
         // Start watching JSONL file for interrupts
@@ -197,6 +205,9 @@ class NotificationManager: ObservableObject {
 
     func endSession(sessionId: String?) {
         if let sid = sessionId {
+            if let session = activeSessions.first(where: { $0.id == sid }) {
+                StatsStore.shared.recordActiveSeconds(Date().timeIntervalSince(session.startTime))
+            }
             activeSessions.removeAll { $0.id == sid }
             endSessionWorkItems.removeValue(forKey: sid)
             sessionTimeoutTimers[sid]?.invalidate()
@@ -206,6 +217,10 @@ class NotificationManager: ObservableObject {
             SessionFileWatcher.shared.stopWatching(sessionId: sid)
         } else {
             // No ID — end all sessions
+            let now = Date()
+            for session in activeSessions {
+                StatsStore.shared.recordActiveSeconds(now.timeIntervalSince(session.startTime))
+            }
             activeSessions.removeAll()
             endSessionWorkItems.removeAll()
             sessionTimeoutTimers.values.forEach { $0.invalidate() }
@@ -240,7 +255,12 @@ class NotificationManager: ObservableObject {
     func updateSessionStatus(sessionId: String?, status: SessionStatus, message: String? = nil) {
         guard let sid = sessionId,
               let idx = activeSessions.firstIndex(where: { $0.id == sid }) else { return }
+        let wasCompleted = activeSessions[idx].status == .completed
         activeSessions[idx].status = status
+        if status == .completed && !wasCompleted {
+            StatsStore.shared.recordTaskCompleted()
+            Telemetry.shared.trackEvent("session_completed")
+        }
         if let msg = message {
             activeSessions[idx].lastMessage = msg
         }
@@ -314,6 +334,7 @@ class NotificationManager: ObservableObject {
         }
 
         let session = activeSessions.first(where: { $0.id == notification.sessionId })
+        Telemetry.shared.trackEvent("notification_shown", props: ["type": notification.type.rawValue])
         windowController.showNotification(notification, sessionSourceBundleId: session?.sourceBundleId, sessionCwd: session?.cwd)
 
         // Session end is handled by the SessionEnd hook — no auto-end timer needed.
@@ -504,6 +525,7 @@ class NotificationManager: ObservableObject {
         recordHistory(notification)
 
         let session = activeSessions.first(where: { $0.id == sessionId })
+        Telemetry.shared.trackEvent("notification_shown", props: ["type": notification.type.rawValue])
         windowController.showNotification(notification, sessionSourceBundleId: session?.sourceBundleId, sessionCwd: session?.cwd)
     }
 
