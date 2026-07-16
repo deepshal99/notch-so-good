@@ -72,9 +72,11 @@ struct MascotView: View {
             let oy = (size.height - totalH) / 2
 
             // === LEFT ARM / STUB ===
-            let armOffset: CGFloat = expression == .waving ? armWave : 0
-            px_fill(ctx, ox: ox, oy: oy + armOffset, px: px,
-                    x: 0, y: 2, w: 3, h: 4, color: skin)
+            // Waving raises the arm's top edge; the bottom stays fused to the body
+            // so it never detaches into a floating pixel.
+            let armRaise: CGFloat = expression == .waving ? armWave : 0
+            px_fill(ctx, ox: ox, oy: oy, px: px,
+                    x: 0, y: 2 + armRaise, w: 3, h: 4 - armRaise, color: skin)
 
             // === MAIN BODY ===
             // The body is the large rectangle
@@ -242,9 +244,11 @@ struct MascotView: View {
     }
 
     private func startWave() {
-        armWave = -4
-        waveTimer = Timer.scheduledTimer(withTimeInterval: 0.35, repeats: true) { _ in
-            armWave = armWave == 0 ? -4 : 0
+        withAnimation(.spring(response: 0.25, dampingFraction: 0.6)) { armWave = -1.5 }
+        waveTimer = Timer.scheduledTimer(withTimeInterval: 0.4, repeats: true) { _ in
+            withAnimation(.spring(response: 0.25, dampingFraction: 0.6)) {
+                armWave = armWave == 0 ? -1.5 : 0
+            }
         }
     }
 }

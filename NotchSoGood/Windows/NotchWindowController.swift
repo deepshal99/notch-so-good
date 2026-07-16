@@ -91,9 +91,8 @@ class NotchWindowController {
             }
             .frame(width: maxWidth, height: maxHeight)
 
-            let hostingView = NSHostingView(rootView: AnyView(container))
+            let hostingView = TransparentHostingView(rootView: AnyView(container))
             hostingView.safeAreaRegions = []
-            hostingView.layer?.backgroundColor = .clear
             pillPanel?.contentView = hostingView
 
         } else {
