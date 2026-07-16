@@ -1,7 +1,7 @@
 {
   "name": "notch-so-good",
-  "version": "1.3.1",
-  "description": "The world's smallest coworker lives in your Mac's notch. A pixel-art crab that watches Claude Code so you don't have to.",
+  "version": "4.2.0",
+  "description": "The world's smallest coworker lives in your Mac's notch. A pixel-art crab that watches Claude Code, Codex, and Gemini sessions \u2014 notifications, permission approvals, usage limits, and stats.",
   "bin": {
     "notch-so-good": "./install.mjs"
   },
@@ -17,7 +17,11 @@
     "pixel-art",
     "mascot",
     "notifications",
-    "crab"
+    "crab",
+    "codex",
+    "gemini",
+    "usage-limits",
+    "rate-limits"
   ],
   "author": "Deepak Maurya",
   "license": "MIT",

@@ -1,39 +1,46 @@
 # Notch So Good
 
-> A pixel-art crab called Chawd lives in your MacBook's notch and watches Claude Code so you don't have to.
+> A pixel-art crab called Chawd lives in your MacBook's notch and watches your AI coding agents — Claude Code, OpenAI Codex CLI, and Gemini CLI — so you don't have to.
 
 ## What it is
 
-Notch So Good is a free, open-source macOS menubar app for Claude Code users. It places a tiny animated pixel-art crab mascot (Chawd) in your MacBook's notch area. When Claude Code is running, a black pill extends the notch showing Chawd and a live session timer. When Claude Code needs your input, the notch expands into a color-coded notification. Click to jump back to your terminal.
+Notch So Good is a free, open-source macOS menubar app for developers who run AI coding agents. It places a tiny animated pixel-art crab mascot (Chawd) in your MacBook's notch. While an agent is working, a black pill extends the notch with Chawd and a live session timer. When the agent needs you — a question, a permission, a finished task — the notch expands into a color-coded notification. Click to jump back to the exact terminal tab.
 
 ## Key features
 
-- Session pill: black pill extends the notch with Chawd mascot + live timer
-- 13 idle animations: wave, dance, sneeze, peek-a-boo, yawn, hiccup, spin, stretch, levitate, shiver, strut, nod, walk
-- Mouse-reactive eyes: Chawd's pixel eyes track your cursor
-- Drowsiness system: Chawd falls asleep after 2 minutes idle, startled wake-up on hover
-- Color-coded notifications: green (complete), blue (question), amber (permission), purple (general)
-- Multi-session: hover pill to see all active Claude Code sessions grouped by project
-- Auto-update via Sparkle
+- Session pill: Dynamic Island-style pill with fluid concave notch curves, Chawd mascot + live timer
+- Tool-aware mascot: Chawd wears glasses while the agent reads, holds a pencil while it edits, celebrates with confetti when a task completes
+- Permission approvals from the notch: Allow / Always Allow / Deny buttons, plus global hotkeys ⌃⌥A / ⌃⌥D
+- Usage limits: session (5-hour) and weekly Claude rate-limit bars with reset countdowns, one warning before you hit the wall
+- Real completion summaries: Stop notifications show the agent's actual last message from the transcript
+- Shift report: today's sessions, completed tasks, and active time in the menu bar
+- Notification history: recent alerts in the menu bar, click to jump back
+- Nudge: one gentle re-ping if a session waits 2+ minutes — repeat hook events are deduped so it never spams
+- Multi-agent, multi-session: Claude / Codex / Gemini badges, sessions grouped by project, subagent tree
+- 17 idle animations, drowsiness system, menu bar attention dot
+- Launch at Login, auto-update via Sparkle
 
 ## Install
 
-npx notch-so-good
+brew install --cask deepshal99/tap/notch-so-good
+
+Or: npx notch-so-good
 
 Or: curl -fsSL https://raw.githubusercontent.com/deepshal99/notch-so-good/main/get.sh | bash
 
 ## Requirements
 
 - macOS 14+ (Sonoma or later)
-- Claude Code
-- MacBook with a notch (recommended)
+- Claude Code, OpenAI Codex CLI, or Gemini CLI
+- MacBook with a notch (recommended — works without one too)
 
 ## How it works
 
-Uses Claude Code hooks (SessionStart, Notification, Stop) via URL scheme callbacks. No server, no polling, no network requests. The hooks send events to notchsogood:// URLs which the app handles natively.
+Claude Code / Codex hooks send events over a local Unix domain socket (/tmp/notchsogood.sock) that the app listens on. Permission checks are bidirectional: the hook waits for your Allow/Deny from the notch. Usage limits are read from Claude Code's own OAuth credentials (local Keychain) against Anthropic's usage endpoint. No server, no accounts; optional anonymous stats are off unless the build ships a telemetry key.
 
 ## Links
 
 - GitHub: https://github.com/deepshal99/notch-so-good
 - npm: https://www.npmjs.com/package/notch-so-good
+- Homebrew tap: https://github.com/deepshal99/homebrew-tap
 - License: MIT
