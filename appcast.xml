@@ -6,17 +6,17 @@
         <description>Automatic updates for Notch So Good</description>
         <language>en</language>
         <item>
-            <title>Version 4.1.0</title>
-            <pubDate>Thu, 16 Jul 2026 11:36:45 +0530</pubDate>
-            <sparkle:version>14</sparkle:version>
-            <sparkle:shortVersionString>4.1.0</sparkle:shortVersionString>
-            <description><![CDATA[<h2>What's New in 4.1.0</h2><p>Chawd reacts to what your agent is doing (glasses while reading, pencil while editing, confetti on completion). Fluid notch curves — no more sharp top corners. Global hotkeys ⌃⌥A/⌃⌥D to approve/deny permissions from anywhere. Daily shift report in the menu bar. Cleaner uninstall. Optional anonymous stats (off unless built with a key).</p>]]></description>
+            <title>Version 4.1.1</title>
+            <pubDate>Thu, 16 Jul 2026 17:58:04 +0530</pubDate>
+            <sparkle:version>15</sparkle:version>
+            <sparkle:shortVersionString>4.1.1</sparkle:shortVersionString>
+            <description><![CDATA[<h2>What's New in 4.1.1</h2><p>Fixed Chawd's wave detaching into a floating pixel, fixed the gray background leak behind the expanded session pill, proper padding in the pill dropdown, and a fully reorganized menu — wider, sectioned (Notifications / Behavior), stat tiles, and a compact footer.</p>]]></description>
             <enclosure
-                url="https://github.com/deepshal99/notch-so-good/releases/download/v4.1.0/NotchSoGood-4.1.0.zip"
-                sparkle:version="14"
-                sparkle:shortVersionString="4.1.0"
-                sparkle:edSignature="Eir5OWYxoWZ/PnOSoQW4/rp0gpYQ7rt1asA5+tATj0+U/OiBtXMQ2rWI0BslZKBQ1RumpgD5ZA/np8pM34q7Dw=="
-                length="2000394"
+                url="https://github.com/deepshal99/notch-so-good/releases/download/v4.1.1/NotchSoGood-4.1.1.zip"
+                sparkle:version="15"
+                sparkle:shortVersionString="4.1.1"
+                sparkle:edSignature="CunTfUg23qkNEU5QUOG0QVAT7CIJIkbAhrGuOZotMzo2jEmIzaG5IdtFqUzY5ZWnEI7tAc84axQmyuH0VQl0Dw=="
+                length="2003372"
                 type="application/octet-stream"
             />
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>

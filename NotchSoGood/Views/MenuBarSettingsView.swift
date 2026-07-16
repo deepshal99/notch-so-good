@@ -10,6 +10,14 @@ struct MenuBarSettingsView: View {
     @State private var axTrusted = AXIsProcessTrusted()
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
 
+    private let bg = Color(hex: "0E0E0E")
+    private let cardBg = Color.white.opacity(0.04)
+    private let dim = Color.white.opacity(0.3)
+    private let body_ = Color.white.opacity(0.78)
+    private let sep = Color.white.opacity(0.06)
+
+    private let columns = [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)]
+
     private var launchAtLoginBinding: Binding<Bool> {
         Binding(
             get: { launchAtLogin },
@@ -28,125 +36,78 @@ struct MenuBarSettingsView: View {
         )
     }
 
-    private let bg = Color(hex: "0E0E0E")
-    private let cardBg = Color.white.opacity(0.04)
-    private let dim = Color.white.opacity(0.3)
-    private let body_ = Color.white.opacity(0.78)
-    private let sep = Color.white.opacity(0.06)
-
     var body: some View {
         VStack(spacing: 0) {
-            // === HEADER ===
-            VStack(spacing: 6) {
-                MascotView(expression: .waving)
-                    .scaleEffect(0.55)
-                    .frame(width: 30, height: 26)
-
-                Text("Notch So Good")
-                    .font(.system(size: 13, weight: .semibold, design: .rounded))
-                    .foregroundColor(.white)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.top, 22)
-            .padding(.bottom, 14)
-
-            // === SETTINGS ===
-            VStack(spacing: 0) {
-                toggleRow(icon: "checkmark.circle", label: "Complete", isOn: $notificationManager.showOnComplete)
-                insetSep
-                toggleRow(icon: "questionmark.circle", label: "Questions", isOn: $notificationManager.showOnQuestion)
-                insetSep
-                toggleRow(icon: "lock.circle", label: "Permissions", isOn: $notificationManager.showOnPermission)
-                insetSep
-                toggleRow(icon: "speaker.wave.2", label: "Sounds", isOn: $notificationManager.soundEnabled)
-                insetSep
-                toggleRow(icon: "capsule", label: "Session Pill", isOn: $notificationManager.showSessionPill)
-                insetSep
-                toggleRow(icon: "bell.badge", label: "Nudge When Waiting", isOn: $notificationManager.nudgeEnabled)
-                insetSep
-                toggleRow(icon: "play.circle", label: "Launch at Login", isOn: launchAtLoginBinding)
-                insetSep
-                toggleRow(icon: "chart.bar", label: "Anonymous Stats", isOn: $notificationManager.telemetryEnabled)
-            }
-            .background(cardBg)
-            .clipShape(RoundedRectangle(cornerRadius: 10))
-            .padding(.horizontal, 10)
-
-            // === TODAY ===
-            VStack(spacing: 0) {
-                HStack {
-                    Text("TODAY")
-                        .font(.system(size: 8.5, weight: .bold, design: .rounded))
-                        .foregroundColor(dim)
-                        .tracking(0.8)
-                    Spacer()
-                }
+            header
                 .padding(.horizontal, 14)
-                .padding(.top, 10)
-                .padding(.bottom, 4)
+                .padding(.top, 14)
+                .padding(.bottom, 12)
 
-                todayCard
+            statTiles
+                .padding(.horizontal, 12)
+
+            sectionHeader("NOTIFICATIONS")
+
+            LazyVGrid(columns: columns, spacing: 8) {
+                toggleChip(icon: "checkmark.circle", label: "Complete", isOn: $notificationManager.showOnComplete)
+                toggleChip(icon: "questionmark.circle", label: "Questions", isOn: $notificationManager.showOnQuestion)
+                toggleChip(icon: "lock.circle", label: "Permissions", isOn: $notificationManager.showOnPermission)
+                toggleChip(icon: "speaker.wave.2", label: "Sounds", isOn: $notificationManager.soundEnabled)
             }
-            .padding(.horizontal, 10)
+            .padding(.horizontal, 12)
 
-            // === RECENT NOTIFICATIONS ===
+            sectionHeader("BEHAVIOR")
+
+            LazyVGrid(columns: columns, spacing: 8) {
+                toggleChip(icon: "capsule", label: "Session Pill", isOn: $notificationManager.showSessionPill)
+                toggleChip(icon: "bell.badge", label: "Nudge", isOn: $notificationManager.nudgeEnabled)
+                toggleChip(icon: "play.circle", label: "Login Item", isOn: launchAtLoginBinding)
+                toggleChip(icon: "chart.bar", label: "Anon Stats", isOn: $notificationManager.telemetryEnabled)
+            }
+            .padding(.horizontal, 12)
+
             if !notificationManager.history.isEmpty {
-                VStack(spacing: 0) {
-                    HStack {
-                        Text("RECENT")
-                            .font(.system(size: 8.5, weight: .bold, design: .rounded))
-                            .foregroundColor(dim)
-                            .tracking(0.8)
-                        Spacer()
-                    }
-                    .padding(.horizontal, 14)
-                    .padding(.top, 10)
-                    .padding(.bottom, 4)
+                sectionHeader("RECENT")
 
-                    VStack(spacing: 0) {
-                        ForEach(notificationManager.history.prefix(5)) { item in
-                            historyRow(item)
-                            if item.id != notificationManager.history.prefix(5).last?.id {
-                                insetSep
-                            }
+                VStack(spacing: 0) {
+                    let items = Array(notificationManager.history.prefix(4))
+                    ForEach(items) { item in
+                        historyRow(item)
+                        if item.id != items.last?.id {
+                            Rectangle().fill(sep).frame(height: 0.5).padding(.leading, 34)
                         }
                     }
-                    .background(cardBg)
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
-                    .padding(.horizontal, 10)
                 }
+                .background(cardBg)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .padding(.horizontal, 12)
             }
 
-            // === ACCESSIBILITY HINT (re-checks every time menu opens) ===
             if !axTrusted {
                 AccessibilityHintButton {
                     if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
                         NSWorkspace.shared.open(url)
                     }
                 }
-                .padding(.horizontal, 10)
-                .padding(.top, 6)
+                .padding(.horizontal, 12)
+                .padding(.top, 10)
             }
-
-            Spacer().frame(height: 10)
 
             // === FOOTER ===
-            Rectangle().fill(sep).frame(height: 0.5).padding(.horizontal, 14)
-
-            Spacer().frame(height: 2)
-
-            footerRow(icon: "arrow.triangle.2.circlepath", label: "Update", trailing: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?") {
-                updater.checkForUpdates()
+            HStack(spacing: 8) {
+                footerChip(icon: "arrow.triangle.2.circlepath", label: "Update") {
+                    updater.checkForUpdates()
+                }
+                footerChip(icon: "terminal", label: "Hooks") {
+                    notificationManager.installHooks()
+                }
+                footerChip(icon: "power", label: "Quit") {
+                    NSApplication.shared.terminate(nil)
+                }
+                .keyboardShortcut("q")
             }
-
-            footerRow(icon: "terminal", label: "Reinstall Hooks", trailing: "Claude + Codex") {
-                notificationManager.installHooks()
-            }
-
-            footerRow(icon: "power", label: "Quit", trailing: "\u{2318}Q") {
-                NSApplication.shared.terminate(nil)
-            }
-            .keyboardShortcut("q")
+            .padding(.horizontal, 12)
+            .padding(.top, 12)
 
             // === CREDIT ===
             Button {
@@ -155,46 +116,127 @@ struct MenuBarSettingsView: View {
                 }
             } label: {
                 Text("made by Deepak")
-                    .font(.system(size: 10, weight: .medium, design: .rounded))
-                    .foregroundColor(Color.white.opacity(0.4))
+                    .font(.system(size: 9.5, weight: .medium, design: .rounded))
+                    .foregroundColor(Color.white.opacity(0.35))
                     .frame(maxWidth: .infinity)
-                    .padding(.top, 4)
-                    .padding(.bottom, 8)
+                    .padding(.top, 8)
+                    .padding(.bottom, 10)
                     .contentShape(Rectangle())
             }
             .buttonStyle(CreditButtonStyle())
         }
-        .frame(width: 240)
+        .frame(width: 320)
         .background(bg)
         .preferredColorScheme(.dark)
-        .onAppear { axTrusted = AXIsProcessTrusted() }
+        .onAppear {
+            axTrusted = AXIsProcessTrusted()
+            launchAtLogin = SMAppService.mainApp.status == .enabled
+        }
     }
 
-    // MARK: - Today Card ("Chawd's shift report")
+    // MARK: - Header
 
-    private var todayCard: some View {
-        let stats = statsStore.today
-        let approvals = stats.permissionsApproved
-        let denies = stats.permissionsDenied
+    private var header: some View {
+        HStack(spacing: 10) {
+            MascotView(expression: .waving)
+                .scaleEffect(0.5)
+                .frame(width: 28, height: 24)
 
-        return VStack(spacing: 2) {
-            Text("\(stats.sessionsStarted) sessions · \(stats.tasksCompleted) done · \(StatsStore.formatDuration(stats.activeSeconds)) active")
-                .font(.system(size: 11, weight: .medium, design: .rounded))
-                .foregroundColor(body_)
-                .lineLimit(1)
-                .minimumScaleFactor(0.85)
-
-            if approvals > 0 || denies > 0 {
-                Text("\u{2318} approvals \(approvals) · denies \(denies)")
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Notch So Good")
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .foregroundColor(.white)
+                Text("watching your agents")
                     .font(.system(size: 9.5, weight: .regular, design: .rounded))
                     .foregroundColor(dim)
             }
+
+            Spacer()
+
+            Text("v\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?")")
+                .font(.system(size: 9, weight: .medium, design: .monospaced))
+                .foregroundColor(dim)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 3)
+                .background(Capsule().fill(Color.white.opacity(0.05)))
+        }
+    }
+
+    // MARK: - Stat tiles ("Chawd's shift report")
+
+    private var statTiles: some View {
+        let stats = statsStore.today
+        return HStack(spacing: 8) {
+            statTile(value: "\(stats.sessionsStarted)", caption: "SESSIONS")
+            statTile(value: "\(stats.tasksCompleted)", caption: "DONE")
+            statTile(value: StatsStore.formatDuration(stats.activeSeconds), caption: "ACTIVE")
+        }
+    }
+
+    private func statTile(value: String, caption: String) -> some View {
+        VStack(spacing: 2) {
+            Text(value)
+                .font(.system(size: 15, weight: .semibold, design: .rounded))
+                .monospacedDigit()
+                .foregroundColor(.white.opacity(0.9))
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+            Text(caption)
+                .font(.system(size: 7.5, weight: .bold, design: .rounded))
+                .tracking(0.8)
+                .foregroundColor(dim)
         }
         .frame(maxWidth: .infinity)
-        .padding(.horizontal, 12)
         .padding(.vertical, 9)
         .background(cardBg)
-        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    // MARK: - Section header
+
+    private func sectionHeader(_ title: String) -> some View {
+        HStack {
+            Text(title)
+                .font(.system(size: 8.5, weight: .bold, design: .rounded))
+                .tracking(0.8)
+                .foregroundColor(dim)
+            Spacer()
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 12)
+        .padding(.bottom, 6)
+    }
+
+    // MARK: - Toggle chip (whole chip is the click target)
+
+    private func toggleChip(icon: String, label: String, isOn: Binding<Bool>) -> some View {
+        Button {
+            withAnimation(.easeOut(duration: 0.15)) {
+                isOn.wrappedValue.toggle()
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: icon)
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundColor(isOn.wrappedValue ? .white.opacity(0.65) : dim)
+                    .frame(width: 14, alignment: .center)
+
+                Text(label)
+                    .font(.system(size: 11, weight: .regular, design: .rounded))
+                    .foregroundColor(body_)
+                    .lineLimit(1)
+
+                Spacer(minLength: 2)
+
+                TogglePill(isOn: isOn.wrappedValue)
+            }
+            .padding(.horizontal, 9)
+            .padding(.vertical, 8)
+            .background(cardBg)
+            .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: 9))
+        }
+        .buttonStyle(ChipButtonStyle())
     }
 
     // MARK: - History Row
@@ -221,7 +263,7 @@ struct MenuBarSettingsView: View {
                     .foregroundColor(dim)
             }
             .padding(.horizontal, 12)
-            .padding(.vertical, 6)
+            .padding(.vertical, 7)
             .contentShape(Rectangle())
         }
         .buttonStyle(MenuRowButtonStyle())
@@ -235,71 +277,46 @@ struct MenuBarSettingsView: View {
         return "\(secs / 86400)d"
     }
 
-    // MARK: - Inset Separator
+    // MARK: - Footer chip
 
-    private var insetSep: some View {
-        Rectangle().fill(sep).frame(height: 0.5).padding(.leading, 36)
-    }
-
-    // MARK: - Toggle Row
-
-    private func toggleRow(
-        icon: String,
-        label: String,
-        isOn: Binding<Bool>
-    ) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: icon)
-                .font(.system(size: 10, weight: .medium))
-                .foregroundColor(dim)
-                .frame(width: 16, alignment: .center)
-
-            Text(label)
-                .font(.system(size: 12, weight: .regular, design: .rounded))
-                .foregroundColor(body_)
-
-            Spacer()
-
-            MinimalToggle(isOn: isOn)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 7)
-    }
-
-    // MARK: - Footer Row
-
-    private func footerRow(
-        icon: String,
-        label: String,
-        trailing: String,
-        action: @escaping () -> Void
-    ) -> some View {
+    private func footerChip(icon: String, label: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            HStack(spacing: 8) {
+            HStack(spacing: 5) {
                 Image(systemName: icon)
                     .font(.system(size: 9, weight: .medium))
                     .foregroundColor(dim)
-                    .frame(width: 16, alignment: .center)
-
                 Text(label)
-                    .font(.system(size: 11.5, weight: .regular, design: .rounded))
+                    .font(.system(size: 10.5, weight: .medium, design: .rounded))
                     .foregroundColor(body_)
-
-                Spacer()
-
-                Text(trailing)
-                    .font(.system(size: 9.5, weight: .medium, design: .monospaced))
-                    .foregroundColor(dim)
             }
-            .padding(.horizontal, 14)
+            .frame(maxWidth: .infinity)
             .padding(.vertical, 7)
-            .contentShape(Rectangle())
+            .background(cardBg)
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: 8))
         }
-        .buttonStyle(MenuRowButtonStyle())
+        .buttonStyle(ChipButtonStyle())
     }
 }
 
 // MARK: - Button Styles
+
+private struct ChipButtonStyle: ButtonStyle {
+    @State private var isHovered = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .overlay(
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .fill(.white.opacity(isHovered ? 0.04 : 0))
+            )
+            .scaleEffect(configuration.isPressed ? 0.97 : 1.0)
+            .animation(.easeOut(duration: 0.1), value: configuration.isPressed)
+            .onHover { h in
+                withAnimation(.easeOut(duration: 0.12)) { isHovered = h }
+            }
+    }
+}
 
 private struct MenuRowButtonStyle: ButtonStyle {
     @State private var isHovered = false
@@ -320,39 +337,29 @@ private struct MenuRowButtonStyle: ButtonStyle {
     }
 }
 
-// MARK: - Minimal Toggle
+// MARK: - Toggle pill (pure visual — the chip handles interaction)
 
-private struct MinimalToggle: View {
-    @Binding var isOn: Bool
+private struct TogglePill: View {
+    let isOn: Bool
 
-    private let trackWidth: CGFloat = 28
-    private let trackHeight: CGFloat = 16
-    private let thumbSize: CGFloat = 12
+    private let trackWidth: CGFloat = 26
+    private let trackHeight: CGFloat = 15
+    private let thumbSize: CGFloat = 11
     private let thumbPadding: CGFloat = 2
 
     var body: some View {
-        let onColor = Color.white.opacity(0.9)
-        let offTrack = Color.white.opacity(0.1)
-        let onTrack = Color.white.opacity(0.25)
+        ZStack(alignment: isOn ? .trailing : .leading) {
+            Capsule()
+                .fill(isOn ? Color.white.opacity(0.25) : Color.white.opacity(0.1))
+                .frame(width: trackWidth, height: trackHeight)
 
-        Button {
-            withAnimation(.easeOut(duration: 0.15)) {
-                isOn.toggle()
-            }
-        } label: {
-            ZStack(alignment: isOn ? .trailing : .leading) {
-                Capsule()
-                    .fill(isOn ? onTrack : offTrack)
-                    .frame(width: trackWidth, height: trackHeight)
-
-                Circle()
-                    .fill(isOn ? onColor : Color.white.opacity(0.35))
-                    .frame(width: thumbSize, height: thumbSize)
-                    .padding(.horizontal, thumbPadding)
-            }
+            Circle()
+                .fill(isOn ? Color.white.opacity(0.9) : Color.white.opacity(0.35))
+                .frame(width: thumbSize, height: thumbSize)
+                .padding(.horizontal, thumbPadding)
         }
-        .buttonStyle(.plain)
         .frame(width: trackWidth, height: trackHeight)
+        .animation(.easeOut(duration: 0.15), value: isOn)
     }
 }
 
@@ -395,7 +402,6 @@ private struct AccessibilityHintButton: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .scaleEffect(isHovered ? 1.0 : 1.0)
         .onHover { h in
             withAnimation(.easeOut(duration: 0.15)) { isHovered = h }
         }

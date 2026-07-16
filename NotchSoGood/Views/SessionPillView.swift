@@ -152,7 +152,7 @@ struct SessionPillView: View {
                 if hovered {
                     expandedContent(now: context.date)
                         .padding(.top, notchHeight + 4)
-                        .padding(.horizontal, 10)
+                        .padding(.horizontal, 18)
                         .padding(.bottom, 10)
                         .frame(width: pillWidth, alignment: .top)
                         .transition(.opacity.combined(with: .offset(y: -4)).combined(with: .scale(scale: 0.97, anchor: .top)))
@@ -544,8 +544,11 @@ struct MiniChawdView: View {
             let ox = (size.width - totalW) / 2
             let oy = (size.height - totalH) / 2
 
-            let armY: CGFloat = gimmick == .wave ? (waveTick ? -2 : 0) : (gimmick == .stretch ? stretchArmOffset : 1.5)
-            let armH: CGFloat = gimmick == .wave ? 2.5 : 3
+            // Arm top can rise (wave/stretch) but the bottom edge stays fused to the
+            // body at y=4.5 so the claw never detaches into a floating pixel.
+            let armTop: CGFloat = gimmick == .wave ? (waveTick ? -0.5 : 1) : (gimmick == .stretch ? stretchArmOffset : 1.5)
+            let armY: CGFloat = armTop
+            let armH: CGFloat = 4.5 - armTop
             px_fill(ctx, ox: ox, oy: oy, px: px,
                     x: 0, y: armY, w: 2, h: armH, color: skin)
 
@@ -1641,7 +1644,7 @@ struct MiniChawdView: View {
     private func doStretch() {
         // Phase 1: Arms rise, body starts stretching
         withAnimation(.easeInOut(duration: 0.6)) {
-            stretchArmOffset = -3  // arms go up
+            stretchArmOffset = -0.5  // arm top rises, base stays attached
             stretchScale = 1.15
         }
 
