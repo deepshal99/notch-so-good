@@ -75,6 +75,12 @@ class NotificationManager: ObservableObject {
     private let sessionTimeoutInterval: TimeInterval = 3600 // 1 hour without any activity
     private var nudgeTimers: [String: Timer] = [:]
     private let nudgeInterval: TimeInterval = 120
+
+    // Anti-spam: Claude Code re-fires idle/permission Notification events every
+    // ~60s while waiting. Without this, every re-fire is a fresh popup + sound.
+    private var lastPopupAt: [String: Date] = [:]      // "sid|type" -> last time we showed it
+    private var mutedKeys: Set<String> = []            // muted after the user addressed one
+    private let repeatPopupCooldown: TimeInterval = 180
     let windowController = NotchWindowController()
 
     init() {
@@ -214,6 +220,7 @@ class NotificationManager: ObservableObject {
             sessionTimeoutTimers.removeValue(forKey: sid)
             nudgeTimers[sid]?.invalidate()
             nudgeTimers.removeValue(forKey: sid)
+            clearPopupState(sessionId: sid)
             SessionFileWatcher.shared.stopWatching(sessionId: sid)
         } else {
             // No ID — end all sessions
@@ -227,6 +234,8 @@ class NotificationManager: ObservableObject {
             sessionTimeoutTimers.removeAll()
             nudgeTimers.values.forEach { $0.invalidate() }
             nudgeTimers.removeAll()
+            mutedKeys.removeAll()
+            lastPopupAt.removeAll()
             SessionFileWatcher.shared.stopAll()
         }
 
@@ -255,8 +264,13 @@ class NotificationManager: ObservableObject {
     func updateSessionStatus(sessionId: String?, status: SessionStatus, message: String? = nil) {
         guard let sid = sessionId,
               let idx = activeSessions.firstIndex(where: { $0.id == sid }) else { return }
-        let wasCompleted = activeSessions[idx].status == .completed
+        let oldStatus = activeSessions[idx].status
+        let wasCompleted = oldStatus == .completed
         activeSessions[idx].status = status
+        // Session moved on — the previous waiting spell is over, unmute its alerts
+        if status == .running || status == .completed {
+            clearPopupState(sessionId: sid)
+        }
         if status == .completed && !wasCompleted {
             StatsStore.shared.recordTaskCompleted()
             Telemetry.shared.trackEvent("session_completed")
@@ -273,8 +287,41 @@ class NotificationManager: ObservableObject {
             activeSessions[idx].subagents.removeAll()
         }
         resetSessionTimeout(sessionId: sid)
-        scheduleNudgeIfNeeded(sessionId: sid, status: status)
+        // Only arm the nudge when ENTERING a waiting state — repeated same-status
+        // events (Claude re-fires them every minute) must not re-arm it.
+        if oldStatus != status {
+            scheduleNudgeIfNeeded(sessionId: sid, status: status)
+        }
         refreshPill()
+    }
+
+    // MARK: - Popup dedupe / mute
+
+    private func popupKey(_ sessionId: String?, _ type: NotificationType) -> String {
+        "\(sessionId ?? "-")|\(type.rawValue)"
+    }
+
+    private func clearPopupState(sessionId: String) {
+        mutedKeys = mutedKeys.filter { !$0.hasPrefix("\(sessionId)|") }
+        lastPopupAt = lastPopupAt.filter { !$0.key.hasPrefix("\(sessionId)|") }
+    }
+
+    /// User clicked or explicitly dismissed a popup — stay quiet about this
+    /// session+type until the session actually moves on.
+    func muteRepeats(sessionId: String?, type: NotificationType) {
+        mutedKeys.insert(popupKey(sessionId, type))
+    }
+
+    /// Should this popup be suppressed as a repeat of one already shown/addressed?
+    private func isRepeatPopup(_ notification: NotchNotification) -> Bool {
+        // Interactive permission cards are always distinct real requests
+        guard !notification.isInteractivePermission else { return false }
+        let key = popupKey(notification.sessionId, notification.type)
+        if mutedKeys.contains(key) { return true }
+        if let last = lastPopupAt[key], Date().timeIntervalSince(last) < repeatPopupCooldown {
+            return true
+        }
+        return false
     }
 
     // MARK: - Nudge (gentle re-alert when a session waits too long)
@@ -301,7 +348,10 @@ class NotificationManager: ObservableObject {
     }
 
     func handleNotification(_ notification: NotchNotification) {
-        recordHistory(notification)
+        let isRepeat = isRepeatPopup(notification)
+        if !isRepeat {
+            recordHistory(notification)
+        }
 
         // Auto-start session pill if not already showing
         if !hasActiveSession && showSessionPill {
@@ -332,6 +382,19 @@ class NotificationManager: ObservableObject {
         case .general:
             break
         }
+
+        // Suppress repeats of an alert the user has already seen or addressed
+        guard !isRepeat else { return }
+
+        // A hook-level permission event while our interactive card is up (or queued)
+        // would double-alert for the same approval — the card already covers it.
+        if notification.type == .permission,
+           !notification.isInteractivePermission,
+           PermissionServer.shared.pendingCount > 0 {
+            return
+        }
+
+        lastPopupAt[popupKey(notification.sessionId, notification.type)] = Date()
 
         let session = activeSessions.first(where: { $0.id == notification.sessionId })
         Telemetry.shared.trackEvent("notification_shown", props: ["type": notification.type.rawValue])
@@ -458,11 +521,12 @@ class NotificationManager: ObservableObject {
             startSession(sessionId: sid)
         }
 
-        // New user turn — clear previous tool state
+        // New user turn — clear previous tool state and any popup mutes
         if let idx = activeSessions.firstIndex(where: { $0.id == sid }) {
             activeSessions[idx].activeToolName = nil
             activeSessions[idx].activeToolDetail = nil
         }
+        clearPopupState(sessionId: sid)
 
         updateSessionStatus(sessionId: sid, status: .running)
     }

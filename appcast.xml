@@ -6,17 +6,17 @@
         <description>Automatic updates for Notch So Good</description>
         <language>en</language>
         <item>
-            <title>Version 4.1.1</title>
-            <pubDate>Thu, 16 Jul 2026 17:58:04 +0530</pubDate>
-            <sparkle:version>15</sparkle:version>
-            <sparkle:shortVersionString>4.1.1</sparkle:shortVersionString>
-            <description><![CDATA[<h2>What's New in 4.1.1</h2><p>Fixed Chawd's wave detaching into a floating pixel, fixed the gray background leak behind the expanded session pill, proper padding in the pill dropdown, and a fully reorganized menu — wider, sectioned (Notifications / Behavior), stat tiles, and a compact footer.</p>]]></description>
+            <title>Version 4.2.0</title>
+            <pubDate>Fri, 17 Jul 2026 00:02:48 +0530</pubDate>
+            <sparkle:version>16</sparkle:version>
+            <sparkle:shortVersionString>4.2.0</sparkle:shortVersionString>
+            <description><![CDATA[<h2>What's New in 4.2.0</h2><p>Claude usage limits in your menu bar — live session and weekly bars with reset countdowns, plus a heads-up before you hit the wall. And the notification spam is dead: repeated events are deduped, and alerts you've addressed stay quiet.</p>]]></description>
             <enclosure
-                url="https://github.com/deepshal99/notch-so-good/releases/download/v4.1.1/NotchSoGood-4.1.1.zip"
-                sparkle:version="15"
-                sparkle:shortVersionString="4.1.1"
-                sparkle:edSignature="CunTfUg23qkNEU5QUOG0QVAT7CIJIkbAhrGuOZotMzo2jEmIzaG5IdtFqUzY5ZWnEI7tAc84axQmyuH0VQl0Dw=="
-                length="2003372"
+                url="https://github.com/deepshal99/notch-so-good/releases/download/v4.2.0/NotchSoGood-4.2.0.zip"
+                sparkle:version="16"
+                sparkle:shortVersionString="4.2.0"
+                sparkle:edSignature="4alxtPi7LievRnsDEoevc5csE2IKvmzAyzl/C+CznGeZSst3fyrdGTJiBQIYld+2tqwhKq7ydP38+iMhK056BQ=="
+                length="2033351"
                 type="application/octet-stream"
             />
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>

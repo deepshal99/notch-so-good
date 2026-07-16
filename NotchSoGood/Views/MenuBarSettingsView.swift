@@ -5,6 +5,7 @@ import ServiceManagement
 struct MenuBarSettingsView: View {
     @ObservedObject var notificationManager: NotificationManager
     @ObservedObject private var statsStore = StatsStore.shared
+    @ObservedObject private var limitsStore = UsageLimitsStore.shared
     let updater: SPUUpdater
 
     @State private var axTrusted = AXIsProcessTrusted()
@@ -65,6 +66,23 @@ struct MenuBarSettingsView: View {
                 toggleChip(icon: "chart.bar", label: "Anon Stats", isOn: $notificationManager.telemetryEnabled)
             }
             .padding(.horizontal, 12)
+
+            if !limitsStore.windows.isEmpty {
+                sectionHeader("LIMITS")
+
+                VStack(spacing: 0) {
+                    let items = limitsStore.windows
+                    ForEach(items) { window in
+                        limitRow(window)
+                        if window.id != items.last?.id {
+                            Rectangle().fill(sep).frame(height: 0.5).padding(.leading, 12)
+                        }
+                    }
+                }
+                .background(cardBg)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .padding(.horizontal, 12)
+            }
 
             if !notificationManager.history.isEmpty {
                 sectionHeader("RECENT")
@@ -131,6 +149,7 @@ struct MenuBarSettingsView: View {
         .onAppear {
             axTrusted = AXIsProcessTrusted()
             launchAtLogin = SMAppService.mainApp.status == .enabled
+            UsageLimitsStore.shared.refresh(force: true)
         }
     }
 
@@ -237,6 +256,52 @@ struct MenuBarSettingsView: View {
             .contentShape(RoundedRectangle(cornerRadius: 9))
         }
         .buttonStyle(ChipButtonStyle())
+    }
+
+    // MARK: - Limit Row
+
+    private func limitColor(_ percentLeft: Int) -> Color {
+        if percentLeft <= 10 { return Color(hex: "F87171") }
+        if percentLeft <= 25 { return Color(hex: "FBBF24") }
+        return .white
+    }
+
+    private func limitRow(_ window: UsageLimitsStore.LimitWindow) -> some View {
+        let color = limitColor(window.percentLeft)
+        return VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(window.label)
+                    .font(.system(size: 11, weight: .regular, design: .rounded))
+                    .foregroundColor(body_)
+                    .lineLimit(1)
+
+                Spacer(minLength: 4)
+
+                Text("\(window.percentLeft)% left")
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundColor(color)
+            }
+
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(Color.white.opacity(0.08))
+                    Capsule()
+                        .fill(color.opacity(0.8))
+                        .frame(width: geo.size.width * CGFloat(window.percentLeft) / 100)
+                }
+            }
+            .frame(height: 3)
+
+            if let resetsAt = window.resetsAt {
+                Text("resets in \(UsageLimitsStore.resetCountdown(resetsAt))")
+                    .font(.system(size: 9, weight: .regular, design: .rounded))
+                    .foregroundColor(dim)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
     }
 
     // MARK: - History Row

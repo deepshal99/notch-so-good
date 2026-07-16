@@ -28,6 +28,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Global hotkeys: ⌃⌥A approve / ⌃⌥D deny the active permission prompt
         HotkeyManager.shared.start()
 
+        // Poll Claude Code rate-limit windows for the menu bar LIMITS section
+        UsageLimitsStore.shared.start()
+
         Telemetry.shared.trackEvent("app_launched")
 
         // Reposition notch panels when displays change (monitor swap, resolution change)

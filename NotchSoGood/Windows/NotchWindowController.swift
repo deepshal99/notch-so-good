@@ -220,10 +220,16 @@ class NotchWindowController {
             notchHeight: notchH,
             onTap: { [weak self] in
                 self?.dismiss()
+                Task { @MainActor in
+                    NotificationManager.shared.muteRepeats(sessionId: notification.sessionId, type: notification.type)
+                }
                 TerminalLauncher.focusClaudeCode(sessionId: notification.sessionId, sourceBundleId: resolvedBundleId, cwd: resolvedCwd)
             },
             onDismiss: { [weak self] in
                 self?.dismiss()
+                Task { @MainActor in
+                    NotificationManager.shared.muteRepeats(sessionId: notification.sessionId, type: notification.type)
+                }
             },
             onApprove: isPermission ? { [weak self] in
                 guard let reqId = self?.activePermissionRequestId else { return }

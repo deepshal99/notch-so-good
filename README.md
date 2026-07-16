@@ -72,28 +72,16 @@ curl -fsSL https://raw.githubusercontent.com/deepshal99/notch-so-good/main/get.s
 
 ---
 
-## What's New in 4.1.0
+## What's New in 4.2.0
 
-- **Chawd reacts to the work** — glasses while reading, a tiny pencil while editing, a determined lean while running commands, star eyes + confetti when a task lands.
-- **Fluid notch curves** — the island now flows out of the screen's top edge with concave corners, like it grew there.
-- **Global hotkeys** — `⌃⌥A` approve / `⌃⌥D` deny the active permission without touching the mouse.
-- **Shift report** — today's sessions, completed tasks, and active time, right in the menu bar.
-- **Amber waiting state** — the pill timer tints amber when a session is stuck on you.
-- **Cleaner uninstall** — `uninstall.sh` now removes only Notch So Good's hooks (yours stay), plus Codex hooks and prefs.
-- **Anonymous stats (optional)** — Aptabase-based, no-op unless built with a key, toggleable, never sees messages or paths.
+- **Usage limits in your menu bar** — live session (5-hour) and weekly Claude rate-limit bars with reset countdowns, read straight from your own Claude Code login. Chawd warns you once before you hit the wall.
+- **No more notification spam** — repeated hook events are deduped, alerts you've clicked or dismissed stay quiet until the session actually moves on, and the nudge fires only when a session *enters* a waiting state.
+- **Chawd reacts to the work** — glasses while reading, pencil while editing, confetti when a task lands.
+- **Global hotkeys** — `⌃⌥A` approve / `⌃⌥D` deny permissions from anywhere.
+- **Shift report** — today's sessions, completions, and active time.
+- **Fluid notch curves, redesigned menu, real completion summaries, Launch at Login, Gemini badges.**
 
-## What's New in 4.0.0
-
-- **Real completion summaries** — Stop notifications now show Claude's actual last message pulled from the session transcript.
-- **Nudge mode** — If a session waits on you for 2+ minutes, Chawd pings you again (toggle in menu bar).
-- **Menu bar attention dot** — Amber dot appears on the crab when any session needs you.
-- **Recent notifications history** — Click the menu bar popover to see and jump back to recent notifications.
-- **Launch at Login toggle** — Control auto-start from the menu bar.
-- **Gemini CLI support** — Gemini sessions get their own badge alongside Claude.
-- **Robustness improvements** — Survives monitor/resolution changes, long sessions no longer vanish at 1 hour, event-driven hover tracking (no more constant polling), faster hook socket handling.
-- **Fixed** — iTerm2/Terminal tab deep-linking now prompts for Automation permission properly.
-
----
+Full history in [Releases](https://github.com/deepshal99/notch-so-good/releases).
 
 ## How It Works
 
