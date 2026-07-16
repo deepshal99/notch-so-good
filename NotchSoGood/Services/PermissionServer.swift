@@ -456,8 +456,16 @@ class PermissionServer {
             }
         }
 
-        // After responding, check if there's another queued permission to show
-        DispatchQueue.main.async {
+        // Update stats/telemetry and check if there's another queued permission to show
+        Task { @MainActor in
+            switch response {
+            case .allow, .allowAlways:
+                StatsStore.shared.recordPermissionApproved()
+                Telemetry.shared.trackEvent("permission_responded", props: ["decision": "approve"])
+            case .deny:
+                StatsStore.shared.recordPermissionDenied()
+                Telemetry.shared.trackEvent("permission_responded", props: ["decision": "deny"])
+            }
             NotificationManager.shared.windowController.showNextQueuedPermission()
         }
     }

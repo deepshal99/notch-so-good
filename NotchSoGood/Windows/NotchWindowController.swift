@@ -141,7 +141,7 @@ class NotchWindowController {
         if isNotificationActive, let panel {
             let notchH = geo?.notchHeight ?? 32
             let notchW = geo?.notchWidth ?? 185
-            let contentHeight: CGFloat = activePermissionRequestId != nil ? 130 : 76
+            let contentHeight: CGFloat = activePermissionRequestId != nil ? 148 : 76
             let panelWidth: CGFloat = hasNotch ? notchW + 200 : 380
             let panelHeight: CGFloat = hasNotch ? (notchH + contentHeight) : contentHeight
             let frame = calculateFrame(panelWidth: panelWidth, panelHeight: panelHeight, hasNotch: hasNotch, geo: geo)
@@ -190,7 +190,7 @@ class NotchWindowController {
 
         // Permission notifications are taller to fit buttons
         let isPermission = notification.isInteractivePermission
-        let contentHeight: CGFloat = isPermission ? 130 : 76
+        let contentHeight: CGFloat = isPermission ? 148 : 76
         let panelWidth: CGFloat = hasNotch ? notchW + 200 : 380
         let panelHeight: CGFloat = hasNotch ? (notchH + contentHeight) : contentHeight
 
@@ -293,6 +293,25 @@ class NotchWindowController {
             dismiss()
         }
     }
+
+    /// Approve the currently visible permission request (global hotkey / UI).
+    @MainActor func approveActivePermission() {
+        guard let reqId = activePermissionRequestId else { return }
+        PermissionServer.shared.respond(requestId: reqId, response: .allow)
+        activePermissionRequestId = nil
+        dismiss()
+    }
+
+    /// Deny the currently visible permission request (global hotkey / UI).
+    @MainActor func denyActivePermission() {
+        guard let reqId = activePermissionRequestId else { return }
+        PermissionServer.shared.respond(requestId: reqId, response: .deny)
+        activePermissionRequestId = nil
+        dismiss()
+    }
+
+    /// True while an interactive permission is on screen (hotkeys only fire then).
+    var hasActivePermission: Bool { activePermissionRequestId != nil }
 
     func dismiss() {
         guard !isDismissing else { return }

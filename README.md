@@ -72,6 +72,16 @@ curl -fsSL https://raw.githubusercontent.com/deepshal99/notch-so-good/main/get.s
 
 ---
 
+## What's New in 4.1.0
+
+- **Chawd reacts to the work** — glasses while reading, a tiny pencil while editing, a determined lean while running commands, star eyes + confetti when a task lands.
+- **Fluid notch curves** — the island now flows out of the screen's top edge with concave corners, like it grew there.
+- **Global hotkeys** — `⌃⌥A` approve / `⌃⌥D` deny the active permission without touching the mouse.
+- **Shift report** — today's sessions, completed tasks, and active time, right in the menu bar.
+- **Amber waiting state** — the pill timer tints amber when a session is stuck on you.
+- **Cleaner uninstall** — `uninstall.sh` now removes only Notch So Good's hooks (yours stay), plus Codex hooks and prefs.
+- **Anonymous stats (optional)** — Aptabase-based, no-op unless built with a key, toggleable, never sees messages or paths.
+
 ## What's New in 4.0.0
 
 - **Real completion summaries** — Stop notifications now show Claude's actual last message pulled from the session transcript.

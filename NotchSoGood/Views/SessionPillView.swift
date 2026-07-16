@@ -66,6 +66,27 @@ struct SessionPillView: View {
     // Cap max height for the panel (generous to avoid clipping)
     private static let maxContentHeight: CGFloat = 300
 
+    // Derive Chawd's tool-aware activity from the primary (first) session.
+    private var primaryActivity: MiniChawdView.Activity? {
+        guard let session = sessions.first else { return nil }
+        switch session.status {
+        case .needsInput, .needsPermission:
+            return .waiting
+        case .completed:
+            return .celebrating
+        case .running:
+            switch session.activeToolName {
+            case "Read", "Glob", "Grep": return .reading
+            case "Edit", "Write": return .coding
+            case "Bash": return .running
+            case "WebSearch", "WebFetch": return .searching
+            default: return nil
+            }
+        case .compacting:
+            return nil
+        }
+    }
+
     private var wing: CGFloat { hovered ? wingExpanded : wingCollapsed }
     private var pillWidth: CGFloat { notchWidth + (wing * 2) }
     private var maxWidth: CGFloat { notchWidth + (wingExpanded * 2) }
@@ -90,8 +111,8 @@ struct SessionPillView: View {
                     // but hop animation isn't cut off vertically
                     HStack(spacing: 0) {
                         Spacer(minLength: 0)
-                        MiniChawdView(excited: hovered)
-                            .frame(width: 20, height: 20)
+                        MiniChawdView(excited: hovered, activity: primaryActivity)
+                            .frame(width: 23, height: 23)
                         Spacer(minLength: 0)
                     }
                     .frame(width: wing)
@@ -107,6 +128,7 @@ struct SessionPillView: View {
                     HStack(spacing: 4) {
                         let primary = sessions.first
                         let primaryStatus = primary?.status ?? .running
+                        let isWaiting = primaryStatus == .needsInput || primaryStatus == .needsPermission
                         PhaseIconView(
                             status: primaryStatus,
                             toolName: primary?.activeToolName,
@@ -117,7 +139,7 @@ struct SessionPillView: View {
                         Text(elapsed)
                             .font(.system(size: hovered ? 11 : 10, weight: .semibold, design: .monospaced))
                             .monospacedDigit()
-                            .foregroundColor(.white.opacity(0.7))
+                            .foregroundColor(isWaiting ? Color(hex: "FBBF24").opacity(0.85) : .white.opacity(0.7))
                             .fixedSize(horizontal: true, vertical: false)
                     }
                     .padding(.trailing, 6)
@@ -156,12 +178,9 @@ struct SessionPillView: View {
     // MARK: - Pill shape
 
     private var pillShape: some Shape {
-        UnevenRoundedRectangle(
-            topLeadingRadius: 0,
-            bottomLeadingRadius: hovered ? 18 : notchHeight / 2,
-            bottomTrailingRadius: hovered ? 18 : notchHeight / 2,
-            topTrailingRadius: 0,
-            style: .continuous
+        NotchShape(
+            topRadius: hovered ? 9 : 6,
+            bottomRadius: hovered ? 18 : notchHeight / 2
         )
     }
 
@@ -245,8 +264,8 @@ struct SessionPillView: View {
 
                     HStack(spacing: 4) {
                         Text(session.projectName)
-                            .font(.system(size: 10, weight: .medium))
-                            .foregroundColor(.white.opacity(0.8))
+                            .font(.system(size: 10, weight: .medium, design: .rounded))
+                            .foregroundColor(.white.opacity(0.85))
                             .lineLimit(1)
 
                         AgentBadge(source: session.agentSource)
@@ -255,14 +274,15 @@ struct SessionPillView: View {
                     HStack(spacing: 4) {
                         Text(formatElapsed(secs))
                             .font(.system(size: 9, weight: .regular, design: .monospaced))
+                            .monospacedDigit()
                             .foregroundColor(.white.opacity(0.35))
 
                         Text("·")
-                            .font(.system(size: 9, weight: .bold))
+                            .font(.system(size: 9, weight: .bold, design: .rounded))
                             .foregroundColor(.white.opacity(0.15))
 
                         Text(session.status.phaseLabel(toolName: session.activeToolName, toolDetail: session.activeToolDetail))
-                            .font(.system(size: 9, weight: .medium))
+                            .font(.system(size: 9, weight: .medium, design: .rounded))
                             .foregroundColor(session.status.dotColor.opacity(0.8))
                             .lineLimit(1)
                             .contentTransition(.interpolate)
@@ -297,7 +317,7 @@ struct SessionPillView: View {
                 .font(.system(size: 8, weight: .medium))
                 .foregroundColor(.white.opacity(0.3))
             Text(name)
-                .font(.system(size: 10, weight: .semibold))
+                .font(.system(size: 10, weight: .semibold, design: .rounded))
                 .foregroundColor(.white.opacity(0.5))
                 .lineLimit(1)
         }
@@ -327,14 +347,15 @@ struct SessionPillView: View {
 
                 Text(formatElapsed(secs))
                     .font(.system(size: 10, weight: .medium, design: .monospaced))
+                    .monospacedDigit()
                     .foregroundColor(.white.opacity(0.6))
 
                 Text("·")
-                    .font(.system(size: 9, weight: .bold))
+                    .font(.system(size: 9, weight: .bold, design: .rounded))
                     .foregroundColor(.white.opacity(0.15))
 
                 Text(session.status.phaseLabel(toolName: session.activeToolName, toolDetail: session.activeToolDetail))
-                    .font(.system(size: 9, weight: .medium))
+                    .font(.system(size: 9, weight: .medium, design: .rounded))
                     .foregroundColor(session.status.dotColor.opacity(0.8))
                     .lineLimit(1)
                     .contentTransition(.interpolate)
@@ -389,7 +410,7 @@ struct SessionPillView: View {
             )
 
             Text(sub.description)
-                .font(.system(size: 9, weight: .medium))
+                .font(.system(size: 9, weight: .medium, design: .rounded))
                 .foregroundColor(.white.opacity(0.45))
                 .lineLimit(1)
                 .padding(.leading, 4)
@@ -399,6 +420,7 @@ struct SessionPillView: View {
             let secs = Int(now.timeIntervalSince(sub.startTime))
             Text(formatElapsed(secs))
                 .font(.system(size: 8, weight: .regular, design: .monospaced))
+                .monospacedDigit()
                 .foregroundColor(.white.opacity(0.25))
                 .padding(.trailing, 8)
         }
@@ -441,8 +463,15 @@ private struct SessionRowButtonStyle: ButtonStyle {
 // MARK: - Mini Chawd — a tiny pixel-art crab for the pill
 
 struct MiniChawdView: View {
+    /// Tool-aware activity derived from the primary session's status + active tool.
+    /// While set, random idle gimmicks are suppressed (blink keeps running) — hover excitement still wins.
+    enum Activity: Equatable {
+        case reading, coding, running, searching, waiting, celebrating
+    }
+
     var excited: Bool = false
     var forceGimmick: String? = nil
+    var activity: Activity? = nil
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isAlive = false  // guards recursive asyncAfter loops
@@ -473,12 +502,17 @@ struct MiniChawdView: View {
     @State private var stretchScale: CGFloat = 1.0  // vertical stretch for stretch gimmick
     @State private var stretchArmOffset: CGFloat = 0 // arms go up during stretch
 
+    // Waiting activity — impatient leg tap
+    @State private var waitingLegTap = false
+    @State private var waitingTapTimer: Timer?
+
+    // Celebrating activity — one-shot confetti fall on completion
+    @State private var confettiVisible = false
+    @State private var confettiFall: CGFloat = 0
+
     enum YawnPhase {
         case idle, opening, peak, closing
     }
-
-    // idle eye drift kept for Canvas fallback (always 0 now)
-    private let idleEyeDrift: CGFloat = 0
 
     // Drowsiness system — gets sleepy after prolonged idle
     @State private var idleSeconds: Int = 0
@@ -531,15 +565,17 @@ struct MiniChawdView: View {
             let isWalking = (gimmick == .walk || gimmick == .strut) && walkStep
             let walkL: CGFloat = isWalking ? -1.0 : 0
             let walkR: CGFloat = isWalking ? 1.0 : 0
+            // Waiting activity: right leg taps impatiently every couple seconds
+            let legTap: CGFloat = (activity == .waiting && waitingLegTap) ? -1.2 : 0
             px_fill(ctx, ox: ox, oy: oy, px: px,
                     x: 4.5 - wiggle + danceL + walkL, y: 7, w: 1.5, h: 3, color: skin)
             px_fill(ctx, ox: ox, oy: oy, px: px,
-                    x: 9 + wiggle + danceR + walkR, y: 7, w: 1.5, h: 3, color: skin)
+                    x: 9 + wiggle + danceR + walkR, y: 7 + legTap, w: 1.5, h: 3, color: skin)
 
             px_fill(ctx, ox: ox, oy: oy, px: px,
                     x: 4.5 - wiggle + danceL + walkL, y: 9.5, w: 1.5, h: 0.8, color: skinDark)
             px_fill(ctx, ox: ox, oy: oy, px: px,
-                    x: 9 + wiggle + danceR + walkR, y: 9.5, w: 1.5, h: 0.8, color: skinDark)
+                    x: 9 + wiggle + danceR + walkR, y: 9.5 + legTap, w: 1.5, h: 0.8, color: skinDark)
 
             drawExtras(ctx: ctx, ox: ox, oy: oy, px: px)
         }
@@ -550,7 +586,9 @@ struct MiniChawdView: View {
         .scaleEffect(x: 1.0, y: squashStretch, anchor: .bottom)
         .scaleEffect(x: squashStretch > 1 ? 0.92 : (squashStretch < 1 ? 1.1 : 1.0),
                      y: 1.0, anchor: .center)
-        // breathing removed — caused visible pulsing
+        // Running activity: slight determined lean
+        .rotationEffect(.degrees(activity == .running && !excited ? -4 : 0))
+        .animation(.smooth, value: activity)
         .scaleEffect(gimmick == .bounce ? 1.12 : 1.0)
         .offset(y: gimmick == .bounce ? -2 : (jumpOffset + peekOffset))
         .offset(x: gimmick == .dance ? (danceTick ? 0.8 : -0.8) : 0)
@@ -569,7 +607,6 @@ struct MiniChawdView: View {
         .scaleEffect(x: 1.0, y: stretchScale, anchor: .bottom)
         // Hiccup jolt
         .offset(y: hiccupJolt)
-        // idle sway/bob removed — caused visible jumping
         .onChange(of: excited) { _, isExcited in
             if isExcited {
                 cancelWalk()
@@ -599,11 +636,37 @@ struct MiniChawdView: View {
                 stopExcitedWiggle()
             }
         }
+        .onChange(of: activity) { oldValue, newValue in
+            // Tool-aware activity suppresses random gimmicks (keep blink) — hover wins over all of this.
+            if newValue != nil {
+                gimmickTimer?.invalidate()
+                gimmickTimer = nil
+                cancelGimmickState(animated: true)
+            } else if oldValue != nil {
+                scheduleNextGimmick()
+            }
+
+            if newValue == .waiting {
+                startWaitingTap()
+            } else {
+                stopWaitingTap()
+            }
+
+            if newValue == .celebrating && oldValue != .celebrating {
+                triggerCelebration()
+            }
+        }
         .onAppear {
             isAlive = true
             startBlink()
             startDrowsinessTracker()
             scheduleNextGimmick()
+            if activity == .waiting {
+                startWaitingTap()
+            }
+            if activity == .celebrating {
+                triggerCelebration()
+            }
         }
         .onDisappear {
             isAlive = false
@@ -617,7 +680,8 @@ struct MiniChawdView: View {
             walkTimer = nil
             drowsinessTimer?.invalidate()
             drowsinessTimer = nil
-            // mouseTrackTimer removed
+            waitingTapTimer?.invalidate()
+            waitingTapTimer = nil
         }
     }
 
@@ -650,6 +714,46 @@ struct MiniChawdView: View {
         }
         // Resume gimmick cycle after hover ends
         scheduleNextGimmick()
+    }
+
+    // MARK: - Waiting activity (impatient leg tap)
+
+    private func startWaitingTap() {
+        stopWaitingTap()
+        waitingTapTimer = Timer.scheduledTimer(withTimeInterval: 2.4, repeats: true) { _ in
+            guard isAlive else { return }
+            withAnimation(.spring(response: 0.15, dampingFraction: 0.4)) {
+                waitingLegTap = true
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                guard isAlive else { return }
+                withAnimation(.spring(response: 0.2, dampingFraction: 0.5)) {
+                    waitingLegTap = false
+                }
+            }
+        }
+    }
+
+    private func stopWaitingTap() {
+        waitingTapTimer?.invalidate()
+        waitingTapTimer = nil
+        waitingLegTap = false
+    }
+
+    // MARK: - Celebrating activity (one-shot confetti fall)
+
+    private func triggerCelebration() {
+        guard !reduceMotion else { return }
+        confettiVisible = true
+        confettiFall = 0
+        withAnimation(.easeIn(duration: 1.8)) {
+            confettiFall = 1
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [self] in
+            guard isAlive else { return }
+            confettiVisible = false
+            confettiFall = 0
+        }
     }
 
     // MARK: - Eyes
@@ -782,6 +886,43 @@ struct MiniChawdView: View {
         } else if gimmick == .lookAround {
             px_fill(ctx, ox: ox, oy: oy, px: px, x: 5.5, y: 1.5, w: 0.8, h: 2.5, color: .black)
             px_fill(ctx, ox: ox, oy: oy, px: px, x: 9.5, y: 1.5, w: 0.8, h: 2.5, color: .black)
+        } else if let activity, !excited {
+            // Tool-aware activity eyes (suppressed while hovered/excited or mid-gimmick)
+            switch activity {
+            case .reading:
+                // Focused reading eyes with tiny black glasses over them
+                px_fill(ctx, ox: ox, oy: oy, px: px, x: 5.1, y: 1.9, w: 0.8, h: 1.8, color: .black)
+                px_fill(ctx, ox: ox, oy: oy, px: px, x: 9.1, y: 1.9, w: 0.8, h: 1.8, color: .black)
+                px_fill(ctx, ox: ox, oy: oy, px: px, x: 4.6, y: 1.6, w: 1.8, h: 0.35, color: .black)
+                px_fill(ctx, ox: ox, oy: oy, px: px, x: 4.6, y: 3.85, w: 1.8, h: 0.35, color: .black)
+                px_fill(ctx, ox: ox, oy: oy, px: px, x: 8.6, y: 1.6, w: 1.8, h: 0.35, color: .black)
+                px_fill(ctx, ox: ox, oy: oy, px: px, x: 8.6, y: 3.85, w: 1.8, h: 0.35, color: .black)
+                px_fill(ctx, ox: ox, oy: oy, px: px, x: 6.4, y: 2.4, w: 2.2, h: 0.35, color: .black)
+            case .coding:
+                // Narrow, focused eyes
+                px_fill(ctx, ox: ox, oy: oy, px: px, x: 5.1, y: 1.9, w: 0.7, h: 2.1, color: .black)
+                px_fill(ctx, ox: ox, oy: oy, px: px, x: 9.1, y: 1.9, w: 0.7, h: 2.1, color: .black)
+            case .running:
+                // Determined eyes shifted forward
+                px_fill(ctx, ox: ox, oy: oy, px: px, x: 4.7, y: 1.6, w: 0.9, h: 2.3, color: .black)
+                px_fill(ctx, ox: ox, oy: oy, px: px, x: 8.7, y: 1.6, w: 0.9, h: 2.3, color: .black)
+            case .searching:
+                // One eye normal, one squinted
+                px_fill(ctx, ox: ox, oy: oy, px: px, x: 5, y: 1.5, w: 0.8, h: 2.5, color: .black)
+                px_fill(ctx, ox: ox, oy: oy, px: px, x: 9, y: 2.7, w: 1.2, h: 0.5, color: .black)
+            case .waiting:
+                // Eyes shifted up — looking up impatiently
+                px_fill(ctx, ox: ox, oy: oy, px: px, x: 5, y: 0.8, w: 0.8, h: 2.2, color: .black)
+                px_fill(ctx, ox: ox, oy: oy, px: px, x: 9, y: 0.8, w: 0.8, h: 2.2, color: .black)
+            case .celebrating:
+                // Star eyes
+                px_fill(ctx, ox: ox, oy: oy, px: px, x: 5, y: 2.2, w: 1.2, h: 0.6, color: .black)
+                px_fill(ctx, ox: ox, oy: oy, px: px, x: 5, y: 1.8, w: 0.5, h: 1, color: .black)
+                px_fill(ctx, ox: ox, oy: oy, px: px, x: 5.7, y: 1.8, w: 0.5, h: 1, color: .black)
+                px_fill(ctx, ox: ox, oy: oy, px: px, x: 9, y: 2.2, w: 1.2, h: 0.6, color: .black)
+                px_fill(ctx, ox: ox, oy: oy, px: px, x: 9, y: 1.8, w: 0.5, h: 1, color: .black)
+                px_fill(ctx, ox: ox, oy: oy, px: px, x: 9.7, y: 1.8, w: 0.5, h: 1, color: .black)
+            }
         } else if gimmick == .sparkle || gimmick == .bounce || excited {
             px_fill(ctx, ox: ox, oy: oy, px: px, x: 5, y: 2.2, w: 1.2, h: 0.6, color: .black)
             px_fill(ctx, ox: ox, oy: oy, px: px, x: 5, y: 1.8, w: 0.5, h: 1, color: .black)
@@ -900,7 +1041,21 @@ struct MiniChawdView: View {
             }
             return
         }
-        if gimmick == .doze {
+        if let activity, !excited, gimmick == .none {
+            switch activity {
+            case .reading, .coding, .running:
+                px_fill(ctx, ox: ox, oy: oy, px: px, x: 6.8, y: 5.1, w: 1.8, h: 0.5, color: skinDark)
+            case .searching:
+                px_fill(ctx, ox: ox, oy: oy, px: px, x: 7, y: 5.2, w: 1.5, h: 0.5, color: skinDark)
+            case .waiting:
+                // Slight downturned mouth — impatient
+                px_fill(ctx, ox: ox, oy: oy, px: px, x: 7, y: 5.6, w: 1.4, h: 0.5, color: skinDark)
+            case .celebrating:
+                px_fill(ctx, ox: ox, oy: oy, px: px, x: 6, y: 5.2, w: 3, h: 0.6, color: skinDark)
+                px_fill(ctx, ox: ox, oy: oy, px: px, x: 4, y: 4, w: 1.5, h: 1, color: Color(hex: "E8756B").opacity(0.3))
+                px_fill(ctx, ox: ox, oy: oy, px: px, x: 9.5, y: 4, w: 1.5, h: 1, color: Color(hex: "E8756B").opacity(0.3))
+            }
+        } else if gimmick == .doze {
             px_fill(ctx, ox: ox, oy: oy, px: px, x: 7, y: 5, w: 1.2, h: 1, color: skinDark)
         } else if gimmick == .bounce || gimmick == .sparkle || excited {
             px_fill(ctx, ox: ox, oy: oy, px: px, x: 6, y: 5.2, w: 3, h: 0.6, color: skinDark)
@@ -917,6 +1072,29 @@ struct MiniChawdView: View {
     // MARK: - Extras
 
     private func drawExtras(ctx: GraphicsContext, ox: CGFloat, oy: CGFloat, px: CGFloat) {
+        if activity == .coding, !excited, gimmick == .none {
+            // Tiny pencil pixel held near the claw
+            px_fill(ctx, ox: ox, oy: oy, px: px, x: -0.7, y: 0.4, w: 0.5, h: 2, color: Color(hex: "FBBF24"))
+            px_fill(ctx, ox: ox, oy: oy, px: px, x: -0.7, y: 0.2, w: 0.5, h: 0.4, color: Color(hex: "F87171"))
+        }
+        if activity == .searching, !excited, gimmick == .none {
+            // Squint sparkle
+            px_fill(ctx, ox: ox, oy: oy, px: px, x: 14, y: -1, w: 0.6, h: 0.6, color: .white.opacity(0.6))
+        }
+        if activity == .celebrating, confettiVisible, !excited, gimmick == .none {
+            // Falling confetti — soft accent colors, once per completion
+            let particles: [(x: CGFloat, startY: CGFloat, color: Color)] = [
+                (0, -3, Color(hex: "4ADE80")),
+                (5, -4.5, Color(hex: "60A5FA")),
+                (10, -3.5, Color(hex: "FBBF24")),
+                (14, -2.5, Color(hex: "A78BFA")),
+            ]
+            for particle in particles {
+                let fallY = particle.startY + confettiFall * 9
+                px_fill(ctx, ox: ox, oy: oy, px: px, x: particle.x, y: fallY, w: 0.7, h: 0.7,
+                        color: particle.color.opacity(1 - confettiFall * 0.6))
+            }
+        }
         if gimmick == .yawn && yawnPhase == .peak {
             // Teardrop from yawn
             px_fill(ctx, ox: ox, oy: oy, px: px, x: 12, y: 3.5, w: 0.5, h: 0.8, color: .white.opacity(0.35))
@@ -1003,6 +1181,8 @@ struct MiniChawdView: View {
 
     private func scheduleNextGimmick() {
         guard isAlive else { return }
+        // A tool-aware activity is active — suppress random gimmicks (blink keeps running)
+        guard activity == nil else { return }
         // Respect reduced motion — keep breathing but skip gimmicks
         guard !reduceMotion || forceGimmick != nil else { return }
         let delay: Double
@@ -1739,8 +1919,6 @@ private struct HorizontalOnlyClip: Shape {
     }
 }
 
-// MARK: - Pulse animation modifier
-
 // MARK: - Session grouping by project
 
 struct SessionGroup: Identifiable {
@@ -1771,7 +1949,7 @@ struct AgentBadge: View {
 
     var body: some View {
         Text(source.displayName)
-            .font(.system(size: 7, weight: .semibold, design: .rounded))
+            .font(.system(size: 8, weight: .semibold, design: .rounded))
             .foregroundColor(source.accentColor.opacity(0.9))
             .padding(.horizontal, 4)
             .padding(.vertical, 1)
@@ -1781,16 +1959,3 @@ struct AgentBadge: View {
     }
 }
 
-private struct PulseModifier: ViewModifier {
-    var disabled: Bool = false
-    @State private var pulse = false
-
-    func body(content: Content) -> some View {
-        content
-            .opacity(disabled ? 1.0 : (pulse ? 0.4 : 1.0))
-            .animation(disabled ? nil : .easeInOut(duration: 1.0).repeatForever(autoreverses: true), value: pulse)
-            .onAppear {
-                if !disabled { pulse = true }
-            }
-    }
-}

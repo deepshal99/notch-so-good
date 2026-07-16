@@ -25,6 +25,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Start permission server for approve/deny from the notch
         PermissionServer.shared.start()
 
+        // Global hotkeys: ⌃⌥A approve / ⌃⌥D deny the active permission prompt
+        HotkeyManager.shared.start()
+
+        Telemetry.shared.trackEvent("app_launched")
+
         // Reposition notch panels when displays change (monitor swap, resolution change)
         NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification,

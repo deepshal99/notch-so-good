@@ -54,6 +54,8 @@ struct PhaseIconView: View {
                         .font(.system(size: iconSize, weight: .semibold))
                         .foregroundColor(color)
                         .offset(y: isAnimating ? -0.5 : 0.5)
+                        .opacity(isAnimating ? 1.0 : 0.65)
+                        .scaleEffect(isAnimating ? 1.0 : 0.92)
                         .animation(
                             .easeInOut(duration: 1.0).repeatForever(autoreverses: true),
                             value: isAnimating
@@ -66,6 +68,13 @@ struct PhaseIconView: View {
                         .rotationEffect(.degrees(isAnimating ? 2 : -2))
                         .animation(
                             .easeInOut(duration: 0.3).repeatForever(autoreverses: true),
+                            value: isAnimating
+                        )
+                        // Slower, separate pulse layered under the quicker wobble
+                        .opacity(isAnimating ? 1.0 : 0.65)
+                        .scaleEffect(isAnimating ? 1.0 : 0.92)
+                        .animation(
+                            .easeInOut(duration: 1.2).repeatForever(autoreverses: true),
                             value: isAnimating
                         )
 

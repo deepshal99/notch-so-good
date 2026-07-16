@@ -4,6 +4,7 @@ import ServiceManagement
 
 struct MenuBarSettingsView: View {
     @ObservedObject var notificationManager: NotificationManager
+    @ObservedObject private var statsStore = StatsStore.shared
     let updater: SPUUpdater
 
     @State private var axTrusted = AXIsProcessTrusted()
@@ -64,9 +65,28 @@ struct MenuBarSettingsView: View {
                 toggleRow(icon: "bell.badge", label: "Nudge When Waiting", isOn: $notificationManager.nudgeEnabled)
                 insetSep
                 toggleRow(icon: "play.circle", label: "Launch at Login", isOn: launchAtLoginBinding)
+                insetSep
+                toggleRow(icon: "chart.bar", label: "Anonymous Stats", isOn: $notificationManager.telemetryEnabled)
             }
             .background(cardBg)
             .clipShape(RoundedRectangle(cornerRadius: 10))
+            .padding(.horizontal, 10)
+
+            // === TODAY ===
+            VStack(spacing: 0) {
+                HStack {
+                    Text("TODAY")
+                        .font(.system(size: 8.5, weight: .bold, design: .rounded))
+                        .foregroundColor(dim)
+                        .tracking(0.8)
+                    Spacer()
+                }
+                .padding(.horizontal, 14)
+                .padding(.top, 10)
+                .padding(.bottom, 4)
+
+                todayCard
+            }
             .padding(.horizontal, 10)
 
             // === RECENT NOTIFICATIONS ===
@@ -148,6 +168,33 @@ struct MenuBarSettingsView: View {
         .background(bg)
         .preferredColorScheme(.dark)
         .onAppear { axTrusted = AXIsProcessTrusted() }
+    }
+
+    // MARK: - Today Card ("Chawd's shift report")
+
+    private var todayCard: some View {
+        let stats = statsStore.today
+        let approvals = stats.permissionsApproved
+        let denies = stats.permissionsDenied
+
+        return VStack(spacing: 2) {
+            Text("\(stats.sessionsStarted) sessions · \(stats.tasksCompleted) done · \(StatsStore.formatDuration(stats.activeSeconds)) active")
+                .font(.system(size: 11, weight: .medium, design: .rounded))
+                .foregroundColor(body_)
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+
+            if approvals > 0 || denies > 0 {
+                Text("\u{2318} approvals \(approvals) · denies \(denies)")
+                    .font(.system(size: 9.5, weight: .regular, design: .rounded))
+                    .foregroundColor(dim)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 9)
+        .background(cardBg)
+        .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 
     // MARK: - History Row
