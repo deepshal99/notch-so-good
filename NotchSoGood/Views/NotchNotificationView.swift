@@ -1,5 +1,10 @@
 import SwiftUI
 
+/// Controller→view signal so the exit can mirror the entrance (see PillDataSource pattern).
+final class NotificationPhase: ObservableObject {
+    @Published var dismissing = false
+}
+
 struct NotchNotificationView: View {
     let notification: NotchNotification
     let hasNotch: Bool
@@ -10,7 +15,9 @@ struct NotchNotificationView: View {
     let onApprove: (() -> Void)?
     let onAlwaysAllow: (() -> Void)?
     let onDeny: (() -> Void)?
+    @ObservedObject var phase: NotificationPhase
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var expanded = false
     @State private var contentAppeared = false
     @State private var textRevealed = false
@@ -31,7 +38,8 @@ struct NotchNotificationView: View {
         onDismiss: @escaping () -> Void,
         onApprove: (() -> Void)? = nil,
         onAlwaysAllow: (() -> Void)? = nil,
-        onDeny: (() -> Void)? = nil
+        onDeny: (() -> Void)? = nil,
+        phase: NotificationPhase = NotificationPhase()
     ) {
         self.notification = notification
         self.hasNotch = hasNotch
@@ -42,6 +50,7 @@ struct NotchNotificationView: View {
         self.onApprove = onApprove
         self.onAlwaysAllow = onAlwaysAllow
         self.onDeny = onDeny
+        self.phase = phase
     }
 
     var body: some View {
@@ -54,17 +63,23 @@ struct NotchNotificationView: View {
 
             VStack(spacing: 0) {
                 ZStack(alignment: .top) {
-                    // === ANIMATED GRADIENT GLOW ===
-                    if glowVisible {
-                        glowBorder(width: fullWidth, height: fullHeight)
+                    // === SHAPE LAYER === (only this stretches out of the notch —
+                    // scaling text/mascot non-uniformly distorts them)
+                    Group {
+                        if glowVisible {
+                            glowBorder(width: fullWidth, height: fullHeight)
+                        }
+                        islandShape
+                            .fill(Color.black)
+                            .contentShape(islandShape)
                     }
+                    .scaleEffect(
+                        x: expanded ? 1 : startScaleX,
+                        y: expanded ? 1 : startScaleY,
+                        anchor: .top
+                    )
 
-                    // === BACKGROUND ===
-                    islandShape
-                        .fill(Color.black)
-                        .contentShape(islandShape)
-
-                    // === CONTENT ===
+                    // === CONTENT === (uniform reveal, never squashed)
                     VStack(spacing: 0) {
                         // Info row (non-interactive)
                         infoContent
@@ -88,13 +103,11 @@ struct NotchNotificationView: View {
                     .padding(.top, hasNotch ? notchHeight + 10 : 12)
                     .padding(.horizontal, 20)
                     .padding(.bottom, isPermission ? 18 : 16)
+                    .opacity(contentAppeared ? 1 : 0)
+                    .scaleEffect(contentAppeared ? 1 : 0.96, anchor: .top)
+                    .offset(y: contentAppeared ? 0 : -6)
                 }
                 .frame(width: fullWidth, height: fullHeight)
-                .scaleEffect(
-                    x: expanded ? 1 : startScaleX,
-                    y: expanded ? 1 : startScaleY,
-                    anchor: .top
-                )
                 .contentShape(islandShape)
                 .onTapGesture {
                     if !isPermission { onTap() }
@@ -103,6 +116,17 @@ struct NotchNotificationView: View {
             .frame(width: fullWidth, height: fullHeight, alignment: .top)
         }
         .onAppear(perform: animateIn)
+        .onChange(of: phase.dismissing) { _, dismissing in
+            guard dismissing else { return }
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.85)) {
+                expanded = false
+            }
+            withAnimation(.easeOut(duration: 0.15)) {
+                contentAppeared = false
+                textRevealed = false
+                buttonsRevealed = false
+            }
+        }
     }
 
     // MARK: - Glow
@@ -150,9 +174,9 @@ struct NotchNotificationView: View {
                 .blur(radius: 4)
                 .opacity(textRevealed ? 1 : 0)
         }
-        .animation(.linear(duration: 6).repeatForever(autoreverses: false), value: glowRotation)
+        .animation(reduceMotion ? nil : .linear(duration: 6).repeatForever(autoreverses: false), value: glowRotation)
         .onAppear {
-            glowRotation = 360
+            if !reduceMotion { glowRotation = 360 }
         }
     }
 

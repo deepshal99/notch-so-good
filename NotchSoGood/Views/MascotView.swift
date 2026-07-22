@@ -7,6 +7,7 @@ enum MascotExpression {
 /// Claude's pixel-art mascot — the exact Chawd character with expression variants
 struct MascotView: View {
     let expression: MascotExpression
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var breathe = false
     @State private var blink = false
     @State private var armWave: CGFloat = 0
@@ -36,8 +37,10 @@ struct MascotView: View {
                 .animation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true), value: bounce)
         }
         .onAppear {
-            breathe = true
             startBlink()
+            // Reduce Motion: keep blink (tiny, non-positional), drop the loops
+            guard !reduceMotion else { return }
+            breathe = true
             if expression == .happy {
                 bounce = -2
             }

@@ -72,14 +72,13 @@ curl -fsSL https://raw.githubusercontent.com/deepshal99/notch-so-good/main/get.s
 
 ---
 
-## What's New in 4.2.0
+## What's New in 4.3.0
 
-- **Usage limits in your menu bar** — live session (5-hour) and weekly Claude rate-limit bars with reset countdowns, read straight from your own Claude Code login. Chawd warns you once before you hit the wall.
-- **No more notification spam** — repeated hook events are deduped, alerts you've clicked or dismissed stay quiet until the session actually moves on, and the nudge fires only when a session *enters* a waiting state.
-- **Chawd reacts to the work** — glasses while reading, pencil while editing, confetti when a task lands.
-- **Global hotkeys** — `⌃⌥A` approve / `⌃⌥D` deny permissions from anywhere.
-- **Shift report** — today's sessions, completions, and active time.
-- **Fluid notch curves, redesigned menu, real completion summaries, Launch at Login, Gemini badges.**
+- **Codex limits, side by side with Claude** — the menu shows session and weekly usage bars for both Claude Code and Codex CLI, each with "% left" and a reset countdown, read from your own local logins. No cloud, no accounts.
+- **Control-Center menu** — rebuilt popover: live status header, limits as the hero card, Today stat tiles, an active-sessions card with live timers, and every toggle tucked into a slide-in Settings pane.
+- **Motion overhaul** — the island shrinks back *into* the notch on dismiss, text never stretches, hover reveals land in ~250ms, and Reduce Motion is respected throughout.
+- **Fullscreen-aware pill** — the pill hides when the menu bar does (fullscreen apps) and returns when you leave.
+- **One Keychain prompt, ever** — the limits token is read via Apple's own `security` tool, so "Always Allow" survives every update.
 
 Full history in [Releases](https://github.com/deepshal99/notch-so-good/releases).
 
