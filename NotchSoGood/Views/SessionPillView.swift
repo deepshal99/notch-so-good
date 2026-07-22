@@ -1,16 +1,5 @@
 import SwiftUI
 
-// MARK: - Spring Presets
-
-extension Animation {
-    /// Quick UI responses — hover states, press feedback, small toggles
-    static let snappy = Animation.spring(response: 0.2, dampingFraction: 0.7)
-    /// Standard transitions — expand/collapse, appear/disappear, layout changes
-    static let smooth = Animation.spring(response: 0.35, dampingFraction: 0.75)
-    /// Playful character motion — bounces, wiggles, celebration
-    static let bouncy = Animation.spring(response: 0.25, dampingFraction: 0.5)
-}
-
 /// A Dynamic Island pill that extends the notch left and right while an AI agent is active.
 /// On hover, it expands fluidly to show session details.
 struct SessionPillView: View {
@@ -205,7 +194,7 @@ struct SessionPillView: View {
                 }
                 .opacity(hovered ? 1 : 0)
                 .offset(y: hovered ? 0 : -4)
-                .animation(.smooth.delay(Double(index) * 0.035), value: hovered)
+                .animation(.brisk.delay(min(Double(index) * 0.02, 0.1)), value: hovered)
             }
         }
     }
@@ -1079,10 +1068,6 @@ struct MiniChawdView: View {
             // Tiny pencil pixel held near the claw
             px_fill(ctx, ox: ox, oy: oy, px: px, x: -0.7, y: 0.4, w: 0.5, h: 2, color: Color(hex: "FBBF24"))
             px_fill(ctx, ox: ox, oy: oy, px: px, x: -0.7, y: 0.2, w: 0.5, h: 0.4, color: Color(hex: "F87171"))
-        }
-        if activity == .searching, !excited, gimmick == .none {
-            // Squint sparkle
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: 14, y: -1, w: 0.6, h: 0.6, color: .white.opacity(0.6))
         }
         if activity == .celebrating, confettiVisible, !excited, gimmick == .none {
             // Falling confetti — soft accent colors, once per completion

@@ -11,7 +11,7 @@ Notch So Good is a free, open-source macOS menubar app for developers who run AI
 - Session pill: Dynamic Island-style pill with fluid concave notch curves, Chawd mascot + live timer
 - Tool-aware mascot: Chawd wears glasses while the agent reads, holds a pencil while it edits, celebrates with confetti when a task completes
 - Permission approvals from the notch: Allow / Always Allow / Deny buttons, plus global hotkeys ⌃⌥A / ⌃⌥D
-- Usage limits: session (5-hour) and weekly Claude rate-limit bars with reset countdowns, one warning before you hit the wall
+- Usage limits: session (5-hour) and weekly rate-limit bars for both Claude and Codex, with reset countdowns and one warning before you hit the wall
 - Real completion summaries: Stop notifications show the agent's actual last message from the transcript
 - Shift report: today's sessions, completed tasks, and active time in the menu bar
 - Notification history: recent alerts in the menu bar, click to jump back
@@ -36,7 +36,7 @@ Or: curl -fsSL https://raw.githubusercontent.com/deepshal99/notch-so-good/main/g
 
 ## How it works
 
-Claude Code / Codex hooks send events over a local Unix domain socket (/tmp/notchsogood.sock) that the app listens on. Permission checks are bidirectional: the hook waits for your Allow/Deny from the notch. Usage limits are read from Claude Code's own OAuth credentials (local Keychain) against Anthropic's usage endpoint. No server, no accounts; optional anonymous stats are off unless the build ships a telemetry key.
+Claude Code / Codex hooks send events over a local Unix domain socket (/tmp/notchsogood.sock) that the app listens on. Permission checks are bidirectional: the hook waits for your Allow/Deny from the notch. Usage limits are read from your own local logins — Claude Code's OAuth credentials (Keychain) against Anthropic's usage endpoint, and Codex CLI's ~/.codex/auth.json against the ChatGPT usage endpoint. No server, no accounts; optional anonymous stats are off unless the build ships a telemetry key.
 
 ## Links
 

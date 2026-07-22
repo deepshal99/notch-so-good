@@ -1,6 +1,6 @@
 {
   "name": "notch-so-good",
-  "version": "4.2.0",
+  "version": "4.3.0",
   "description": "The world's smallest coworker lives in your Mac's notch. A pixel-art crab that watches Claude Code, Codex, and Gemini sessions \u2014 notifications, permission approvals, usage limits, and stats.",
   "bin": {
     "notch-so-good": "./install.mjs"

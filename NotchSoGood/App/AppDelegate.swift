@@ -33,6 +33,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         Telemetry.shared.trackEvent("app_launched")
 
+        // Hide/restore the pill when spaces change (fullscreen apps hide the menu bar)
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.activeSpaceDidChangeNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            Task { @MainActor in
+                NotificationManager.shared.windowController.handleSpaceChange()
+            }
+        }
+
         // Reposition notch panels when displays change (monitor swap, resolution change)
         NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification,

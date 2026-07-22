@@ -12,6 +12,9 @@ class NotchWindowController {
     private var pillPanel: NotchPanel?
     private var dismissTimer: Timer?
     private var isDismissing = false
+    /// Bumped whenever a dismiss starts or a new notification takes over the
+    /// panel — lets the deferred dismiss completion detect it went stale.
+    private var dismissGeneration = 0
     private var hasPillSession = false
     /// True while a notification is on screen — prevents refreshPill from fighting with the pill's hidden state.
     private var isNotificationActive = false
@@ -21,6 +24,8 @@ class NotchWindowController {
 
     // Track current permission notification so we can dismiss it programmatically
     private var activePermissionRequestId: String?
+    /// Exit-animation signal for the currently visible notification
+    private var notificationPhase: NotificationPhase?
 
     // Permission queue — when multiple tools need approval simultaneously
     private var permissionQueue: [NotchNotification] = []
@@ -102,6 +107,8 @@ class NotchWindowController {
         // Don't show/restore the pill while a notification is on screen —
         // the notification owns the notch area and dismiss() will restore the pill.
         guard !isNotificationActive else { return }
+        // No menu bar (fullscreen space) — nothing to blend into, stay hidden.
+        guard !isMenuBarHidden else { return }
 
         guard let pillPanel else { return }
         if !pillPanel.isVisible {
@@ -117,8 +124,8 @@ class NotchWindowController {
         pillHoverMonitor.stop()
 
         NSAnimationContext.runAnimationGroup({ context in
-            context.duration = 0.3
-            context.timingFunction = CAMediaTimingFunction(name: .easeIn)
+            context.duration = 0.22
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
             pillPanel?.animator().alphaValue = 0
         }, completionHandler: { [weak self] in
             self?.pillPanel?.orderOut(nil)
@@ -128,6 +135,25 @@ class NotchWindowController {
 
     var isShowingPill: Bool {
         pillPanel?.isVisible ?? false
+    }
+
+    /// True when the notch screen's menu bar is hidden (fullscreen space):
+    /// there's no black backdrop to blend into, so the pill would float as a
+    /// blob over the app's own UI.
+    private var isMenuBarHidden: Bool {
+        let screen = NSScreen.screens.first(where: { $0.safeAreaInsets.top > 0 }) ?? NSScreen.main
+        guard let screen else { return false }
+        return screen.visibleFrame.maxY >= screen.frame.maxY - 1
+    }
+
+    /// Space changed (fullscreen in/out, desktop switch) — hide or restore the pill.
+    @MainActor func handleSpaceChange() {
+        if isMenuBarHidden {
+            pillHoverMonitor.stop()
+            pillPanel?.orderOut(nil)
+        } else if !isNotificationActive {
+            restorePillIfNeeded()
+        }
     }
 
     /// Rebuild/reposition panels after display configuration changes
@@ -174,6 +200,10 @@ class NotchWindowController {
 
         dismissTimer?.invalidate()
         isNotificationActive = true
+        // This notification takes over the panel — invalidate any in-flight
+        // dismiss so its deferred fade can't order out the new content.
+        dismissGeneration &+= 1
+        isDismissing = false
 
         // Hide pill while notification is visible — set alpha directly (not animated)
         // to prevent a stale animation from overwriting alpha if refreshPill runs later.
@@ -213,6 +243,9 @@ class NotchWindowController {
 
         activePermissionRequestId = notification.permissionRequestId
 
+        let phase = NotificationPhase()
+        notificationPhase = phase
+
         let view = NotchNotificationView(
             notification: notification,
             hasNotch: hasNotch,
@@ -248,7 +281,8 @@ class NotchWindowController {
                 PermissionServer.shared.respond(requestId: reqId, response: .deny)
                 self?.activePermissionRequestId = nil
                 self?.dismiss()
-            } : nil
+            } : nil,
+            phase: phase
         )
 
         let hostingView = TransparentHostingView(rootView: AnyView(view))
@@ -334,20 +368,38 @@ class NotchWindowController {
             return
         }
 
-        // Fast exit
-        NSAnimationContext.runAnimationGroup({ context in
-            context.duration = 0.18
-            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
-            panel.animator().alphaValue = 0
-        }, completionHandler: { [weak self] in
-            self?.panel?.orderOut(nil)
-            self?.panel?.alphaValue = 1.0
-            self?.isDismissing = false
-            self?.isNotificationActive = false
-            Task { @MainActor [weak self] in
-                self?.restorePillIfNeeded()
-            }
-        })
+        // View-driven exit first — the island shrinks back into the notch —
+        // then a short window fade catches whatever's left.
+        notificationPhase?.dismissing = true
+        notificationPhase = nil
+
+        dismissGeneration &+= 1
+        let generation = dismissGeneration
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.24) { [weak self] in
+            // A new notification took over the panel mid-dismiss — leave it alone.
+            guard let self, self.dismissGeneration == generation else { return }
+            NSAnimationContext.runAnimationGroup({ context in
+                context.duration = 0.15
+                context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                panel.animator().alphaValue = 0
+            }, completionHandler: { [weak self] in
+                guard let self else { return }
+                guard self.dismissGeneration == generation else {
+                    // Takeover happened mid-fade: the new notification owns the
+                    // panel — just make sure it's visible again.
+                    if self.isNotificationActive { self.panel?.alphaValue = 1.0 }
+                    return
+                }
+                self.panel?.orderOut(nil)
+                self.panel?.alphaValue = 1.0
+                self.isDismissing = false
+                self.isNotificationActive = false
+                Task { @MainActor [weak self] in
+                    self?.restorePillIfNeeded()
+                }
+            })
+        }
     }
 
     /// Restore the session pill after a notification dismisses, but only if sessions are still active.
@@ -360,6 +412,8 @@ class NotchWindowController {
             }
             return
         }
+
+        guard !isMenuBarHidden else { return }
 
         // Sessions are active — restore the pill panel
         if let pillPanel {

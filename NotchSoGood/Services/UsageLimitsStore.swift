@@ -1,12 +1,20 @@
 import Foundation
 import Security
 
-/// Live Claude Code rate-limit status for the menu bar — mirrors the iOS
-/// "Limits" widget. Reads the Claude Code OAuth token from the login Keychain
-/// and polls the (undocumented) usage endpoint that powers `/usage` in the CLI:
+/// Live rate-limit status for the menu bar — mirrors the iOS "Limits" widget,
+/// extended to also cover OpenAI Codex CLI. For Claude Code it reads the OAuth
+/// token from the login Keychain and polls the (undocumented) usage endpoint
+/// that powers `/usage` in the CLI:
 /// GET https://api.anthropic.com/api/oauth/usage
 /// → {"five_hour":{"utilization":37.0,"resets_at":"ISO8601"},"seven_day":{...},
 ///    "seven_day_opus":{...}, ...} where utilization is percent used (0–100).
+/// For Codex CLI it reads the OAuth token from ~/.codex/auth.json and polls
+/// the (undocumented) endpoint that powers the ChatGPT web usage dashboard:
+/// GET https://chatgpt.com/backend-api/wham/usage
+/// → {"rate_limit":{"primary_window":{"used_percent":9,"reset_at":<epoch>,
+///    "limit_window_seconds":18000},"secondary_window":{...}}} where
+/// primary_window is the rolling 5-hour "Session" window and secondary_window
+/// is the rolling weekly "Weekly" window.
 /// Everything is best-effort: any failure quietly clears the windows.
 @MainActor
 final class UsageLimitsStore: ObservableObject {
@@ -16,7 +24,8 @@ final class UsageLimitsStore: ObservableObject {
         let label: String        // "Session", "Weekly", "Weekly · Opus", ...
         let percentLeft: Int     // 0–100
         let resetsAt: Date?
-        var id: String { label }
+        var source: AgentSource = .claude
+        var id: String { "\(source.rawValue)_\(label)" }
     }
 
     @Published var windows: [LimitWindow] = []
@@ -53,12 +62,19 @@ final class UsageLimitsStore: ObservableObject {
         isFetching = true
 
         Task { [weak self] in
-            // Runs off the main actor — first Keychain read may prompt once.
-            let fetched = await Self.fetchWindows()
+            // Runs off the main actor — first Keychain/file read may prompt once.
+            // Claude and Codex are independent sources; fetch concurrently so a
+            // slow or failing one never blocks the other.
+            async let claudeFetch = Self.fetchWindows()
+            async let codexFetch = Self.fetchCodexWindows()
+            let claudeWindows = await claudeFetch
+            let codexWindows = await codexFetch
             guard let self else { return }
             self.isFetching = false
-            if let fetched {
-                self.windows = fetched
+            // Ordering contract: all Claude windows first, then Codex.
+            let combined = (claudeWindows ?? []) + (codexWindows ?? [])
+            if !combined.isEmpty {
+                self.windows = combined
                 self.lastUpdated = Date()
                 self.checkLowSessionLimit()
             } else {
@@ -70,7 +86,7 @@ final class UsageLimitsStore: ObservableObject {
     // MARK: - Low-limit warning
 
     private func checkLowSessionLimit() {
-        guard let session = windows.first(where: { $0.label == "Session" }),
+        guard let session = windows.first(where: { $0.source == .claude && $0.label == "Session" }),
               session.percentLeft < 10 else { return }
         // Dedupe on the reset timestamp so we fire once per 5-hour window.
         let key = session.resetsAt.map { String($0.timeIntervalSince1970) } ?? "unknown"
@@ -90,8 +106,10 @@ final class UsageLimitsStore: ObservableObject {
     /// "4h 30m" / "45m" countdown until a window resets.
     static func resetCountdown(_ date: Date) -> String {
         let secs = max(0, Int(date.timeIntervalSinceNow))
-        let hours = secs / 3600
+        let days = secs / 86400
+        let hours = (secs % 86400) / 3600
         let minutes = (secs % 3600) / 60
+        if days > 0 { return "\(days)d \(hours)h" }
         if hours > 0 { return "\(hours)h \(minutes)m" }
         return "\(minutes)m"
     }
@@ -127,17 +145,27 @@ final class UsageLimitsStore: ObservableObject {
     /// Keychain (service "Claude Code-credentials"); older installs may use
     /// ~/.claude/.credentials.json. Both hold {"claudeAiOauth":{"accessToken":...}}.
     nonisolated private static func loadAccessToken() -> String? {
+        // Read via /usr/bin/security (Apple-signed, stable identity): one
+        // "Always Allow" then survives app updates. SecItemCopyMatching from
+        // this ad-hoc-signed binary would re-prompt after every re-sign.
         var data: Data?
 
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: "Claude Code-credentials",
-            kSecMatchLimit as String: kSecMatchLimitOne,
-            kSecReturnData as String: true,
-        ]
-        var item: CFTypeRef?
-        if SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess {
-            data = item as? Data
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/security")
+        task.arguments = ["find-generic-password", "-s", "Claude Code-credentials", "-w"]
+        let pipe = Pipe()
+        task.standardOutput = pipe
+        task.standardError = FileHandle.nullDevice
+        if (try? task.run()) != nil {
+            task.waitUntilExit()
+            if task.terminationStatus == 0 {
+                let out = pipe.fileHandleForReading.readDataToEndOfFile()
+                if let raw = String(data: out, encoding: .utf8)?
+                    .trimmingCharacters(in: .whitespacesAndNewlines),
+                   !raw.isEmpty {
+                    data = raw.data(using: .utf8)
+                }
+            }
         }
 
         if data == nil {
@@ -234,6 +262,94 @@ final class UsageLimitsStore: ObservableObject {
             if let endIndex = tail.firstIndex(where: { !$0.isNumber }) {
                 return plain.date(from: String(raw[..<dotIndex]) + String(raw[endIndex...]))
             }
+        }
+        return nil
+    }
+
+    // MARK: - Codex (off main actor)
+
+    /// Mirrors `fetchWindows()` above but for OpenAI Codex CLI. Reads the
+    /// OAuth token Codex CLI stores at ~/.codex/auth.json and polls the
+    /// (undocumented) endpoint that backs the ChatGPT web usage dashboard.
+    /// Any failure — missing file, missing token, network error, or an
+    /// unexpected response shape — is silent and returns nil; it never crashes.
+    nonisolated private static func fetchCodexWindows() async -> [LimitWindow]? {
+        guard let credentials = loadCodexCredentials(),
+              let url = URL(string: "https://chatgpt.com/backend-api/wham/usage") else { return nil }
+
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(credentials.accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("NotchSoGood/1.0", forHTTPHeaderField: "User-Agent")
+        if let accountId = credentials.accountId, !accountId.isEmpty {
+            request.setValue(accountId, forHTTPHeaderField: "ChatGPT-Account-Id")
+        }
+        request.timeoutInterval = 15
+
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200,
+                  let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                return nil
+            }
+            return parseCodexWindows(json)
+        } catch {
+            return nil
+        }
+    }
+
+    /// Codex CLI stores OAuth creds as JSON at ~/.codex/auth.json:
+    /// {"tokens":{"access_token":...,"account_id":...}, ...} (some builds use
+    /// camelCase keys instead — both are accepted defensively).
+    nonisolated private static func loadCodexCredentials() -> (accessToken: String, accountId: String?)? {
+        let fileURL = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".codex/auth.json")
+        guard let data = try? Data(contentsOf: fileURL),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let tokens = json["tokens"] as? [String: Any],
+              let accessToken = (tokens["access_token"] as? String) ?? (tokens["accessToken"] as? String),
+              !accessToken.isEmpty else { return nil }
+        let accountId = (tokens["account_id"] as? String) ?? (tokens["accountId"] as? String)
+        return (accessToken, accountId)
+    }
+
+    nonisolated private static func parseCodexWindows(_ json: [String: Any]) -> [LimitWindow] {
+        guard let rateLimit = json["rate_limit"] as? [String: Any] else { return [] }
+        var result: [LimitWindow] = []
+
+        func append(label: String, dict: [String: Any]?) {
+            guard let dict,
+                  let usedPercent = (dict["used_percent"] as? NSNumber)?.doubleValue else { return }
+            let left = max(0, min(100, 100 - Int(usedPercent.rounded())))
+            result.append(LimitWindow(
+                label: label,
+                percentLeft: left,
+                resetsAt: codexResetDate(from: dict),
+                source: .codex))
+        }
+
+        // primary_window = rolling 5-hour window, secondary_window = rolling weekly window.
+        append(label: "Session", dict: rateLimit["primary_window"] as? [String: Any])
+        append(label: "Weekly", dict: rateLimit["secondary_window"] as? [String: Any])
+
+        return result
+    }
+
+    /// The endpoint has been observed to report the reset either as an
+    /// absolute epoch timestamp ("reset_at" / "resets_at") or as a countdown
+    /// in seconds ("resets_in_seconds"); an ISO8601 string is accepted too.
+    nonisolated private static func codexResetDate(from dict: [String: Any]) -> Date? {
+        if let seconds = (dict["resets_in_seconds"] as? NSNumber)?.doubleValue {
+            return Date().addingTimeInterval(seconds)
+        }
+        if let epoch = (dict["reset_at"] as? NSNumber)?.doubleValue {
+            return Date(timeIntervalSince1970: epoch)
+        }
+        if let epoch = (dict["resets_at"] as? NSNumber)?.doubleValue {
+            return Date(timeIntervalSince1970: epoch)
+        }
+        if let raw = (dict["reset_at"] as? String) ?? (dict["resets_at"] as? String) {
+            return parseDate(raw)
         }
         return nil
     }
