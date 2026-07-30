@@ -1,0 +1,44 @@
+name: Collect metrics
+
+# GitHub only retains 14 days of traffic data. This runs daily so clone/view
+# history is preserved in-repo permanently instead of silently rolling off.
+
+on:
+  schedule:
+    # 04:00 UTC daily — after npm has settled the previous day's counts.
+    - cron: "0 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: metrics
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Collect
+        env:
+          # The traffic endpoints need push access. The default GITHUB_TOKEN is
+          # usually sufficient here, but if the run reports HTTP 403 for traffic,
+          # add a fine-grained PAT with "Administration: read" as METRICS_TOKEN.
+          GITHUB_TOKEN: ${{ secrets.METRICS_TOKEN || secrets.GITHUB_TOKEN }}
+        run: python3 scripts/collect-metrics.py | tee "$GITHUB_STEP_SUMMARY"
+
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add metrics/
+          # No-op on days where nothing changed, so history stays meaningful.
+          if git diff --staged --quiet; then
+            echo "No metrics changes."
+          else
+            git commit -m "chore(metrics): daily snapshot"
+            git push
+          fi
