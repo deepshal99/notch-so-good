@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<title>Notch So Good — Know when Claude Code needs you, from your Mac's notch</title>
+<meta name="description" content="A free macOS app that puts a pixel-art crab in your MacBook's notch to watch Claude Code and Codex CLI. Live session timers, completion alerts, in-notch permission approvals, and usage-limit bars. Open source, no accounts, no cloud service.">
+<link rel="canonical" href="https://deepshal99.github.io/notch-so-good/">
+
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://deepshal99.github.io/notch-so-good/">
+<meta property="og:title" content="Notch So Good — the world's smallest coworker lives in your Mac's notch">
+<meta property="og:description" content="A pixel-art crab called Chawd watches Claude Code and Codex CLI so you don't have to. Free, open source, macOS 14+.">
+<meta property="og:image" content="https://deepshal99.github.io/notch-so-good/icon-512.png">
+<meta property="og:image:width" content="1024">
+<meta property="og:image:height" content="1024">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Notch So Good — a crab in your notch that watches Claude Code">
+<meta name="twitter:description" content="Live session timers, completion alerts, and permission approvals — right in your MacBook's notch. Free and open source.">
+<meta name="twitter:image" content="https://deepshal99.github.io/notch-so-good/icon-512.png">
+
+<link rel="icon" href="icon-128.png" type="image/png">
+<link rel="apple-touch-icon" href="icon-256.png">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "Notch So Good",
+  "description": "A macOS menubar app that puts an animated pixel-art crab in your MacBook's notch to monitor AI coding agents — Claude Code and OpenAI Codex CLI. Shows live session timers, completion notifications, in-notch permission approvals, and rate-limit usage bars.",
+  "applicationCategory": "DeveloperApplication",
+  "operatingSystem": "macOS 14.0 or later",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+  "license": "https://opensource.org/licenses/MIT",
+  "isAccessibleForFree": true,
+  "url": "https://deepshal99.github.io/notch-so-good/",
+  "downloadUrl": "https://github.com/deepshal99/notch-so-good/releases",
+  "codeRepository": "https://github.com/deepshal99/notch-so-good",
+  "author": { "@type": "Person", "name": "Deepak Maurya", "url": "https://github.com/deepshal99" },
+  "image": "https://deepshal99.github.io/notch-so-good/icon-512.png",
+  "featureList": [
+    "Dynamic Island-style session pill with live timer",
+    "Completion notifications with the agent's actual last message",
+    "Permission approvals from the notch with Allow / Always Allow / Deny",
+    "Session and weekly usage-limit bars for Claude Code and Codex CLI",
+    "Multi-agent and multi-session support with per-project grouping",
+    "17 idle animations and a drowsiness system"
+  ]
+}
+</script>
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "How do I know when Claude Code is done?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Install Notch So Good. When a session finishes, your notch expands into a green completion notification showing the agent's actual last message. Click it to jump straight back to the terminal tab that ran the session." }
+    },
+    {
+      "@type": "Question",
+      "name": "Which AI coding agents does it support?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Claude Code and OpenAI Codex CLI are fully supported — each has its own hook installer. Gemini CLI sessions are detected and badged, but there is no Gemini hook installer yet, so that support is partial. Sessions from different agents get their own badges so you can tell them apart when several run at once." }
+    },
+    {
+      "@type": "Question",
+      "name": "Do I need a MacBook with a notch?",
+      "acceptedAnswer": { "@type": "Answer", "text": "No. On Macs without a notch, notifications appear centered below the menu bar instead. The notch is nicer, but nothing breaks without one." }
+    },
+    {
+      "@type": "Question",
+      "name": "Is it free?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Yes. Notch So Good is free and open source under the MIT license. There are no accounts, no subscription, and no paid tier." }
+    },
+    {
+      "@type": "Question",
+      "name": "Does it send my code or prompts anywhere?",
+      "acceptedAnswer": { "@type": "Answer", "text": "No. Your prompts, code, and file paths never leave your machine — hooks talk to the app over a local Unix domain socket at /tmp/notchsogood.sock, and there is no server of ours and no telemetry in shipped builds. One honest exception: if you use the usage-limit bars, the app calls Anthropic's and OpenAI's own usage endpoints about every 10 minutes using your existing local tokens, the same way those CLIs do. That traffic goes to those providers, never to us." }
+    },
+    {
+      "@type": "Question",
+      "name": "How does it read my usage limits? Is that safe?",
+      "acceptedAnswer": { "@type": "Answer", "text": "It reads your own existing local logins — Claude Code's OAuth credentials via Apple's security tool, and Codex CLI's ~/.codex/auth.json — and calls the same usage endpoints those CLIs already use. Nothing is stored or transmitted anywhere else. macOS asks for Keychain access once; choose Always Allow and it won't ask again." }
+    },
+    {
+      "@type": "Question",
+      "name": "Why does macOS say the app is from an unidentified developer?",
+      "acceptedAnswer": { "@type": "Answer", "text": "The app is ad-hoc signed but not notarized, because notarization requires a paid Apple Developer account. Installing via Homebrew handles this automatically. For manual installs, run: xattr -dr com.apple.quarantine /Applications/NotchSoGood.app" }
+    },
+    {
+      "@type": "Question",
+      "name": "Does it work with iTerm, Warp, tmux, and the VS Code terminal?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Yes. Clicking a notification focuses the exact terminal tab that started the session, across common terminal apps. tmux sessions work too." }
+    },
+    {
+      "@type": "Question",
+      "name": "How is this different from a terminal bell or a macOS notification?",
+      "acceptedAnswer": { "@type": "Answer", "text": "A terminal bell is easy to miss and tells you nothing. Standard notifications pile up in Notification Center and interrupt what you're doing. Notch So Good lives in the notch, stays glanceable, shows a live timer while the agent works, and lets you approve permission requests without switching windows." }
+    },
+    {
+      "@type": "Question",
+      "name": "Does it slow down my Mac?",
+      "acceptedAnswer": { "@type": "Answer", "text": "No. It is a native SwiftUI menubar app with no Electron and no browser engine. It idles at effectively zero CPU and only does work when a hook event arrives." }
+    },
+    {
+      "@type": "Question",
+      "name": "Which macOS versions are supported?",
+      "acceptedAnswer": { "@type": "Answer", "text": "macOS 14 (Sonoma) or later, on both Apple Silicon and Intel Macs." }
+    },
+    {
+      "@type": "Question",
+      "name": "How do I uninstall it?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Run: curl -fsSL https://raw.githubusercontent.com/deepshal99/notch-so-good/main/uninstall.sh | bash — or brew uninstall --cask notch-so-good --zap if you installed via Homebrew." }
+    }
+  ]
+}
+</script>
+
+<style>
+  :root {
+    --bg: #000;
+    --surface: #0c0c0d;
+    --surface-2: #131315;
+    --text: #f5f5f7;
+    --text-dim: #a1a1a6;
+    --text-faint: #6e6e73;
+    --hairline: rgba(255, 255, 255, .09);
+    --skin: #C4896C;
+    --skin-light: #D49A7C;
+    --skin-dark: #B07A5E;
+    --blush: #E8756B;
+    --mouth: #A06850;
+    --green: #4ADE80;
+    --blue: #60A5FA;
+    --orange: #FB923C;
+    --purple: #C084FC;
+    --ease: cubic-bezier(.2, 0, 0, 1);
+    /* Concentric radii: each inner surface is its parent minus its padding. */
+    --r-card: 18px;
+    --r-inner: 12px;
+    --r-chip: 8px;
+  }
+
+  * { box-sizing: border-box; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+    font-size: 17px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  a { color: var(--text); text-decoration: none; }
+
+  code, kbd, .mono {
+    font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+    font-variant-ligatures: none;
+  }
+
+  .wrap { max-width: 760px; margin: 0 auto; padding: 0 24px; }
+
+  h1, h2, h3 { text-wrap: balance; letter-spacing: -.021em; margin: 0; }
+  p { text-wrap: pretty; }
+
+  /* ---------- Hero ---------- */
+
+  header { padding: 72px 0 8px; text-align: center; }
+
+  /* Mock menu bar + notch pill. The concave joins where the pill meets the bar
+     are drawn with radial-gradient corners, which is what makes it read as
+     hardware rather than a floating overlay. */
+  .screen {
+    position: relative;
+    max-width: 560px;
+    margin: 0 auto 56px;
+    border-radius: var(--r-card);
+    background:
+      radial-gradient(120% 100% at 50% 0%, #1d1d20 0%, #0a0a0b 60%, #050506 100%);
+    box-shadow:
+      0 0 0 1px rgba(255,255,255,.07),
+      0 1px 2px rgba(0,0,0,.6),
+      0 12px 32px -8px rgba(0,0,0,.8),
+      0 40px 80px -24px rgba(0,0,0,.9);
+    padding: 0 0 44px;
+    overflow: hidden;
+  }
+
+  .menubar {
+    position: relative;
+    height: 26px;
+    background: #000;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding-right: 12px;
+    gap: 10px;
+  }
+
+  .menubar-dot { width: 5px; height: 5px; border-radius: 50%; background: rgba(255,255,255,.25); }
+
+  .pill-mount { display: flex; justify-content: center; margin-top: -1px; }
+
+  .pill {
+    position: relative;
+    background: #000;
+    border-radius: 0 0 16px 16px;
+    height: 34px;
+    padding: 0 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  /* Inverse (concave) corners joining the pill to the menu bar. */
+  .pill::before, .pill::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    width: 11px;
+    height: 11px;
+    background: radial-gradient(circle at 0 100%, transparent 0 10px, #000 10.5px);
+  }
+  .pill::before { left: -11px; }
+  .pill::after  { right: -11px; transform: scaleX(-1); }
+
+  .crab { width: 26px; height: 20px; display: block; }
+  .crab-antenna { animation: sway 3.2s var(--ease) infinite; transform-origin: 10px 3px; }
+  @keyframes sway { 0%,100% { transform: rotate(-5deg); } 50% { transform: rotate(5deg); } }
+
+  .timer {
+    font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+    /* Prevents the pill from jittering as the digits tick over. */
+    font-variant-numeric: tabular-nums;
+    font-size: 13px;
+    color: var(--text);
+    letter-spacing: .01em;
+  }
+
+  .status-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--green);
+    box-shadow: 0 0 8px var(--green);
+    animation: pulse 2s var(--ease) infinite;
+  }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+
+  h1 { font-size: clamp(34px, 6vw, 52px); line-height: 1.08; font-weight: 700; }
+  .sub { font-size: clamp(17px, 2.2vw, 20px); color: var(--text-dim); margin: 18px auto 0; max-width: 30em; }
+
+  /* ---------- Install ---------- */
+
+  .install { margin: 36px auto 0; max-width: 520px; }
+
+  .cmd {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: var(--surface-2);
+    border-radius: var(--r-inner);
+    box-shadow: 0 0 0 1px var(--hairline), 0 1px 2px rgba(0,0,0,.4);
+    padding: 6px 6px 6px 16px;
+    text-align: left;
+  }
+
+  /* min-width:0 is required — a flex item defaults to min-width:auto, which would
+     let the nowrap command push the whole page wider than the viewport on mobile. */
+  .cmd code { flex: 1; min-width: 0; font-size: 14px; color: var(--text); overflow-x: auto; white-space: nowrap; }
+  .cmd code .prompt { color: var(--text-faint); user-select: none; }
+
+  .copy {
+    position: relative;
+    flex-shrink: 0;
+    /* 40px minimum hit area. */
+    width: 40px; height: 40px;
+    border: 0;
+    border-radius: var(--r-chip);
+    background: rgba(255,255,255,.07);
+    color: var(--text-dim);
+    cursor: pointer;
+    transition-property: background-color, color, scale;
+    transition-duration: .18s;
+    transition-timing-function: var(--ease);
+  }
+  .copy:hover { background: rgba(255,255,255,.12); color: var(--text); }
+  .copy:active { scale: .96; }
+  .copy svg {
+    position: absolute; inset: 0; margin: auto;
+    width: 16px; height: 16px;
+    transition-property: opacity, scale, filter;
+    transition-duration: .22s;
+    transition-timing-function: var(--ease);
+  }
+  /* Both icons stay in the DOM and cross-fade, so the swap animates both ways. */
+  .copy .ico-check { opacity: 0; scale: .25; filter: blur(4px); color: var(--green); }
+  .copy .ico-copy  { opacity: 1; scale: 1;   filter: blur(0); }
+  .copy.done .ico-check { opacity: 1; scale: 1;   filter: blur(0); }
+  .copy.done .ico-copy  { opacity: 0; scale: .25; filter: blur(4px); }
+
+  .alt { margin-top: 14px; font-size: 14px; color: var(--text-faint); }
+  .alt code { color: var(--text-dim); }
+  .req { margin-top: 22px; font-size: 14px; color: var(--text-faint); }
+
+  /* ---------- Sections ---------- */
+
+  section { padding: 64px 0; border-top: 1px solid var(--hairline); }
+  section:first-of-type { border-top: 0; }
+  h2 { font-size: 27px; font-weight: 650; margin-bottom: 8px; }
+  .lede { color: var(--text-dim); margin: 0 0 32px; }
+
+  /* min() keeps the track from exceeding the viewport on narrow screens. */
+  .grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(min(228px, 100%), 1fr)); }
+
+  .card {
+    background: var(--surface);
+    border-radius: var(--r-card);
+    box-shadow: 0 0 0 1px var(--hairline), 0 1px 3px rgba(0,0,0,.5);
+    padding: 20px;
+  }
+  .card h3 { font-size: 16px; font-weight: 620; margin-bottom: 6px; }
+  .card p { margin: 0; font-size: 15px; color: var(--text-dim); line-height: 1.55; }
+  .tag { display: inline-block; font-size: 11px; font-weight: 600; letter-spacing: .04em;
+         text-transform: uppercase; padding: 3px 7px; border-radius: 5px; margin-bottom: 10px; }
+  .t-green  { color: var(--green);  background: rgba(74,222,128,.12); }
+  .t-blue   { color: var(--blue);   background: rgba(96,165,250,.12); }
+  .t-orange { color: var(--orange); background: rgba(251,146,60,.12); }
+  .t-purple { color: var(--purple); background: rgba(192,132,252,.12); }
+
+  .flow {
+    background: var(--surface);
+    border-radius: var(--r-card);
+    box-shadow: 0 0 0 1px var(--hairline);
+    padding: 22px;
+    font-size: 14px;
+    line-height: 2.1;
+    color: var(--text-dim);
+    overflow-x: auto;
+  }
+  .flow b { color: var(--text); font-weight: 550; }
+
+  /* ---------- FAQ ---------- */
+
+  .faq { display: grid; gap: 26px; }
+  /* minmax(0,1fr) + break-anywhere: the long curl/xattr URLs in the answers are
+     single unbreakable tokens and would otherwise widen the grid past the viewport. */
+  .faq { grid-template-columns: minmax(0, 1fr); }
+  .faq > div { min-width: 0; }
+  .faq h3 { font-size: 17px; font-weight: 620; margin-bottom: 6px; }
+  .faq p { margin: 0; color: var(--text-dim); font-size: 15.5px; }
+  .faq code { font-size: 13px; background: var(--surface-2); padding: 2px 6px; border-radius: 5px; color: var(--text-dim); overflow-wrap: anywhere; }
+
+  /* ---------- Footer ---------- */
+
+  footer { padding: 56px 0 72px; border-top: 1px solid var(--hairline); text-align: center; color: var(--text-faint); font-size: 14px; }
+  .links { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-bottom: 26px; }
+  .links a {
+    padding: 9px 16px;
+    border-radius: var(--r-chip);
+    background: rgba(255,255,255,.06);
+    font-size: 14px;
+    color: var(--text-dim);
+    transition-property: background-color, color, scale;
+    transition-duration: .18s;
+    transition-timing-function: var(--ease);
+  }
+  .links a:hover { background: rgba(255,255,255,.11); color: var(--text); }
+  .links a:active { scale: .96; }
+
+  /* Enter animation: split into semantic chunks and staggered, rather than
+     fading the whole page in as one block. */
+  .rise { opacity: 0; transform: translateY(12px); animation: rise .6s var(--ease) forwards; }
+  .rise:nth-child(1) { animation-delay: .05s; }
+  .rise:nth-child(2) { animation-delay: .15s; }
+  .rise:nth-child(3) { animation-delay: .25s; }
+  .rise:nth-child(4) { animation-delay: .35s; }
+  .rise:nth-child(5) { animation-delay: .45s; }
+  @keyframes rise { to { opacity: 1; transform: none; } }
+
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    *, *::before, *::after {
+      animation-duration: .001s !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: .001s !important;
+    }
+    .rise { opacity: 1; transform: none; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+
+    <div class="screen rise">
+      <div class="menubar">
+        <span class="menubar-dot"></span>
+        <span class="menubar-dot"></span>
+        <span class="menubar-dot"></span>
+      </div>
+      <div class="pill-mount">
+        <div class="pill">
+          <!-- Chawd, drawn with the app's real palette. shape-rendering keeps
+               the pixel edges hard at any scale. -->
+          <svg class="crab" viewBox="0 0 20 15" shape-rendering="crispEdges" aria-hidden="true">
+            <g class="crab-antenna">
+              <rect x="9" y="0" width="1" height="3" fill="#FB923C"/>
+              <rect x="9" y="0" width="2" height="1" fill="#FB923C"/>
+            </g>
+            <!-- claws -->
+            <rect x="1" y="4"  width="2" height="1" fill="var(--skin-light)"/>
+            <rect x="0" y="5"  width="3" height="2" fill="var(--skin)"/>
+            <rect x="1" y="7"  width="2" height="1" fill="var(--skin-dark)"/>
+            <rect x="17" y="4" width="2" height="1" fill="var(--skin-light)"/>
+            <rect x="17" y="5" width="3" height="2" fill="var(--skin)"/>
+            <rect x="17" y="7" width="2" height="1" fill="var(--skin-dark)"/>
+            <!-- body -->
+            <rect x="6" y="3"  width="8"  height="1" fill="var(--skin-light)"/>
+            <rect x="5" y="4"  width="10" height="1" fill="var(--skin-light)"/>
+            <rect x="4" y="5"  width="12" height="5" fill="var(--skin)"/>
+            <rect x="5" y="10" width="10" height="1" fill="var(--skin-dark)"/>
+            <rect x="6" y="11" width="8"  height="1" fill="var(--skin-dark)"/>
+            <!-- eyes -->
+            <rect x="6"  y="6" width="3" height="3" fill="#fdfdfd"/>
+            <rect x="11" y="6" width="3" height="3" fill="#fdfdfd"/>
+            <rect x="7"  y="7" width="2" height="2" fill="#1a1416"/>
+            <rect x="12" y="7" width="2" height="2" fill="#1a1416"/>
+            <!-- blush + mouth -->
+            <rect x="4"  y="9" width="2" height="1" fill="var(--blush)" opacity=".45"/>
+            <rect x="14" y="9" width="2" height="1" fill="var(--blush)" opacity=".45"/>
+            <rect x="9"  y="9" width="2" height="1" fill="var(--mouth)"/>
+            <!-- legs -->
+            <rect x="4"  y="12" width="1" height="2" fill="var(--skin-dark)"/>
+            <rect x="7"  y="12" width="1" height="2" fill="var(--skin-dark)"/>
+            <rect x="12" y="12" width="1" height="2" fill="var(--skin-dark)"/>
+            <rect x="15" y="12" width="1" height="2" fill="var(--skin-dark)"/>
+          </svg>
+          <span class="timer" id="timer">3:21</span>
+          <span class="status-dot"></span>
+        </div>
+      </div>
+    </div>
+
+    <h1 class="rise">The world's smallest coworker lives in your Mac's notch.</h1>
+
+    <p class="sub rise">
+      Meet <strong>Chawd</strong>. He's a mass of pixels. He lives in your MacBook's notch.
+      And he has one job: watch your coding agent so you don't have to.
+    </p>
+
+    <div class="install rise">
+      <div class="cmd">
+        <code id="install-cmd"><span class="prompt">$ </span>brew install --cask deepshal99/tap/notch-so-good</code>
+        <button class="copy" id="copy" type="button" aria-label="Copy install command">
+          <svg class="ico-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+          </svg>
+          <svg class="ico-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M20 6 9 17l-5-5"/>
+          </svg>
+        </button>
+      </div>
+      <p class="alt">Prefer npm? <code>npx notch-so-good</code> &nbsp;·&nbsp; Free, MIT licensed, no sign-up.</p>
+      <p class="req">macOS 14 (Sonoma) or later &nbsp;·&nbsp; Works with Claude Code and Codex CLI</p>
+    </div>
+
+  </div>
+</header>
+
+<main class="wrap">
+
+  <section>
+    <h2>What Chawd does</h2>
+    <p class="lede">Six things, and one of them is falling asleep on the job.</p>
+    <div class="grid">
+      <div class="card">
+        <span class="tag t-green">Watches</span>
+        <h3>A live timer, always glanceable</h3>
+        <p>While your agent works, a black pill extends the notch. Chawd sits on the left, a session timer ticks on the right. No window to check, no tab to switch to.</p>
+      </div>
+      <div class="card">
+        <span class="tag t-blue">Tells you</span>
+        <h3>Real completion summaries</h3>
+        <p>When the agent finishes, the notch expands with its actual last message — not a generic "task complete". Click anywhere to land back in the exact terminal tab.</p>
+      </div>
+      <div class="card">
+        <span class="tag t-orange">Approves</span>
+        <h3>Permissions without the round trip</h3>
+        <p>When an agent wants to run a command or edit a file, Allow / Always Allow / Deny appear right in the notch. Hotkeys too: ⌃⌥A and ⌃⌥D. Read-only tools auto-approve.</p>
+      </div>
+      <div class="card">
+        <span class="tag t-purple">Warns</span>
+        <h3>Usage limits before you hit them</h3>
+        <p>Session and weekly rate-limit bars for both Claude Code and Codex, with "% left" and a reset countdown — read from your own local logins. One warning before the wall.</p>
+      </div>
+      <div class="card">
+        <span class="tag t-green">Multitasks</span>
+        <h3>Every session, grouped by project</h3>
+        <p>Running five agents at once? Hover the pill to see all of them — Claude, Codex, and Gemini badges, own timers, own status dots, plus the subagent tree.</p>
+      </div>
+      <div class="card">
+        <span class="tag t-blue">Performs</span>
+        <h3>17 animations, zero chill</h3>
+        <p>Wave, dance, sneeze, peek-a-boo, levitate, yawn, hiccup, spin, stretch. His eyes follow your cursor. Ignore him long enough and he falls asleep, then jolts awake when you return.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>How it works</h2>
+    <p class="lede">Local sockets and agent hooks. No cloud service, no accounts.</p>
+    <div class="flow mono">
+      Agent starts &nbsp;→&nbsp; <b>Chawd appears</b><br>
+      Agent works &nbsp;&nbsp;→&nbsp; <b>Chawd does tricks, timer ticks</b><br>
+      Agent asks &nbsp;&nbsp;&nbsp;→&nbsp; <b>Notch expands with the question</b><br>
+      Agent needs ok →&nbsp; <b>Allow / Deny buttons in the notch</b><br>
+      Agent done &nbsp;&nbsp;&nbsp;→&nbsp; <b>Completion summary, pill fades</b>
+    </div>
+    <p class="lede" style="margin:20px 0 0">
+      Hooks send events over a local Unix domain socket at <code class="mono">/tmp/notchsogood.sock</code>.
+      Permission checks are bidirectional — the hook waits for your answer from the notch.
+      Your prompts, code, and file paths never leave your machine.
+    </p>
+  </section>
+
+  <section id="faq">
+    <h2>Frequently asked questions</h2>
+    <p class="lede">The things people actually ask.</p>
+    <div class="faq">
+
+      <div>
+        <h3>How do I know when Claude Code is done?</h3>
+        <p>Install Notch So Good. When a session finishes, your notch expands into a green completion notification showing the agent's actual last message. Click it to jump straight back to the terminal tab that ran the session.</p>
+      </div>
+
+      <div>
+        <h3>Which AI coding agents does it support?</h3>
+        <p>Claude Code and OpenAI Codex CLI are fully supported — each has its own hook installer. Gemini CLI sessions are detected and badged, but there is no Gemini hook installer yet, so that support is partial. Sessions from different agents get their own badges so you can tell them apart when several run at once.</p>
+      </div>
+
+      <div>
+        <h3>Do I need a MacBook with a notch?</h3>
+        <p>No. On Macs without a notch, notifications appear centered below the menu bar instead. The notch is nicer, but nothing breaks without one.</p>
+      </div>
+
+      <div>
+        <h3>Is it free?</h3>
+        <p>Yes — free and open source under the MIT license. No accounts, no subscription, no paid tier.</p>
+      </div>
+
+      <div>
+        <h3>Does it send my code or prompts anywhere?</h3>
+        <p>No. Your prompts, code, and file paths never leave your machine — hooks talk to the app over a local Unix domain socket at <code>/tmp/notchsogood.sock</code>, and there's no server of ours and no telemetry in shipped builds. One honest exception: if you use the usage-limit bars, the app calls Anthropic's and OpenAI's own usage endpoints about every 10 minutes using your existing local tokens, the same way those CLIs do. That traffic goes to those providers, never to us.</p>
+      </div>
+
+      <div>
+        <h3>How does it read my usage limits? Is that safe?</h3>
+        <p>It reads your own existing local logins — Claude Code's OAuth credentials via Apple's <code>security</code> tool, and Codex CLI's <code>~/.codex/auth.json</code> — and calls the same usage endpoints those CLIs already use. Nothing is stored or transmitted anywhere else. macOS will ask for Keychain access once; choose "Always Allow" and it won't ask again.</p>
+      </div>
+
+      <div>
+        <h3>Why does macOS say the app is from an unidentified developer?</h3>
+        <p>The app is ad-hoc signed but not notarized, because notarization requires a paid Apple Developer account. Installing via Homebrew handles this automatically. For manual installs, run <code>xattr -dr com.apple.quarantine /Applications/NotchSoGood.app</code>.</p>
+      </div>
+
+      <div>
+        <h3>Does it work with iTerm, Warp, tmux, and the VS Code terminal?</h3>
+        <p>Yes. Clicking a notification focuses the exact terminal tab that started the session, across common terminal apps. tmux sessions work too.</p>
+      </div>
+
+      <div>
+        <h3>How is this different from a terminal bell or a macOS notification?</h3>
+        <p>A bell is easy to miss and tells you nothing. Standard notifications pile up in Notification Center and interrupt whatever you're doing. This lives in the notch, is glanceable at all times, shows a live timer while the agent works, and lets you approve permission requests without switching windows.</p>
+      </div>
+
+      <div>
+        <h3>Does it slow down my Mac?</h3>
+        <p>No. It's a native SwiftUI menubar app — no Electron, no browser engine. It idles at effectively zero CPU and only does work when a hook event arrives.</p>
+      </div>
+
+      <div>
+        <h3>Which macOS versions are supported?</h3>
+        <p>macOS 14 (Sonoma) or later, on both Apple Silicon and Intel Macs.</p>
+      </div>
+
+      <div>
+        <h3>How do I uninstall it?</h3>
+        <p>Run <code>curl -fsSL https://raw.githubusercontent.com/deepshal99/notch-so-good/main/uninstall.sh | bash</code> — or <code>brew uninstall --cask notch-so-good --zap</code> if you installed via Homebrew.</p>
+      </div>
+
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="links">
+      <a href="https://github.com/deepshal99/notch-so-good">GitHub</a>
+      <a href="https://www.npmjs.com/package/notch-so-good">npm</a>
+      <a href="https://github.com/deepshal99/notch-so-good/releases">Releases</a>
+      <a href="https://github.com/deepshal99/notch-so-good/issues">Report a bug</a>
+      <a href="llms.txt">llms.txt</a>
+    </div>
+    <p>Free and open source under the MIT license. Built by
+      <a href="https://github.com/deepshal99" style="color:var(--text-dim)">deepshal99</a> and Claude.
+      Chawd built himself.</p>
+  </div>
+</footer>
+
+<script>
+  // Copy button. Reads the command from the DOM minus the shell prompt, so the
+  // markup stays the single source of truth.
+  (function () {
+    var btn = document.getElementById('copy');
+    var cmd = document.getElementById('install-cmd');
+    if (!btn || !cmd) return;
+    var timer;
+    btn.addEventListener('click', function () {
+      var text = cmd.textContent.replace(/^\s*\$\s*/, '').trim();
+      navigator.clipboard.writeText(text).then(function () {
+        btn.classList.add('done');
+        btn.setAttribute('aria-label', 'Copied');
+        clearTimeout(timer);
+        timer = setTimeout(function () {
+          btn.classList.remove('done');
+          btn.setAttribute('aria-label', 'Copy install command');
+        }, 1800);
+      }).catch(function () {
+        // Clipboard can be blocked (insecure context, denied permission).
+        // Select the text so the user can still copy it manually.
+        var range = document.createRange();
+        range.selectNodeContents(cmd);
+        var sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+      });
+    });
+  })();
+
+  // Ticking demo timer, so the hero pill reads as live rather than a screenshot.
+  (function () {
+    var el = document.getElementById('timer');
+    if (!el) return;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    var s = 201;
+    setInterval(function () {
+      s++;
+      el.textContent = Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+    }, 1000);
+  })();
+</script>
+
+</body>
+</html>
