@@ -58,3 +58,7 @@ build/
 .windsurf/
 .zencoder/
 skills/
+
+# Python bytecode (scripts/)
+__pycache__/
+*.pyc
