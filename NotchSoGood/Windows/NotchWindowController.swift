@@ -24,6 +24,9 @@ class NotchWindowController {
 
     // Track current permission notification so we can dismiss it programmatically
     private var activePermissionRequestId: String?
+    /// Session behind the on-screen permission card, so the hotkey paths can report the
+    /// answer back to the session state machine.
+    private var activePermissionSessionId: String?
     /// Exit-animation signal for the currently visible notification
     private var notificationPhase: NotificationPhase?
 
@@ -242,6 +245,7 @@ class NotchWindowController {
         let resolvedCwd = sessionCwd
 
         activePermissionRequestId = notification.permissionRequestId
+        activePermissionSessionId = notification.permissionRequestId == nil ? nil : notification.sessionId
 
         let phase = NotificationPhase()
         notificationPhase = phase
@@ -268,18 +272,27 @@ class NotchWindowController {
                 guard let reqId = self?.activePermissionRequestId else { return }
                 PermissionServer.shared.respond(requestId: reqId, response: .allow)
                 self?.activePermissionRequestId = nil
+                Task { @MainActor in
+                    NotificationManager.shared.permissionAnswered(sessionId: notification.sessionId)
+                }
                 self?.dismiss()
             } : nil,
             onAlwaysAllow: isPermission ? { [weak self] in
                 guard let reqId = self?.activePermissionRequestId else { return }
                 PermissionServer.shared.respond(requestId: reqId, response: .allowAlways)
                 self?.activePermissionRequestId = nil
+                Task { @MainActor in
+                    NotificationManager.shared.permissionAnswered(sessionId: notification.sessionId)
+                }
                 self?.dismiss()
             } : nil,
             onDeny: isPermission ? { [weak self] in
                 guard let reqId = self?.activePermissionRequestId else { return }
                 PermissionServer.shared.respond(requestId: reqId, response: .deny)
                 self?.activePermissionRequestId = nil
+                Task { @MainActor in
+                    NotificationManager.shared.permissionAnswered(sessionId: notification.sessionId)
+                }
                 self?.dismiss()
             } : nil,
             phase: phase
@@ -338,6 +351,7 @@ class NotchWindowController {
         guard let reqId = activePermissionRequestId else { return }
         PermissionServer.shared.respond(requestId: reqId, response: .allow)
         activePermissionRequestId = nil
+        NotificationManager.shared.permissionAnswered(sessionId: activePermissionSessionId)
         dismiss()
     }
 
@@ -346,6 +360,7 @@ class NotchWindowController {
         guard let reqId = activePermissionRequestId else { return }
         PermissionServer.shared.respond(requestId: reqId, response: .deny)
         activePermissionRequestId = nil
+        NotificationManager.shared.permissionAnswered(sessionId: activePermissionSessionId)
         dismiss()
     }
 
@@ -356,6 +371,7 @@ class NotchWindowController {
         guard !isDismissing else { return }
         isDismissing = true
         activePermissionRequestId = nil
+        activePermissionSessionId = nil
 
         dismissTimer?.invalidate()
         dismissTimer = nil

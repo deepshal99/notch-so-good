@@ -267,8 +267,11 @@ class NotificationManager: ObservableObject {
         let oldStatus = activeSessions[idx].status
         let wasCompleted = oldStatus == .completed
         activeSessions[idx].status = status
-        // Session moved on — the previous waiting spell is over, unmute its alerts
-        if status == .running || status == .completed {
+        // Session moved on — the previous waiting spell is over, unmute its alerts.
+        // Only on a real transition: agents re-fire the same status repeatedly, and
+        // wiping the mute on every duplicate would let an alert the user already
+        // dismissed reappear on the very next repeat event.
+        if oldStatus != status, status == .running || status == .completed {
             clearPopupState(sessionId: sid)
         }
         if status == .completed && !wasCompleted {
@@ -310,6 +313,13 @@ class NotificationManager: ObservableObject {
     /// session+type until the session actually moves on.
     func muteRepeats(sessionId: String?, type: NotificationType) {
         mutedKeys.insert(popupKey(sessionId, type))
+        // The user just attended to this session, so a pending "still waiting on you"
+        // nudge would be a second popup for something already handled. The nudge fires
+        // straight at the window controller and so never passes through isRepeatPopup.
+        if let sid = sessionId {
+            nudgeTimers[sid]?.invalidate()
+            nudgeTimers.removeValue(forKey: sid)
+        }
     }
 
     /// Should this popup be suppressed as a repeat of one already shown/addressed?
@@ -324,6 +334,19 @@ class NotificationManager: ObservableObject {
         return false
     }
 
+    /// The user answered a permission card (button or hotkey). Without this the session
+    /// stays parked in `.needsPermission` — a denied tool emits no PostToolUse, so nothing
+    /// else clears it — which keeps the nudge armed and lets a late hook-level permission
+    /// event pop up for an approval that was already given.
+    func permissionAnswered(sessionId: String?) {
+        guard let sid = sessionId else { return }
+        // Leaving the waiting state also clears popup state and cancels the nudge.
+        updateSessionStatus(sessionId: sid, status: .running)
+        // Applied after the status change, which would otherwise wipe it. Interactive
+        // cards bypass this mute, so a genuinely new request still gets through.
+        muteRepeats(sessionId: sid, type: .permission)
+    }
+
     // MARK: - Nudge (gentle re-alert when a session waits too long)
 
     private func scheduleNudgeIfNeeded(sessionId sid: String, status: SessionStatus) {
@@ -336,6 +359,10 @@ class NotificationManager: ObservableObject {
                 guard let self,
                       let session = self.activeSessions.first(where: { $0.id == sid }),
                       session.status == .needsInput || session.status == .needsPermission else { return }
+                // The nudge goes straight to the window controller, so it never passes
+                // through isRepeatPopup. Check the mute here or an alert the user already
+                // addressed comes back as a "still waiting on you" popup.
+                if self.mutedKeys.contains(where: { $0.hasPrefix("\(sid)|") }) { return }
                 let notification = NotchNotification(
                     type: .general,
                     message: "Still waiting on you — \(session.projectName)",
@@ -383,8 +410,13 @@ class NotificationManager: ObservableObject {
             break
         }
 
-        // Suppress repeats of an alert the user has already seen or addressed
-        guard !isRepeat else { return }
+        // Suppress repeats of an alert the user has already seen or addressed. Re-stamp
+        // the cooldown while suppressing, so a continuous stream of duplicate events
+        // keeps being held back instead of slipping through once the window lapses.
+        if isRepeat {
+            lastPopupAt[popupKey(notification.sessionId, notification.type)] = Date()
+            return
+        }
 
         // A hook-level permission event while our interactive card is up (or queued)
         // would double-alert for the same approval — the card already covers it.
