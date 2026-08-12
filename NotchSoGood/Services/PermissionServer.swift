@@ -36,55 +36,110 @@ class PermissionServer {
     private var pendingRequests: [String: PendingRequest] = [:]
     private let lock = NSLock()
 
-    /// All settings files Claude Code reads (global + global local).
-    private static let settingsPaths: [String] = [
-        NSHomeDirectory() + "/.claude/settings.json",
-        NSHomeDirectory() + "/.claude/settings.local.json",
-    ]
+    // MARK: - Payload helpers
 
-    // MARK: - Settings cache (avoid re-reading disk on every tool call)
+    /// The owning app's bundle identifier, if the hook could determine one.
+    /// `source_app` carries the agent name ("claude" / "codex"); older hooks put
+    /// a bundle id there instead, so a dotted value is still accepted.
+    static func bundleId(from json: [String: Any]) -> String? {
+        if let explicit = NotchNotification.nonEmpty(json["source_bundle_id"] as? String) {
+            return explicit
+        }
+        if let legacy = NotchNotification.nonEmpty(json["source_app"] as? String), legacy.contains(".") {
+            return legacy
+        }
+        return nil
+    }
 
-    private static var cachedDangerousMode: Bool = false
-    private static var cachedAllowRules: [String] = []
-    private static var cacheTimestamp: Date = .distantPast
+    /// The hook process's pid. We walk its ancestry to find the terminal or IDE
+    /// that owns the session — far more reliable than any env var.
+    static func hookPid(from json: [String: Any]) -> pid_t? {
+        guard let raw = (json["pid"] as? NSNumber)?.int32Value, raw > 0 else { return nil }
+        return raw
+    }
+
+    // MARK: - Settings resolution
+
+    /// Every settings file the agent itself reads, in precedence order.
+    ///
+    /// Project-local files matter: most people keep `permissions.allow` in the
+    /// repo's `.claude/settings.local.json`, and reading only the two global
+    /// files meant those rules were invisible here — so an already-allowed tool
+    /// still raised a prompt in the notch.
+    private static func settingsPaths(cwd: String?) -> [String] {
+        var paths = [
+            NSHomeDirectory() + "/.claude/settings.json",
+            NSHomeDirectory() + "/.claude/settings.local.json",
+        ]
+        if let cwd, !cwd.isEmpty, cwd.hasPrefix("/") {
+            paths.append(cwd + "/.claude/settings.json")
+            paths.append(cwd + "/.claude/settings.local.json")
+        }
+        return paths
+    }
+
+    struct ResolvedSettings {
+        var defaultMode: PermissionMode?
+        var allowRules: [String] = []
+    }
+
+    // Cache per working directory — avoids re-reading four files on every call.
+    private static var settingsCache: [String: (settings: ResolvedSettings, readAt: Date)] = [:]
+    private static let settingsLock = NSLock()
     private static let cacheTTL: TimeInterval = 5
 
-    private static func refreshCacheIfNeeded() {
-        guard Date().timeIntervalSince(cacheTimestamp) > cacheTTL else { return }
-        var dangerous = false
-        var rules: [String] = []
-        for path in settingsPaths {
+    static func settings(cwd: String?) -> ResolvedSettings {
+        let key = cwd ?? "-"
+
+        settingsLock.lock()
+        if let hit = settingsCache[key], Date().timeIntervalSince(hit.readAt) < cacheTTL {
+            settingsLock.unlock()
+            return hit.settings
+        }
+        settingsLock.unlock()
+
+        var resolved = ResolvedSettings()
+        for path in settingsPaths(cwd: cwd) {
             guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { continue }
-            if json["skipDangerousModePermissionPrompt"] as? Bool == true { dangerous = true }
-            if json["dangerouslySkipPermissions"] as? Bool == true { dangerous = true }
+            if let mode = PermissionMode.fromSettings(json) { resolved.defaultMode = mode }
             if let perms = json["permissions"] as? [String: Any],
                let allow = perms["allow"] as? [String] {
-                rules.append(contentsOf: allow)
+                resolved.allowRules.append(contentsOf: allow)
             }
         }
-        cachedDangerousMode = dangerous
-        cachedAllowRules = rules
-        cacheTimestamp = Date()
+
+        settingsLock.lock()
+        settingsCache[key] = (resolved, Date())
+        settingsLock.unlock()
+        return resolved
     }
 
-    static var isDangerousModeEnabled: Bool {
-        refreshCacheIfNeeded()
-        return cachedDangerousMode
+    static func invalidateSettingsCache() {
+        settingsLock.lock()
+        settingsCache.removeAll()
+        settingsLock.unlock()
     }
 
-    static var allowRules: [String] {
-        refreshCacheIfNeeded()
-        return cachedAllowRules
+    /// The mode to trust for an event: the live `permission_mode` the hook sent
+    /// (authoritative — the user may have flipped it with shift-tab mid-session),
+    /// falling back to whatever settings declare as the default.
+    static func effectiveMode(payloadMode: String?, cwd: String?) -> PermissionMode {
+        if let raw = payloadMode, !raw.isEmpty, let mode = PermissionMode(rawValue: raw) {
+            return mode
+        }
+        return settings(cwd: cwd).defaultMode ?? .standard
     }
 
-    // Built-in Claude Code tools that never need user approval
+    // Built-in agent tools that never need user approval. Anything that can
+    // write to disk stays out of this list — NotebookEdit used to be here, which
+    // silently auto-approved notebook writes.
     static let safeTools: Set<String> = [
         "Read", "Glob", "Grep", "LSP", "Agent", "ToolSearch",
         "EnterPlanMode", "ExitPlanMode", "EnterWorktree", "ExitWorktree",
         "TaskGet", "TaskList", "TaskOutput", "TaskCreate", "TaskUpdate", "TaskStop",
         "CronList", "ListMcpResourcesTool", "ReadMcpResourceTool",
-        "Skill", "SendMessage", "WebFetch", "WebSearch", "NotebookEdit",
+        "Skill", "SendMessage", "WebFetch", "WebSearch",
         "mcp__conductor__AskUserQuestion",
         "mcp__conductor__DiffComment",
         "mcp__conductor__GetTerminalOutput",
@@ -96,9 +151,9 @@ class PermissionServer {
         "resolve", "snapshot", "watch", "fetch",
     ]
 
-    static func isToolApproved(_ toolName: String, toolInput: String) -> Bool {
+    static func isToolApproved(_ toolName: String, toolInput: String, cwd: String? = nil) -> Bool {
         if safeTools.contains(toolName) { return true }
-        if isAllowedByRules(toolName: toolName, toolInput: toolInput) { return true }
+        if isAllowedByRules(toolName: toolName, toolInput: toolInput, cwd: cwd) { return true }
         if toolName.hasPrefix("mcp__") {
             let parts = toolName.split(separator: "__", omittingEmptySubsequences: true)
             if let funcName = parts.last {
@@ -111,8 +166,8 @@ class PermissionServer {
         return false
     }
 
-    private static func isAllowedByRules(toolName: String, toolInput: String) -> Bool {
-        let rules = allowRules
+    private static func isAllowedByRules(toolName: String, toolInput: String, cwd: String?) -> Bool {
+        let rules = settings(cwd: cwd).allowRules
         for rule in rules {
             if let parenIdx = rule.firstIndex(of: "(") {
                 let ruleTool = String(rule[rule.startIndex..<parenIdx])
@@ -181,7 +236,8 @@ class PermissionServer {
             return
         }
 
-        // Allow all local users to connect (hooks run as same user anyway)
+        // Owner-only: hooks run as the same user, and nothing else should be able
+        // to drive permission decisions.
         chmod(Self.socketPath, 0o700)
 
         guard listen(serverSocket, 10) == 0 else {
@@ -271,9 +327,12 @@ class PermissionServer {
         }
 
         let event = json["event"] as? String ?? ""
-        let sessionId = json["session_id"] as? String
-        let cwd = json["cwd"] as? String
-        let sourceBundleId = json["source_app"] as? String
+        let sessionId = NotchNotification.nonEmpty(json["session_id"] as? String)
+        let cwd = NotchNotification.nonEmpty(json["cwd"] as? String)
+        let sourceBundleId = Self.bundleId(from: json)
+        let hookPid = Self.hookPid(from: json)
+        let modeRaw = json["permission_mode"] as? String
+        let mode = Self.effectiveMode(payloadMode: modeRaw, cwd: cwd)
 
         switch event {
         case "PreToolUse":
@@ -283,7 +342,7 @@ class PermissionServer {
             close(clientSocket)
             let toolName = json["tool_name"] as? String ?? ""
             DispatchQueue.main.async {
-                NotificationManager.shared.handlePostToolUse(sessionId: sessionId, toolName: toolName)
+                NotificationManager.shared.handlePostToolUse(sessionId: sessionId, toolName: toolName, cwd: cwd)
             }
 
         case "SubagentStart":
@@ -299,7 +358,15 @@ class PermissionServer {
             let model = json["model"] as? String
             let sourceApp = json["source_app"] as? String
             DispatchQueue.main.async {
-                NotificationManager.shared.startSession(sessionId: sessionId, displayName: cwd, sourceBundleId: sourceBundleId, sourceApp: sourceApp, model: model)
+                NotificationManager.shared.startSession(
+                    sessionId: sessionId,
+                    displayName: cwd,
+                    sourceBundleId: sourceBundleId,
+                    sourcePid: hookPid,
+                    permissionMode: mode,
+                    sourceApp: sourceApp,
+                    model: model
+                )
             }
 
         case "SessionEnd":
@@ -312,9 +379,15 @@ class PermissionServer {
             close(clientSocket)
             let message = json["last_assistant_message"] as? String ?? "Task completed"
             DispatchQueue.main.async {
+                // Adopt first: handleNotification consults the session's mode, and
+                // an unknown session would read as "standard" and prompt anyway.
+                NotificationManager.shared.adoptSession(
+                    sessionId: sessionId, cwd: cwd, sourceBundleId: sourceBundleId,
+                    sourcePid: hookPid, permissionMode: mode
+                )
                 let notification = NotchNotification(
                     type: .complete,
-                    message: String(message.prefix(200)),
+                    message: message,
                     sessionId: sessionId
                 )
                 NotificationManager.shared.handleNotification(notification)
@@ -333,9 +406,13 @@ class PermissionServer {
                 }
             }()
             DispatchQueue.main.async {
+                NotificationManager.shared.adoptSession(
+                    sessionId: sessionId, cwd: cwd, sourceBundleId: sourceBundleId,
+                    sourcePid: hookPid, permissionMode: mode
+                )
                 let notification = NotchNotification(
                     type: type,
-                    message: String(message.prefix(200)),
+                    message: message,
                     title: title,
                     sessionId: sessionId
                 )
@@ -345,7 +422,12 @@ class PermissionServer {
         case "UserPromptSubmit":
             close(clientSocket)
             DispatchQueue.main.async {
-                NotificationManager.shared.handleUserPromptSubmit(sessionId: sessionId)
+                NotificationManager.shared.handleUserPromptSubmit(
+                    sessionId: sessionId,
+                    cwd: cwd,
+                    sourcePid: hookPid,
+                    permissionMode: mode
+                )
             }
 
         case "PreCompact":
@@ -371,25 +453,48 @@ class PermissionServer {
     private func handlePreToolUse(json: [String: Any], clientSocket: Int32) {
         let toolName = json["tool_name"] as? String ?? "Unknown"
         let toolInput = json["tool_input"] as? String ?? ""
-        let sessionId = json["session_id"] as? String
+        let sessionId = NotchNotification.nonEmpty(json["session_id"] as? String)
+        let cwd = NotchNotification.nonEmpty(json["cwd"] as? String)
+        let hookPid = Self.hookPid(from: json)
+        let mode = Self.effectiveMode(payloadMode: json["permission_mode"] as? String, cwd: cwd)
         #if DEBUG
         let forceTest = json["force_test"] as? Bool ?? false
         #else
         let forceTest = false
         #endif
 
-        // Track active tool for phase labels (even for auto-approved tools)
+        // Track active tool for phase labels (even for auto-approved tools).
+        // This also carries cwd / pid / mode, which is how a session the app
+        // never saw start becomes visible and focusable.
         let detail = toolInput.isEmpty ? nil : String(toolInput.prefix(60))
         DispatchQueue.main.async {
-            NotificationManager.shared.handlePreToolUse(sessionId: sessionId, toolName: toolName, toolDetail: detail)
+            NotificationManager.shared.handlePreToolUse(
+                sessionId: sessionId,
+                toolName: toolName,
+                toolDetail: detail,
+                cwd: cwd,
+                sourcePid: hookPid,
+                permissionMode: mode
+            )
+        }
+
+        // The hook already decided locally and is only telling us so the pill's
+        // phase label stays live. Don't hold the socket, don't show anything.
+        if json["decision_needed"] as? Bool == false {
+            close(clientSocket)
+            return
         }
 
         if !forceTest {
-            if Self.isDangerousModeEnabled {
+            // The agent's own permission mode wins. In bypass / auto / plan it has
+            // already decided, and in acceptEdits it has decided about edits — a
+            // prompt here would be a second gate the user never asked for, and it
+            // blocks the tool until they answer it.
+            if mode.autoApproves(toolName: toolName) {
                 sendSocketResponse(clientSocket: clientSocket, body: "{\"decision\":\"approve\"}")
                 return
             }
-            if Self.isToolApproved(toolName, toolInput: toolInput) {
+            if Self.isToolApproved(toolName, toolInput: toolInput, cwd: cwd) {
                 sendSocketResponse(clientSocket: clientSocket, body: "{\"decision\":\"approve\"}")
                 return
             }
@@ -466,6 +571,9 @@ class PermissionServer {
                 StatsStore.shared.recordPermissionDenied()
                 Telemetry.shared.trackEvent("permission_responded", props: ["decision": "deny"])
             }
+            // The session isn't blocked on us any more. PostToolUse would normally
+            // flip it back to running, but denials and failed tools never send one.
+            NotificationManager.shared.permissionResolved(sessionId: request.sessionId)
             NotificationManager.shared.windowController.showNextQueuedPermission()
         }
     }
@@ -531,7 +639,7 @@ class PermissionServer {
 
         do {
             try str.write(toFile: path, atomically: true, encoding: .utf8)
-            cacheTimestamp = .distantPast
+            invalidateSettingsCache()
             return true
         } catch {
             return false
@@ -553,6 +661,7 @@ class PermissionServer {
 
         DispatchQueue.main.async {
             NotificationManager.shared.windowController.dismissPermission(requestId: requestId)
+            NotificationManager.shared.permissionResolved(sessionId: request.sessionId)
         }
     }
 

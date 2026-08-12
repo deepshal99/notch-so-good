@@ -1,19 +1,19 @@
 # Notch So Good
 
-The world's smallest coworker lives in your Mac's notch. A pixel-art crab called Chawd watches Claude Code so you don't have to. He has 13 animations and absolutely no chill.
+The world's smallest coworker lives in your Mac's notch. A pixel-art crab called Chawd watches Claude Code so you don't have to. He has 17 animations and absolutely no chill.
 
 ## Tech Stack
 - Swift / SwiftUI, macOS 14+ (Sonoma)
 - Swift Package Manager (no Xcode required for pre-built installs)
 - Custom NSPanel for floating window
 - Canvas-based pixel art rendering
-- Claude Code hooks integration via `notchsogood://` URL scheme
+- Claude Code / Codex CLI hook integration over a local Unix socket (`/tmp/notchsogood.sock`), plus a legacy `notchsogood://` URL scheme
 
 ## Build
 ```bash
 bash build-app.sh        # builds .app bundle
 open NotchSoGood.app     # launch
-bash HookInstaller/install-hooks.sh  # install Claude Code hooks
+bash HookInstaller/install-all-hooks.sh  # install hooks for every detected agent
 ```
 
 ## Design Context

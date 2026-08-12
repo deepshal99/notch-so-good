@@ -118,13 +118,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         case "session_start":
             let displayName = params["cwd"]
             let sourceBundleId = params["source_app"]
-            NotificationManager.shared.startSession(sessionId: sessionId, displayName: displayName, sourceBundleId: sourceBundleId)
+            let mode = params["permission_mode"].map(PermissionMode.from)
+            NotificationManager.shared.startSession(
+                sessionId: sessionId,
+                displayName: displayName,
+                sourceBundleId: sourceBundleId,
+                permissionMode: mode
+            )
 
         case "session_end":
-            // Only end a specific session — ignore if no session_id to prevent wiping all sessions
-            if sessionId != nil {
-                NotificationManager.shared.endSession(sessionId: sessionId)
-            }
+            // endSession ignores a missing id, so this can't wipe every session
+            NotificationManager.shared.endSession(sessionId: sessionId)
 
         case "demo":
             let animation = params["animation"]

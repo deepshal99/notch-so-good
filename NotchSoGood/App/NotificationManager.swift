@@ -36,6 +36,15 @@ class NotificationManager: ObservableObject {
     @Published var telemetryEnabled: Bool {
         didSet { UserDefaults.standard.set(telemetryEnabled, forKey: "telemetryEnabled") }
     }
+    /// Show a session's notch UI on the display its terminal is on. Off pins
+    /// everything to the built-in notch screen (the old behaviour).
+    @Published var followActiveDisplay: Bool {
+        didSet {
+            UserDefaults.standard.set(followActiveDisplay, forKey: "followActiveDisplay")
+            displayCache.removeAll()
+            refreshPill()
+        }
+    }
 
     /// Recent notifications, newest first (for menu bar history).
     @Published var history: [NotchNotification] = []
@@ -62,13 +71,68 @@ class NotificationManager: ObservableObject {
         var status: SessionStatus
         var lastMessage: String?
         var sourceBundleId: String?  // bundle ID of the terminal/IDE that owns this session
+        var sourcePid: pid_t?        // a hook pid, for resolving the owning app by ancestry
         var cwd: String?             // working directory for window matching
         var activeToolName: String?  // currently running tool (for phase label)
         var activeToolDetail: String? // short detail about the tool (file path, command)
         var subagents: [SubagentInfo] = []
         var agentSource: AgentSource = .claude
+        var permissionMode: PermissionMode = .standard
     }
     @Published var activeSessions: [SessionInfo] = []
+
+    /// Sessions ordered by how much they need the user. The collapsed pill shows
+    /// only `first`, so a session waiting on approval has to outrank one that's
+    /// merely working — otherwise the notch cheerfully reports "Working" while
+    /// another session sits blocked.
+    var orderedSessions: [SessionInfo] {
+        activeSessions.enumerated()
+            .sorted { lhs, rhs in
+                let l = lhs.element.status.attentionPriority
+                let r = rhs.element.status.attentionPriority
+                if l != r { return l > r }
+                return lhs.offset < rhs.offset   // stable: keep arrival order within a tier
+            }
+            .map(\.element)
+    }
+
+    var primarySession: SessionInfo? { orderedSessions.first }
+
+    /// The live permission mode for a session, defaulting to standard when we
+    /// have never seen an event for it.
+    func permissionMode(for sessionId: String?) -> PermissionMode {
+        guard let sid = NotchNotification.nonEmpty(sessionId),
+              let session = activeSessions.first(where: { $0.id == sid }) else { return .standard }
+        return session.permissionMode
+    }
+
+    /// Resolved display per session. The AX query behind this is far too costly
+    /// to repeat on every hook event, and the answer only changes when the user
+    /// drags a window to another screen.
+    private var displayCache: [String: (id: CGDirectDisplayID, at: Date)] = [:]
+    private let displayCacheTTL: TimeInterval = 3
+
+    /// Which screen a session's notch UI should appear on, or nil to use the
+    /// built-in notch screen.
+    func targetScreen(for session: SessionInfo?) -> NSScreen? {
+        guard followActiveDisplay, let session else { return nil }
+
+        if let hit = displayCache[session.id], Date().timeIntervalSince(hit.at) < displayCacheTTL {
+            return NotchGeometry.screen(withDisplayID: hit.id)
+        }
+        guard let screen = DisplayRouter.screen(
+            sourcePid: session.sourcePid,
+            sourceBundleId: session.sourceBundleId
+        ) else { return nil }
+
+        displayCache[session.id] = (screen.displayID, Date())
+        return screen
+    }
+
+    /// Display arrangement changed — every cached answer is suspect.
+    func invalidateDisplayCache() {
+        displayCache.removeAll()
+    }
 
     private var endSessionWorkItems: [String: DispatchWorkItem] = [:]
     private var sessionTimeoutTimers: [String: Timer] = [:]
@@ -107,6 +171,9 @@ class NotificationManager: ObservableObject {
         if defaults.object(forKey: "telemetryEnabled") == nil {
             defaults.set(true, forKey: "telemetryEnabled")
         }
+        if defaults.object(forKey: "followActiveDisplay") == nil {
+            defaults.set(true, forKey: "followActiveDisplay")
+        }
 
         soundEnabled = defaults.bool(forKey: "soundEnabled")
         showOnComplete = defaults.bool(forKey: "showOnComplete")
@@ -115,6 +182,7 @@ class NotificationManager: ObservableObject {
         showSessionPill = defaults.bool(forKey: "showSessionPill")
         nudgeEnabled = defaults.bool(forKey: "nudgeEnabled")
         telemetryEnabled = defaults.bool(forKey: "telemetryEnabled")
+        followActiveDisplay = defaults.bool(forKey: "followActiveDisplay")
 
         SoundManager.shared.isEnabled = soundEnabled
     }
@@ -162,41 +230,98 @@ class NotificationManager: ObservableObject {
         return project
     }
 
-    func startSession(sessionId: String?, displayName: String? = nil, sourceBundleId: String? = nil, sourceApp: String? = nil, model: String? = nil) {
-        guard showSessionPill else { return }
-
-        let sid = sessionId ?? UUID().uuidString
+    /// Single ingress for every hook event.
+    ///
+    /// Creates the session if we've never seen it — the app may have launched
+    /// mid-session, or SessionStart may have been missed — and otherwise merges
+    /// in whatever metadata this event carries. Previously every handler bailed
+    /// out on an unknown session id, so a session that started before the app
+    /// did stayed invisible and all its status updates were silently dropped.
+    ///
+    /// Sessions are tracked even when the pill is switched off: the menu bar
+    /// card, the attention dot and permission routing all depend on this state.
+    @discardableResult
+    func adoptSession(
+        sessionId: String?,
+        cwd: String? = nil,
+        sourceBundleId: String? = nil,
+        sourcePid: pid_t? = nil,
+        permissionMode: PermissionMode? = nil,
+        sourceApp: String? = nil,
+        model: String? = nil
+    ) -> Int? {
+        guard let sid = NotchNotification.nonEmpty(sessionId) else { return nil }
 
         // Cancel any pending end for this session
         endSessionWorkItems[sid]?.cancel()
         endSessionWorkItems.removeValue(forKey: sid)
 
-        // Don't add duplicate — but update project name and source app if we now have them
+        let resolvedCwd = NotchNotification.nonEmpty(cwd)
+
         if let idx = activeSessions.firstIndex(where: { $0.id == sid }) {
-            if let name = displayName {
-                activeSessions[idx].projectName = sanitizedProjectName(name, sessionId: sid)
+            if let resolvedCwd {
+                activeSessions[idx].cwd = resolvedCwd
+                activeSessions[idx].projectName = sanitizedProjectName(resolvedCwd, sessionId: sid)
             }
-            if let bundleId = sourceBundleId, !bundleId.isEmpty {
+            if let bundleId = NotchNotification.nonEmpty(sourceBundleId) {
                 activeSessions[idx].sourceBundleId = bundleId
             }
-            if let cwd = displayName, !cwd.isEmpty {
-                activeSessions[idx].cwd = cwd
+            if let sourcePid, sourcePid > 0 {
+                activeSessions[idx].sourcePid = sourcePid
             }
-            refreshPill()
-            return
+            if let permissionMode {
+                activeSessions[idx].permissionMode = permissionMode
+            }
+            // Only overwrite the agent when this event actually identifies one —
+            // detect() defaults to .claude, which would clobber a known Codex session.
+            if sourceApp != nil || model != nil {
+                activeSessions[idx].agentSource = AgentSource.detect(sourceApp: sourceApp, model: model)
+            }
+            resetSessionTimeout(sessionId: sid)
+            return idx
         }
 
-        let project = sanitizedProjectName(displayName, sessionId: sid)
-        let agent = AgentSource.detect(sourceApp: sourceApp, model: model)
-        activeSessions.append(SessionInfo(id: sid, startTime: Date(), projectName: project, status: .running, sourceBundleId: sourceBundleId, cwd: displayName, agentSource: agent))
+        var session = SessionInfo(
+            id: sid,
+            startTime: Date(),
+            projectName: sanitizedProjectName(resolvedCwd, sessionId: sid),
+            status: .running,
+            sourceBundleId: NotchNotification.nonEmpty(sourceBundleId),
+            sourcePid: sourcePid,
+            cwd: resolvedCwd,
+            agentSource: AgentSource.detect(sourceApp: sourceApp, model: model)
+        )
+        if let permissionMode { session.permissionMode = permissionMode }
+        activeSessions.append(session)
         StatsStore.shared.recordSessionStarted()
-        refreshPill()
 
         // Start watching JSONL file for interrupts
-        SessionFileWatcher.shared.startWatching(sessionId: sid, cwd: displayName)
+        SessionFileWatcher.shared.startWatching(sessionId: sid, cwd: resolvedCwd)
 
         // Safety timeout — auto-end session after 1 hour of silence to prevent zombie pills
         resetSessionTimeout(sessionId: sid)
+        return activeSessions.count - 1
+    }
+
+    func startSession(
+        sessionId: String?,
+        displayName: String? = nil,
+        sourceBundleId: String? = nil,
+        sourcePid: pid_t? = nil,
+        permissionMode: PermissionMode? = nil,
+        sourceApp: String? = nil,
+        model: String? = nil
+    ) {
+        adoptSession(
+            sessionId: sessionId ?? UUID().uuidString,
+            cwd: displayName,
+            sourceBundleId: sourceBundleId,
+            sourcePid: sourcePid,
+            permissionMode: permissionMode,
+            sourceApp: sourceApp,
+            model: model
+        )
+        refreshPill()
     }
 
     /// (Re)arm the zombie-pill timeout. Called on every event so long active sessions survive.
@@ -209,35 +334,24 @@ class NotificationManager: ObservableObject {
         }
     }
 
+    /// End exactly one session. A missing or empty id is ignored rather than
+    /// treated as "end everything" — hooks send `""` for unknown fields, and one
+    /// malformed SessionEnd used to be able to wipe every tracked session.
     func endSession(sessionId: String?) {
-        if let sid = sessionId {
-            if let session = activeSessions.first(where: { $0.id == sid }) {
-                StatsStore.shared.recordActiveSeconds(Date().timeIntervalSince(session.startTime))
-            }
-            activeSessions.removeAll { $0.id == sid }
-            endSessionWorkItems.removeValue(forKey: sid)
-            sessionTimeoutTimers[sid]?.invalidate()
-            sessionTimeoutTimers.removeValue(forKey: sid)
-            nudgeTimers[sid]?.invalidate()
-            nudgeTimers.removeValue(forKey: sid)
-            clearPopupState(sessionId: sid)
-            SessionFileWatcher.shared.stopWatching(sessionId: sid)
-        } else {
-            // No ID — end all sessions
-            let now = Date()
-            for session in activeSessions {
-                StatsStore.shared.recordActiveSeconds(now.timeIntervalSince(session.startTime))
-            }
-            activeSessions.removeAll()
-            endSessionWorkItems.removeAll()
-            sessionTimeoutTimers.values.forEach { $0.invalidate() }
-            sessionTimeoutTimers.removeAll()
-            nudgeTimers.values.forEach { $0.invalidate() }
-            nudgeTimers.removeAll()
-            mutedKeys.removeAll()
-            lastPopupAt.removeAll()
-            SessionFileWatcher.shared.stopAll()
+        guard let sid = NotchNotification.nonEmpty(sessionId) else { return }
+
+        if let session = activeSessions.first(where: { $0.id == sid }) {
+            StatsStore.shared.recordActiveSeconds(Date().timeIntervalSince(session.startTime))
         }
+        activeSessions.removeAll { $0.id == sid }
+        endSessionWorkItems.removeValue(forKey: sid)
+        sessionTimeoutTimers[sid]?.invalidate()
+        sessionTimeoutTimers.removeValue(forKey: sid)
+        nudgeTimers[sid]?.invalidate()
+        nudgeTimers.removeValue(forKey: sid)
+        clearPopupState(sessionId: sid)
+        displayCache.removeValue(forKey: sid)
+        SessionFileWatcher.shared.stopWatching(sessionId: sid)
 
         if activeSessions.isEmpty {
             windowController.hideSessionPill()
@@ -247,8 +361,15 @@ class NotificationManager: ObservableObject {
     }
 
     private func refreshPill() {
-        guard let first = activeSessions.first else { return }
-        windowController.showSessionPill(sessions: activeSessions, primaryStartTime: first.startTime)
+        guard showSessionPill, let primary = primarySession else {
+            if windowController.isShowingPill { windowController.hideSessionPill() }
+            return
+        }
+        windowController.showSessionPill(
+            sessions: orderedSessions,
+            primaryStartTime: primary.startTime,
+            screen: targetScreen(for: primary)
+        )
     }
 
     var hasActiveSession: Bool {
@@ -256,14 +377,14 @@ class NotificationManager: ObservableObject {
     }
 
     // Back-compat helpers
-    var activeSessionId: String? { activeSessions.first?.id }
-    var sessionStartTime: Date? { activeSessions.first?.startTime }
+    var activeSessionId: String? { primarySession?.id }
+    var sessionStartTime: Date? { primarySession?.startTime }
 
     // MARK: - Notifications
 
     func updateSessionStatus(sessionId: String?, status: SessionStatus, message: String? = nil) {
-        guard let sid = sessionId,
-              let idx = activeSessions.firstIndex(where: { $0.id == sid }) else { return }
+        guard let sid = NotchNotification.nonEmpty(sessionId),
+              let idx = adoptSession(sessionId: sid) else { return }
         let oldStatus = activeSessions[idx].status
         let wasCompleted = oldStatus == .completed
         activeSessions[idx].status = status
@@ -312,6 +433,22 @@ class NotificationManager: ObservableObject {
         mutedKeys.insert(popupKey(sessionId, type))
     }
 
+    /// A permission request was answered (or timed out) — the session is running
+    /// again, not waiting on us. Without this the row stayed "Needs approval"
+    /// forever whenever no PostToolUse followed: denials, interrupts, and tools
+    /// that error out never send one.
+    func permissionResolved(sessionId: String?) {
+        guard let sid = NotchNotification.nonEmpty(sessionId),
+              let idx = activeSessions.firstIndex(where: { $0.id == sid }) else { return }
+        if activeSessions[idx].status == .needsPermission {
+            activeSessions[idx].status = .running
+        }
+        nudgeTimers[sid]?.invalidate()
+        nudgeTimers.removeValue(forKey: sid)
+        clearPopupState(sessionId: sid)
+        refreshPill()
+    }
+
     /// Should this popup be suppressed as a repeat of one already shown/addressed?
     private func isRepeatPopup(_ notification: NotchNotification) -> Bool {
         // Interactive permission cards are always distinct real requests
@@ -342,20 +479,35 @@ class NotificationManager: ObservableObject {
                     title: "Psst",
                     sessionId: sid
                 )
-                self.windowController.showNotification(notification, sessionSourceBundleId: session.sourceBundleId, sessionCwd: session.cwd)
+                self.windowController.showNotification(
+                    notification,
+                    sessionSourceBundleId: session.sourceBundleId,
+                    sessionCwd: session.cwd,
+                    sessionSourcePid: session.sourcePid,
+                    screen: self.targetScreen(for: session)
+                )
             }
         }
     }
 
     func handleNotification(_ notification: NotchNotification) {
+        // A session whose agent decides for itself (bypass / auto / plan) never
+        // needs a permission gate from us. Claude Code still fires its own
+        // Notification event in those modes, and echoing it here is the
+        // double-prompt users see after switching to bypass mode.
+        if notification.type == .permission,
+           permissionMode(for: notification.sessionId).suppressesPrompts {
+            return
+        }
+
         let isRepeat = isRepeatPopup(notification)
         if !isRepeat {
             recordHistory(notification)
         }
 
-        // Auto-start session pill if not already showing
-        if !hasActiveSession && showSessionPill {
-            startSession(sessionId: notification.sessionId)
+        // Track the session even if we missed its SessionStart
+        if notification.sessionId != nil {
+            adoptSession(sessionId: notification.sessionId)
         }
 
         // Update session status based on notification type
@@ -398,7 +550,13 @@ class NotificationManager: ObservableObject {
 
         let session = activeSessions.first(where: { $0.id == notification.sessionId })
         Telemetry.shared.trackEvent("notification_shown", props: ["type": notification.type.rawValue])
-        windowController.showNotification(notification, sessionSourceBundleId: session?.sourceBundleId, sessionCwd: session?.cwd)
+        windowController.showNotification(
+            notification,
+            sessionSourceBundleId: session?.sourceBundleId,
+            sessionCwd: session?.cwd,
+            sessionSourcePid: session?.sourcePid,
+            screen: targetScreen(for: session)
+        )
 
         // Session end is handled by the SessionEnd hook — no auto-end timer needed.
         // The pill stays visible (showing "Done") until SessionEnd arrives.
@@ -450,36 +608,46 @@ class NotificationManager: ObservableObject {
     }
 
     /// PreToolUse: tool about to run — track active tool name for phase label
-    func handlePreToolUse(sessionId: String?, toolName: String, toolDetail: String?) {
-        guard let sid = sessionId,
-              let idx = activeSessions.firstIndex(where: { $0.id == sid }) else { return }
+    func handlePreToolUse(
+        sessionId: String?,
+        toolName: String,
+        toolDetail: String?,
+        cwd: String? = nil,
+        sourcePid: pid_t? = nil,
+        permissionMode: PermissionMode? = nil
+    ) {
+        guard let sid = NotchNotification.nonEmpty(sessionId),
+              let idx = adoptSession(
+                sessionId: sid,
+                cwd: cwd,
+                sourcePid: sourcePid,
+                permissionMode: permissionMode
+              ) else { return }
         activeSessions[idx].activeToolName = toolName
         activeSessions[idx].activeToolDetail = toolDetail
         if activeSessions[idx].status != .needsPermission {
             activeSessions[idx].status = .running
         }
-        resetSessionTimeout(sessionId: sid)
         refreshPill()
     }
 
     /// PostToolUse: tool finished running — clear active tool, update status
-    func handlePostToolUse(sessionId: String?, toolName: String) {
-        guard let sid = sessionId,
-              let idx = activeSessions.firstIndex(where: { $0.id == sid }) else { return }
+    func handlePostToolUse(sessionId: String?, toolName: String, cwd: String? = nil) {
+        guard let sid = NotchNotification.nonEmpty(sessionId),
+              let idx = adoptSession(sessionId: sid, cwd: cwd) else { return }
         activeSessions[idx].activeToolName = nil
         activeSessions[idx].activeToolDetail = nil
         let current = activeSessions[idx].status
         if current == .needsPermission || current == .compacting {
             activeSessions[idx].status = .running
         }
-        resetSessionTimeout(sessionId: sid)
         refreshPill()
     }
 
     /// SubagentStart: a subagent was spawned
     func handleSubagentStart(sessionId: String?, subagentId: String?, description: String?) {
-        guard let sid = sessionId,
-              let idx = activeSessions.firstIndex(where: { $0.id == sid }) else { return }
+        guard let sid = NotchNotification.nonEmpty(sessionId),
+              let idx = adoptSession(sessionId: sid) else { return }
         let agentId = subagentId ?? UUID().uuidString
         // Don't add duplicates
         if activeSessions[idx].subagents.contains(where: { $0.id == agentId }) { return }
@@ -496,7 +664,7 @@ class NotificationManager: ObservableObject {
 
     /// SubagentStop: a subagent finished
     func handleSubagentStop(sessionId: String?, subagentId: String?) {
-        guard let sid = sessionId,
+        guard let sid = NotchNotification.nonEmpty(sessionId),
               let idx = activeSessions.firstIndex(where: { $0.id == sid }) else { return }
         if let subId = subagentId,
            let subIdx = activeSessions[idx].subagents.firstIndex(where: { $0.id == subId }) {
@@ -513,19 +681,23 @@ class NotificationManager: ObservableObject {
     }
 
     /// UserPromptSubmit: user sent a message — session is active, clear stale tool state
-    func handleUserPromptSubmit(sessionId: String?) {
-        guard let sid = sessionId else { return }
-
-        // Auto-start session if needed
-        if !activeSessions.contains(where: { $0.id == sid }) && showSessionPill {
-            startSession(sessionId: sid)
-        }
+    func handleUserPromptSubmit(
+        sessionId: String?,
+        cwd: String? = nil,
+        sourcePid: pid_t? = nil,
+        permissionMode: PermissionMode? = nil
+    ) {
+        guard let sid = NotchNotification.nonEmpty(sessionId),
+              let idx = adoptSession(
+                sessionId: sid,
+                cwd: cwd,
+                sourcePid: sourcePid,
+                permissionMode: permissionMode
+              ) else { return }
 
         // New user turn — clear previous tool state and any popup mutes
-        if let idx = activeSessions.firstIndex(where: { $0.id == sid }) {
-            activeSessions[idx].activeToolName = nil
-            activeSessions[idx].activeToolDetail = nil
-        }
+        activeSessions[idx].activeToolName = nil
+        activeSessions[idx].activeToolDetail = nil
         clearPopupState(sessionId: sid)
 
         updateSessionStatus(sessionId: sid, status: .running)
@@ -533,14 +705,20 @@ class NotificationManager: ObservableObject {
 
     // MARK: - Auto-setup
 
-    /// Install hooks on first launch and on every version update (so new hooks like PreToolUse get added).
+    /// Bump when the hook bridge's wire format or command line changes, so an
+    /// upgrade reinstalls hooks even if the app version didn't move.
+    private static let hooksSchemaVersion = 2
+
+    /// Install hooks on first launch, on version updates, and whenever the hook
+    /// bridge itself changes shape.
     func installHooksIfNeeded() {
         let currentVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0"
-        let installedVersion = UserDefaults.standard.string(forKey: "hooksInstalledVersion") ?? ""
+        let stamp = "\(currentVersion)#\(Self.hooksSchemaVersion)"
+        let installed = UserDefaults.standard.string(forKey: "hooksInstalledVersion") ?? ""
 
-        if installedVersion != currentVersion {
+        if installed != stamp {
             installHooks()
-            UserDefaults.standard.set(currentVersion, forKey: "hooksInstalledVersion")
+            UserDefaults.standard.set(stamp, forKey: "hooksInstalledVersion")
         }
     }
 
@@ -567,15 +745,23 @@ class NotificationManager: ObservableObject {
     func showPermissionRequest(requestId: String, toolName: String, toolInput: String, sessionId: String?) {
         let (action, detail) = Self.sanitizePermission(toolName: toolName, toolInput: toolInput)
 
-        // Update session status
-        if let sid = sessionId {
-            updateSessionStatus(sessionId: sid, status: .needsPermission, message: action)
+        // Belt and braces: the server already filters these out, but never let a
+        // bypass/auto/plan session get a blocking prompt, and never mark it as
+        // "needs approval" — it doesn't.
+        if permissionMode(for: sessionId).autoApproves(toolName: toolName) {
+            PermissionServer.shared.respond(requestId: requestId, approve: true)
+            return
         }
 
         guard showOnPermission else {
             // If permission notifications are disabled, auto-approve
             PermissionServer.shared.respond(requestId: requestId, approve: true)
             return
+        }
+
+        // Only now is the session genuinely blocked on the user
+        if sessionId != nil {
+            updateSessionStatus(sessionId: sessionId, status: .needsPermission, message: action)
         }
 
         let notification = NotchNotification(
@@ -590,7 +776,13 @@ class NotificationManager: ObservableObject {
 
         let session = activeSessions.first(where: { $0.id == sessionId })
         Telemetry.shared.trackEvent("notification_shown", props: ["type": notification.type.rawValue])
-        windowController.showNotification(notification, sessionSourceBundleId: session?.sourceBundleId, sessionCwd: session?.cwd)
+        windowController.showNotification(
+            notification,
+            sessionSourceBundleId: session?.sourceBundleId,
+            sessionCwd: session?.cwd,
+            sessionSourcePid: session?.sourcePid,
+            screen: targetScreen(for: session)
+        )
     }
 
     // MARK: - Permission sanitization

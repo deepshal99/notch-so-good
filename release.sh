@@ -10,7 +10,6 @@ SIGN_TOOL=".build/artifacts/sparkle/Sparkle/bin/sign_update"
 
 # 1. Update version in Info.plist
 echo "Updating version to $VERSION..."
-sed -i '' "s|<string>[0-9]*\.[0-9]*\.[0-9]*</string><!-- version -->|<string>$VERSION</string><!-- version -->|" NotchSoGood/Info.plist
 # Update CFBundleShortVersionString
 plutil -replace CFBundleShortVersionString -string "$VERSION" NotchSoGood/Info.plist
 # Increment CFBundleVersion

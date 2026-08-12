@@ -106,56 +106,27 @@ echo -e "  ${GREEN}✓${RESET} Installed to /Applications"
 echo -e "  ${GREEN}✓${RESET} Registered notchsogood:// URL scheme"
 echo ""
 
-# Install Claude Code hooks
-echo -e "  ${CYAN}Setting up Claude Code hooks...${RESET}"
+# Install agent hooks by running the installers shipped inside the app, so there
+# is exactly one definition of the hooks (this script used to carry its own,
+# older, URL-scheme based copy that the app then immediately overwrote).
+echo -e "  ${CYAN}Setting up agent hooks...${RESET}"
 
-SETTINGS_FILE="$HOME/.claude/settings.json"
-mkdir -p "$HOME/.claude"
+RESOURCES="$INSTALL_DIR/$BUNDLE_NAME/Contents/Resources"
 
-if [ ! -f "$SETTINGS_FILE" ]; then
-    echo '{}' > "$SETTINGS_FILE"
+if [ -d "$HOME/.claude" ] || command -v claude &> /dev/null; then
+    if bash "$RESOURCES/install-hooks.sh" > /dev/null 2>&1; then
+        echo -e "  ${GREEN}✓${RESET} Claude Code hooks"
+    else
+        echo -e "  ${RED}!${RESET} Claude Code hooks failed ${DIM}(run: bash \"$RESOURCES/install-hooks.sh\")${RESET}"
+    fi
 fi
 
-if ! python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$SETTINGS_FILE" 2>/dev/null; then
-    echo -e "  ${RED}Warning:${RESET} $SETTINGS_FILE is not valid JSON — skipping hooks"
-    echo -e "    ${DIM}Fix it manually, then run: bash \"$INSTALL_DIR/$BUNDLE_NAME/Contents/Resources/install-hooks.sh\"${RESET}"
-else
-    cp "$SETTINGS_FILE" "$SETTINGS_FILE.backup.$(date +%s)"
-
-    read -r -d '' START_HOOK << 'HOOKEOF' || true
-[{"matcher":"","hooks":[{"type":"command","command":"INPUT=$(cat); eval $(echo \"$INPUT\" | python3 -c \"import sys,json,urllib.parse; d=json.load(sys.stdin); sid=d.get('session_id',''); cwd=d.get('cwd','') or ''; print(f'SID={sid}'); print(f'ECWD={urllib.parse.quote(cwd)}')\"); open -g \"notchsogood://session_start?session_id=$SID&cwd=$ECWD\"","timeout":5000}]}]
-HOOKEOF
-
-    read -r -d '' NOTIFICATION_HOOK << 'HOOKEOF' || true
-[{"matcher":"","hooks":[{"type":"command","command":"INPUT=$(cat); eval $(echo \"$INPUT\" | python3 -c \"import sys,json,urllib.parse; d=json.load(sys.stdin); t=d.get('notification_type','general'); nt={'permission_prompt':'permission','idle_prompt':'question'}.get(t,'general'); msg=urllib.parse.quote(d.get('message','Claude needs attention')[:200]); title=urllib.parse.quote(d.get('title','')); sid=d.get('session_id',''); print(f'NTYPE={nt}'); print(f'MSG={msg}'); print(f'TITLE={title}'); print(f'SID={sid}')\"); open -g \"notchsogood://notify?type=$NTYPE&message=$MSG&title=$TITLE&session_id=$SID\"","timeout":5000}]}]
-HOOKEOF
-
-    read -r -d '' STOP_HOOK << 'HOOKEOF' || true
-[{"matcher":"","hooks":[{"type":"command","command":"INPUT=$(cat); eval $(echo \"$INPUT\" | python3 -c \"import sys,json,urllib.parse; d=json.load(sys.stdin); msg=urllib.parse.quote(d.get('last_assistant_message','Task completed')[:200]); sid=d.get('session_id',''); print(f'MSG={msg}'); print(f'SID={sid}')\"); open -g \"notchsogood://notify?type=complete&message=$MSG&session_id=$SID\"","timeout":5000}]}]
-HOOKEOF
-
-    UPDATED=$(python3 -c "
-import json, sys
-start_hook = json.loads(sys.argv[1])
-notif_hook = json.loads(sys.argv[2])
-stop_hook = json.loads(sys.argv[3])
-with open(sys.argv[4]) as f:
-    settings = json.load(f)
-hooks = settings.get('hooks', {})
-hooks['SessionStart'] = start_hook
-hooks['Notification'] = notif_hook
-hooks['Stop'] = stop_hook
-settings['hooks'] = hooks
-print(json.dumps(settings, indent=2))
-" "$START_HOOK" "$NOTIFICATION_HOOK" "$STOP_HOOK" "$SETTINGS_FILE")
-
-    if [ -n "$UPDATED" ]; then
-        echo "$UPDATED" > "$SETTINGS_FILE"
+if [ -d "$HOME/.codex" ] || command -v codex &> /dev/null; then
+    if bash "$RESOURCES/install-codex-hooks.sh" > /dev/null 2>&1; then
+        echo -e "  ${GREEN}✓${RESET} Codex CLI hooks"
+    else
+        echo -e "  ${RED}!${RESET} Codex CLI hooks failed ${DIM}(run: bash \"$RESOURCES/install-codex-hooks.sh\")${RESET}"
     fi
-
-    echo -e "  ${GREEN}✓${RESET} SessionStart hook  ${DIM}→ Chawd pill appears${RESET}"
-    echo -e "  ${GREEN}✓${RESET} Notify hook ${DIM}→ Notch expands with notification${RESET}"
-    echo -e "  ${GREEN}✓${RESET} Stop hook   ${DIM}→ Completion + pill fades${RESET}"
 fi
 echo ""
 

@@ -37,13 +37,16 @@ cp "$BUILD_DIR/$APP_NAME" "$MACOS/$APP_NAME"
 # Copy Info.plist
 cp "NotchSoGood/Info.plist" "$CONTENTS/Info.plist"
 
-# Copy hook installer scripts
-cp "HookInstaller/install-hooks.sh" "$RESOURCES/install-hooks.sh"
-chmod +x "$RESOURCES/install-hooks.sh"
-if [ -f "HookInstaller/install-codex-hooks.sh" ]; then
-    cp "HookInstaller/install-codex-hooks.sh" "$RESOURCES/install-codex-hooks.sh"
-    chmod +x "$RESOURCES/install-codex-hooks.sh"
-fi
+# Copy hook installers and the shared Python bridge they install
+for f in install-hooks.sh install-codex-hooks.sh hook.py; do
+    cp "HookInstaller/$f" "$RESOURCES/$f"
+    chmod +x "$RESOURCES/$f"
+done
+
+# Copy the SwiftPM resource bundle (Assets.xcassets) if the build produced one
+for bundle in "$BUILD_DIR"/*.bundle; do
+    [ -e "$bundle" ] && cp -R "$bundle" "$RESOURCES/"
+done
 
 # Copy app icon
 if [ -f "AppIcon.icns" ]; then

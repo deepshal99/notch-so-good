@@ -79,6 +79,12 @@ if [ -f "$CODEX_HOOKS" ] && grep -q "notchsogood" "$CODEX_HOOKS" 2>/dev/null; th
     echo -e "  ${GREEN}✓${RESET} Removed Codex CLI hooks"
 fi
 
+# Hook bridge
+if [ -d "$HOME/.notchsogood" ]; then
+    rm -rf "$HOME/.notchsogood"
+    echo -e "  ${GREEN}✓${RESET} Removed hook bridge"
+fi
+
 # Preferences + socket
 defaults delete com.notchsogood.app 2>/dev/null && echo -e "  ${GREEN}✓${RESET} Removed preferences" || true
 rm -f /tmp/notchsogood.sock /tmp/notchsogood.port

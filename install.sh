@@ -88,8 +88,15 @@ mkdir -p "$APP_BUNDLE/Contents/Frameworks"
 
 cp "$BINARY" "$APP_BUNDLE/Contents/MacOS/NotchSoGood"
 cp "$PROJECT_DIR/NotchSoGood/Info.plist" "$APP_BUNDLE/Contents/Info.plist"
-cp "$PROJECT_DIR/HookInstaller/install-hooks.sh" "$APP_BUNDLE/Contents/Resources/install-hooks.sh"
-chmod +x "$APP_BUNDLE/Contents/Resources/install-hooks.sh"
+for f in install-hooks.sh install-codex-hooks.sh hook.py; do
+    cp "$PROJECT_DIR/HookInstaller/$f" "$APP_BUNDLE/Contents/Resources/$f"
+    chmod +x "$APP_BUNDLE/Contents/Resources/$f"
+done
+
+# SwiftPM resource bundle (Assets.xcassets), if present
+for bundle in "$(dirname "$BINARY")"/*.bundle; do
+    [ -e "$bundle" ] && cp -R "$bundle" "$APP_BUNDLE/Contents/Resources/"
+done
 
 # Copy app icon
 if [ -f "$PROJECT_DIR/AppIcon.icns" ]; then

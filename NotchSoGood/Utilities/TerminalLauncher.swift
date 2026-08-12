@@ -1,66 +1,101 @@
 import AppKit
 
 struct TerminalLauncher {
-    /// Focus the app that originated the Claude Code session, then raise the
-    /// window whose title best matches the session's working directory.
-    static func focusClaudeCode(sessionId: String? = nil, sourceBundleId: String? = nil, cwd: String? = nil) {
-        // 1. Try the specific source app passed from the hook / stored per-session
-        if let bundleId = sourceBundleId, !bundleId.isEmpty {
-            if activateApp(bundleId: bundleId, cwd: cwd) { return }
-        }
-
-        // 2. Walk known terminals/IDEs — activate the first running one
-        let knownApps = [
-            "com.google.antigravity",        // Antigravity IDE
-            "com.conductor.app",             // Conductor
-            "com.cursor.Cursor",             // Cursor
-            "com.microsoft.VSCode",          // VS Code
-            "com.todesktop.230313mzl4w4u92", // Cursor (alt ID)
-            "com.mitchellh.ghostty",         // Ghostty
-            "com.googlecode.iterm2",         // iTerm2
-            "net.kovidgoyal.kitty",          // Kitty
-            "dev.warp.Warp-Stable",          // Warp
-            "io.alacritty",                  // Alacritty
-            "com.github.wez.wezterm",        // WezTerm
-            "co.zeit.hyper",                 // Hyper
-            "com.raphaelamorim.rio",         // Rio
-            "com.apple.Terminal",            // Terminal.app (last resort)
-        ]
-
-        for bundleId in knownApps {
-            if activateApp(bundleId: bundleId, cwd: cwd) { return }
-        }
-
-        // 3. Last resort: open Terminal.app
-        if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.Terminal") {
-            NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
-        }
-    }
-
-    // MARK: - App activation with window matching
-
+    /// Focus the app that owns an agent session, then raise the window whose
+    /// title best matches the session's working directory.
+    ///
+    /// Resolution is ordered most-precise-first:
+    ///  1. the hook process's ancestry — the terminal or IDE that literally
+    ///     spawned the agent, resolved live via sysctl;
+    ///  2. the bundle id the hook reported (`__CFBundleIdentifier`), which is
+    ///     empty under tmux / ssh / most login shells;
+    ///  3. a walk of known terminals and IDEs, as a last guess.
+    ///
+    /// If none of those is running we do nothing. Launching an unrelated
+    /// Terminal window — the old fallback — looks exactly like "it took me
+    /// somewhere that isn't my session".
     @discardableResult
-    private static func activateApp(bundleId: String, cwd: String? = nil) -> Bool {
-        guard let app = NSRunningApplication.runningApplications(withBundleIdentifier: bundleId).first else {
+    static func focusClaudeCode(
+        sessionId: String? = nil,
+        sourceBundleId: String? = nil,
+        cwd: String? = nil,
+        sourcePid: pid_t? = nil
+    ) -> Bool {
+        guard let app = resolveApp(sourcePid: sourcePid, sourceBundleId: sourceBundleId) else {
             return false
         }
 
-        if let cwd = cwd, !cwd.isEmpty {
-            // Try terminal-specific deep-linking first (tab/pane level precision)
-            if !deepLinkToTab(bundleId: bundleId, cwd: cwd) {
-                // Fall back to AX window-title matching
-                raiseMatchingWindow(app: app, cwd: cwd)
-            }
+        // Activate immediately so the click feels instant, then do the slower
+        // tab/window targeting off the main thread.
+        let activated = app.activate()
+        if !activated {
+            // A single retry covers the common "app was mid-launch" race.
+            app.activate(options: [.activateAllWindows])
         }
 
-        app.activate()
+        if let cwd = NotchNotification.nonEmpty(cwd) {
+            let bundleId = app.bundleIdentifier ?? ""
+            targetingQueue.async {
+                if !deepLinkToTab(bundleId: bundleId, cwd: cwd) {
+                    raiseMatchingWindow(app: app, cwd: cwd)
+                }
+            }
+        }
         return true
     }
 
+    /// AppleScript and CLI round-trips can take hundreds of milliseconds; never
+    /// run them on the main thread where they'd freeze the notch.
+    private static let targetingQueue = DispatchQueue(label: "com.notchsogood.focus", qos: .userInitiated)
+
+    // MARK: - Which app owns this session
+
+    private static func resolveApp(sourcePid: pid_t?, sourceBundleId: String?) -> NSRunningApplication? {
+        // 1. Live process ancestry — the strongest signal available.
+        if let sourcePid, let owner = ProcessTree.owningApp(of: sourcePid), !owner.isTerminated {
+            return owner
+        }
+
+        // 2. The bundle id the hook captured from the environment.
+        if let bundleId = NotchNotification.nonEmpty(sourceBundleId),
+           let app = runningApp(bundleId: bundleId) {
+            return app
+        }
+
+        // 3. Known terminals and IDEs, most-specific first.
+        for bundleId in knownApps {
+            if let app = runningApp(bundleId: bundleId) { return app }
+        }
+
+        return nil
+    }
+
+    private static func runningApp(bundleId: String) -> NSRunningApplication? {
+        NSRunningApplication.runningApplications(withBundleIdentifier: bundleId)
+            .first { !$0.isTerminated }
+    }
+
+    private static let knownApps = [
+        "com.google.antigravity",        // Antigravity IDE
+        "com.conductor.app",             // Conductor
+        "com.cursor.Cursor",             // Cursor
+        "com.microsoft.VSCode",          // VS Code
+        "com.todesktop.230313mzl4w4u92", // Cursor (alt ID)
+        "com.mitchellh.ghostty",         // Ghostty
+        "com.googlecode.iterm2",         // iTerm2
+        "net.kovidgoyal.kitty",          // Kitty
+        "dev.warp.Warp-Stable",          // Warp
+        "io.alacritty",                  // Alacritty
+        "com.github.wez.wezterm",        // WezTerm
+        "co.zeit.hyper",                 // Hyper
+        "com.raphaelamorim.rio",         // Rio
+        "com.apple.Terminal",            // Terminal.app (last resort)
+    ]
+
     // MARK: - Terminal-specific deep-linking
 
-    /// Attempts to focus the exact tab/pane matching the cwd using terminal-specific APIs.
-    /// Returns true if the terminal supports deep-linking and the command was dispatched.
+    /// Focus the exact tab/pane matching the cwd using terminal-specific APIs.
+    /// Returns true only when the terminal confirmed a match.
     private static func deepLinkToTab(bundleId: String, cwd: String) -> Bool {
         switch bundleId {
         case "com.googlecode.iterm2":
@@ -79,11 +114,8 @@ struct TerminalLauncher {
     // MARK: - iTerm2: AppleScript tab focus by cwd
 
     private static func focusITerm2Tab(cwd: String) -> Bool {
-        // iTerm2 exposes session properties via AppleScript including the
-        // variable "path" which reflects the current working directory.
-        // We enumerate all sessions and select the one whose path matches.
-        let escaped = cwd.replacingOccurrences(of: "\\", with: "\\\\")
-                         .replacingOccurrences(of: "\"", with: "\\\"")
+        // iTerm2 exposes each session's working directory as the "path" variable.
+        let escaped = appleScriptString(cwd)
         let script = """
         tell application "iTerm2"
             repeat with w in windows
@@ -93,7 +125,7 @@ struct TerminalLauncher {
                             repeat with s in sessions
                                 tell s
                                     set p to variable named "path"
-                                    if p ends with "\(escaped)" or p is equal to "\(escaped)" then
+                                    if p is equal to \(escaped) then
                                         select
                                         tell t to select
                                         return true
@@ -113,28 +145,20 @@ struct TerminalLauncher {
     // MARK: - Terminal.app: AppleScript tab focus by cwd
 
     private static func focusTerminalTab(cwd: String) -> Bool {
-        // Terminal.app tabs have a "current settings" and a custom title,
-        // but the most reliable match is the tty's working directory.
-        // We use `lsof` to find which tty is in our cwd, then select that tab.
-        // Simpler approach: match window/tab name which Terminal.app sets to the cwd.
-        let escaped = cwd.replacingOccurrences(of: "\\", with: "\\\\")
-                         .replacingOccurrences(of: "\"", with: "\\\"")
-        let projectName = (cwd as NSString).lastPathComponent
-        let escapedProject = projectName.replacingOccurrences(of: "\\", with: "\\\\")
-                                        .replacingOccurrences(of: "\"", with: "\\\"")
+        // Terminal.app puts the directory (or its leaf) in the tab's name.
+        let escapedPath = appleScriptString(cwd)
+        let escapedProject = appleScriptString((cwd as NSString).lastPathComponent)
         let script = """
         tell application "Terminal"
             repeat with w in windows
-                tell w
-                    repeat with t from 1 to count of tabs
-                        set tabName to name of tab t
-                        if tabName contains "\(escaped)" or tabName contains "\(escapedProject)" then
-                            set selected tab to tab t
-                            set index to 1
-                            return true
-                        end if
-                    end repeat
-                end tell
+                repeat with t from 1 to count of tabs of w
+                    set tabName to name of tab t of w
+                    if tabName contains \(escapedPath) or tabName contains \(escapedProject) then
+                        set selected tab of w to tab t of w
+                        set index of w to 1
+                        return true
+                    end if
+                end repeat
             end repeat
         end tell
         return false
@@ -145,63 +169,38 @@ struct TerminalLauncher {
     // MARK: - Kitty: remote control window focus by cwd
 
     private static func focusKittyWindow(cwd: String) -> Bool {
-        // Kitty supports remote control via `kitty @ focus-window --match`.
-        // The `cwd` matcher finds the window/tab whose shell is in the given directory.
-        let task = Process()
-        task.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        task.arguments = ["kitty", "@", "focus-window", "--match", "cwd:\(cwd)"]
-        task.standardOutput = FileHandle.nullDevice
-        task.standardError = FileHandle.nullDevice
-        do {
-            try task.run()
-            task.waitUntilExit()
-            return task.terminationStatus == 0
-        } catch {
-            return false
-        }
+        // `kitty @ focus-window --match cwd:…` needs the real binary path: a
+        // GUI-launched app inherits a bare PATH, so `/usr/bin/env kitty` — what
+        // this used to do — never resolved and the deep link silently never ran.
+        guard let kitty = executablePath(
+            "kitty",
+            extraCandidates: ["/Applications/kitty.app/Contents/MacOS/kitty"]
+        ) else { return false }
+        return run(kitty, ["@", "focus-window", "--match", "cwd:\(cwd)"]).status == 0
     }
 
-    // MARK: - WezTerm: CLI tab activation by cwd
+    // MARK: - WezTerm: CLI pane activation by cwd
 
     private static func focusWezTermTab(cwd: String) -> Bool {
-        // WezTerm exposes a CLI: `wezterm cli list` returns JSON with pane info including cwd.
-        // We find the pane ID matching our cwd, then activate it.
-        let listTask = Process()
-        listTask.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        listTask.arguments = ["wezterm", "cli", "list", "--format", "json"]
-        let pipe = Pipe()
-        listTask.standardOutput = pipe
-        listTask.standardError = FileHandle.nullDevice
-        do {
-            try listTask.run()
-            listTask.waitUntilExit()
-        } catch {
+        guard let wezterm = executablePath(
+            "wezterm",
+            extraCandidates: ["/Applications/WezTerm.app/Contents/MacOS/wezterm"]
+        ) else { return false }
+
+        let listed = run(wezterm, ["cli", "list", "--format", "json"])
+        guard listed.status == 0,
+              let panes = try? JSONSerialization.jsonObject(with: listed.output) as? [[String: Any]] else {
             return false
         }
 
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        guard let panes = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
-            return false
-        }
-
-        // Find the pane whose cwd matches
-        let cwdLower = cwd.lowercased()
-        let projectName = (cwd as NSString).lastPathComponent.lowercased()
         var bestPaneId: Int?
         var bestScore = 0
-
         for pane in panes {
             guard let paneCwd = pane["cwd"] as? String,
                   let paneId = pane["pane_id"] as? Int else { continue }
-
-            let paneCwdLower = paneCwd.lowercased()
-            var score = 0
-            if paneCwdLower == cwdLower || paneCwdLower.hasSuffix(cwdLower) {
-                score = 100
-            } else if !projectName.isEmpty && paneCwdLower.hasSuffix(projectName) {
-                score = 50
-            }
-
+            // WezTerm reports cwd as a file:// URL on some versions.
+            let normalized = URL(string: paneCwd)?.path ?? paneCwd
+            let score = WindowMatcher.score(candidate: normalized, cwd: cwd)
             if score > bestScore {
                 bestScore = score
                 bestPaneId = paneId
@@ -209,25 +208,14 @@ struct TerminalLauncher {
         }
 
         guard let paneId = bestPaneId else { return false }
-
-        let activateTask = Process()
-        activateTask.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        activateTask.arguments = ["wezterm", "cli", "activate-pane", "--pane-id", "\(paneId)"]
-        activateTask.standardOutput = FileHandle.nullDevice
-        activateTask.standardError = FileHandle.nullDevice
-        do {
-            try activateTask.run()
-            activateTask.waitUntilExit()
-            return activateTask.terminationStatus == 0
-        } catch {
-            return false
-        }
+        return run(wezterm, ["cli", "activate-pane", "--pane-id", "\(paneId)"]).status == 0
     }
 
     // MARK: - Window-level targeting via Accessibility API
 
-    /// Uses the macOS Accessibility API to find and raise the window whose title
-    /// best matches the session's working directory.
+    /// Find and raise the window whose title best matches the session's cwd.
+    /// Silently does nothing without Accessibility access — the menu bar shows a
+    /// prompt for that.
     private static func raiseMatchingWindow(app: NSRunningApplication, cwd: String) {
         let appElement = AXUIElementCreateApplication(app.processIdentifier)
 
@@ -236,9 +224,6 @@ struct TerminalLauncher {
               let windows = windowsRef as? [AXUIElement] else {
             return
         }
-
-        let cwdLower = cwd.lowercased()
-        let projectName = (cwd as NSString).lastPathComponent.lowercased()
 
         var bestWindow: AXUIElement?
         var bestScore = 0
@@ -249,28 +234,63 @@ struct TerminalLauncher {
                   let title = titleRef as? String else {
                 continue
             }
-
-            let titleLower = title.lowercased()
-            var score = 0
-
-            if titleLower.contains(cwdLower) {
-                score = 100
-            } else if !projectName.isEmpty && titleLower.contains(projectName) {
-                score = 50
-            }
-
+            let score = WindowMatcher.score(candidate: title, cwd: cwd)
             if score > bestScore {
                 bestScore = score
                 bestWindow = window
             }
         }
 
-        if let window = bestWindow {
-            AXUIElementPerformAction(window, kAXRaiseAction as CFString)
-        }
+        guard let window = bestWindow else { return }
+        // Raise alone often leaves the window unfocused; make it main too.
+        AXUIElementPerformAction(window, kAXRaiseAction as CFString)
+        AXUIElementSetAttributeValue(window, kAXMainAttribute as CFString, kCFBooleanTrue)
     }
 
-    // MARK: - Helpers
+    // MARK: - Matching
+
+    // MARK: - Process helpers
+
+    /// Locate a CLI tool without relying on PATH, which is near-empty for
+    /// GUI-launched apps.
+    private static func executablePath(_ name: String, extraCandidates: [String] = []) -> String? {
+        let dirs = [
+            "/opt/homebrew/bin",
+            "/usr/local/bin",
+            "/usr/bin",
+            "/bin",
+            NSHomeDirectory() + "/.local/bin",
+            NSHomeDirectory() + "/bin",
+        ]
+        let candidates = dirs.map { $0 + "/" + name } + extraCandidates
+        return candidates.first { FileManager.default.isExecutableFile(atPath: $0) }
+    }
+
+    private static func run(_ executable: String, _ arguments: [String]) -> (status: Int32, output: Data) {
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: executable)
+        task.arguments = arguments
+        let pipe = Pipe()
+        task.standardOutput = pipe
+        task.standardError = FileHandle.nullDevice
+        do {
+            try task.run()
+        } catch {
+            return (-1, Data())
+        }
+        // Read before waiting so a chatty tool can't fill the pipe and deadlock.
+        let output = pipe.fileHandleForReading.readDataToEndOfFile()
+        task.waitUntilExit()
+        return (task.terminationStatus, output)
+    }
+
+    /// Quote and escape a value for embedding in AppleScript source.
+    private static func appleScriptString(_ value: String) -> String {
+        let escaped = value
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+        return "\"\(escaped)\""
+    }
 
     /// Runs an AppleScript and returns true if the script returned `true`.
     private static func runAppleScript(_ source: String) -> Bool {

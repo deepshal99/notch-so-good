@@ -1,6 +1,6 @@
 # Notch So Good
 
-> A pixel-art crab called Chawd lives in your MacBook's notch and watches your AI coding agents — Claude Code, OpenAI Codex CLI, and Gemini CLI — so you don't have to.
+> A pixel-art crab called Chawd lives in your MacBook's notch and watches your AI coding agents — Claude Code and OpenAI Codex CLI — so you don't have to.
 
 ## What it is
 
@@ -8,15 +8,17 @@ Notch So Good is a free, open-source macOS menubar app for developers who run AI
 
 ## Key features
 
+- Multi-display aware: a session's notification and pill appear on the display its terminal is on (needs Accessibility access; can be pinned to the built-in screen)
 - Session pill: Dynamic Island-style pill with fluid concave notch curves, Chawd mascot + live timer
 - Tool-aware mascot: Chawd wears glasses while the agent reads, holds a pencil while it edits, celebrates with confetti when a task completes
 - Permission approvals from the notch: Allow / Always Allow / Deny buttons, plus global hotkeys ⌃⌥A / ⌃⌥D
+- Permission-mode aware: no prompt at all in bypassPermissions / auto / plan mode, and none for file edits in acceptEdits — the agent has already decided
 - Usage limits: session (5-hour) and weekly rate-limit bars for both Claude and Codex, with reset countdowns and one warning before you hit the wall
 - Real completion summaries: Stop notifications show the agent's actual last message from the transcript
 - Shift report: today's sessions, completed tasks, and active time in the menu bar
 - Notification history: recent alerts in the menu bar, click to jump back
 - Nudge: one gentle re-ping if a session waits 2+ minutes — repeat hook events are deduped so it never spams
-- Multi-agent, multi-session: Claude / Codex / Gemini badges, sessions grouped by project, subagent tree
+- Multi-agent, multi-session: Claude / Codex badges (Gemini is detected but has no hook installer yet), sessions grouped by project, subagent tree
 - 17 idle animations, drowsiness system, menu bar attention dot
 - Launch at Login, auto-update via Sparkle
 
@@ -31,12 +33,12 @@ Or: curl -fsSL https://raw.githubusercontent.com/deepshal99/notch-so-good/main/g
 ## Requirements
 
 - macOS 14+ (Sonoma or later)
-- Claude Code, OpenAI Codex CLI, or Gemini CLI
+- Claude Code or OpenAI Codex CLI
 - MacBook with a notch (recommended — works without one too)
 
 ## How it works
 
-Claude Code / Codex hooks send events over a local Unix domain socket (/tmp/notchsogood.sock) that the app listens on. Permission checks are bidirectional: the hook waits for your Allow/Deny from the notch. Usage limits are read from your own local logins — Claude Code's OAuth credentials (Keychain) against Anthropic's usage endpoint, and Codex CLI's ~/.codex/auth.json against the ChatGPT usage endpoint. No server, no accounts; optional anonymous stats are off unless the build ships a telemetry key.
+Claude Code / Codex hooks run a small Python bridge (~/.notchsogood/hook.py) that sends events over a local Unix domain socket (/tmp/notchsogood.sock) the app listens on. Every event carries the agent's live permission_mode, so the notch never double-gates a session the agent is already handling. Permission checks are bidirectional: the hook waits for your Allow/Deny from the notch. Usage limits are read from your own local logins — Claude Code's OAuth credentials (Keychain) against Anthropic's usage endpoint, and Codex CLI's ~/.codex/auth.json against the ChatGPT usage endpoint. No server, no accounts; optional anonymous stats are off unless the build ships a telemetry key.
 
 ## Links
 

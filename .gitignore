@@ -58,3 +58,6 @@ build/
 .windsurf/
 .zencoder/
 skills/
+
+# Python bytecode from hook tests
+__pycache__/

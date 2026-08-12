@@ -29,35 +29,51 @@ class NotchWindowController {
 
     // Permission queue — when multiple tools need approval simultaneously
     private var permissionQueue: [NotchNotification] = []
-    private var permissionQueueMeta: [(sourceBundleId: String?, cwd: String?)] = []
+    private var permissionQueueMeta: [(sourceBundleId: String?, cwd: String?, sourcePid: pid_t?)] = []
 
-    // Pill sizing constants (must match SessionPillView)
-    private let wingExpanded: CGFloat = 110
-    private let wingCollapsed: CGFloat = 56
-    private let maxDropHeight: CGFloat = 160
+    /// Screen each panel is currently built for. The pill bakes its notch
+    /// dimensions into the SwiftUI view, so moving it to a display with
+    /// different geometry means rebuilding it.
+    private var pillGeometryKey: String?
+    private var notificationScreen: NSScreen?
+
+    // Pill sizing — shared with SessionPillView via PillLayout
+    private let wingExpanded = PillLayout.wingExpanded
+    private let wingCollapsed = PillLayout.wingCollapsed
 
     // MARK: - Session Pill
 
-    func showSessionPill(sessions: [NotificationManager.SessionInfo], primaryStartTime: Date) {
+    func showSessionPill(
+        sessions: [NotificationManager.SessionInfo],
+        primaryStartTime: Date,
+        screen: NSScreen? = nil
+    ) {
         hasPillSession = true
 
-        let hasNotch = NotchGeometry.hasNotch
-        let geo = NotchGeometry.calculate()
-
-        let notchW = geo?.notchWidth ?? 185
-        let notchH = geo?.notchHeight ?? 32
+        guard let geo = resolveGeometry(screen) else { return }
+        let notchW = geo.notchWidth
+        let notchH = geo.barHeight
 
         let maxWidth = notchW + (wingExpanded * 2)
-        let maxHeight = notchH + 300
+        let maxHeight = notchH + PillLayout.maxContentHeight
 
-        let panelFrame = calculateFrame(panelWidth: maxWidth, panelHeight: maxHeight, hasNotch: hasNotch, geo: geo)
+        let panelFrame = calculateFrame(panelWidth: maxWidth, panelHeight: maxHeight, geo: geo)
+
+        // Rebuild when the target display's geometry differs from what's built.
+        let geometryKey = "\(geo.displayID)-\(notchW)-\(notchH)"
+        if pillGeometryKey != geometryKey, pillPanel != nil {
+            pillHoverMonitor.stop()
+            pillPanel?.orderOut(nil)
+            pillPanel = nil
+        }
+        pillGeometryKey = geometryKey
 
         let collapsedW = notchW + (wingCollapsed * 2)
         let expandedW = maxWidth
         let centerX = panelFrame.origin.x + maxWidth / 2
 
-        // Calculate expanded height matching SessionPillView's expandedContentHeight
-        let expandedH = Self.computeExpandedHeight(sessions: sessions, notchH: notchH)
+        let expandedH = PillLayout.expandedHeight(for: sessions, notchHeight: notchH)
+        pillScreen = geo.screenFrame
 
         pillHoverMonitor.collapsedScreenRect = NSRect(
             x: centerX - collapsedW / 2,
@@ -83,9 +99,15 @@ class NotchWindowController {
                 dataSource: pillDataSource,
                 notchWidth: notchW,
                 notchHeight: notchH,
+                hasNotch: geo.hasNotch,
                 onTap: { [weak self] sessionId in
                     let session = self?.pillDataSource.sessions.first(where: { $0.id == sessionId })
-                    TerminalLauncher.focusClaudeCode(sessionId: sessionId, sourceBundleId: session?.sourceBundleId, cwd: session?.cwd)
+                    TerminalLauncher.focusClaudeCode(
+                        sessionId: sessionId,
+                        sourceBundleId: session?.sourceBundleId,
+                        cwd: session?.cwd,
+                        sourcePid: session?.sourcePid
+                    )
                 },
                 hoverMonitor: pillHoverMonitor
             )
@@ -141,9 +163,21 @@ class NotchWindowController {
     /// there's no black backdrop to blend into, so the pill would float as a
     /// blob over the app's own UI.
     private var isMenuBarHidden: Bool {
-        let screen = NSScreen.screens.first(where: { $0.safeAreaInsets.top > 0 }) ?? NSScreen.main
-        guard let screen else { return false }
+        // Check the display the pill is actually on, not always the built-in one.
+        let target = pillScreen.flatMap { frame in
+            NSScreen.screens.first { $0.frame == frame }
+        }
+        guard let screen = target ?? NotchGeometry.notchScreen ?? NSScreen.main else { return false }
         return screen.visibleFrame.maxY >= screen.frame.maxY - 1
+    }
+
+    /// Frame of the display the pill was last built for.
+    private var pillScreen: NSRect?
+
+    /// Geometry for an explicit screen, or the notch screen when we have no idea.
+    private func resolveGeometry(_ screen: NSScreen?) -> NotchGeometry? {
+        if let screen { return NotchGeometry.geometry(for: screen) }
+        return NotchGeometry.calculate()
     }
 
     /// Space changed (fullscreen in/out, desktop switch) — hide or restore the pill.
@@ -159,42 +193,61 @@ class NotchWindowController {
     /// Rebuild/reposition panels after display configuration changes
     /// (monitor plugged/unplugged, resolution change — notch geometry may differ).
     @MainActor func handleScreenChange() {
-        let hasNotch = NotchGeometry.hasNotch
-        let geo = NotchGeometry.calculate()
+        let manager = NotificationManager.shared
+        // Displays moved: every cached "which screen is this session on" answer
+        // is stale, including the one the visible notification used.
+        manager.invalidateDisplayCache()
 
         // Reposition an on-screen notification (permission dialogs persist indefinitely)
         if isNotificationActive, let panel {
-            let notchH = geo?.notchHeight ?? 32
-            let notchW = geo?.notchWidth ?? 185
-            let contentHeight: CGFloat = activePermissionRequestId != nil ? 148 : 76
-            let panelWidth: CGFloat = hasNotch ? notchW + 200 : 380
-            let panelHeight: CGFloat = hasNotch ? (notchH + contentHeight) : contentHeight
-            let frame = calculateFrame(panelWidth: panelWidth, panelHeight: panelHeight, hasNotch: hasNotch, geo: geo)
-            panel.setFrame(frame, display: true)
-            notifHoverMonitor.contentScreenRect = NSRect(
-                x: frame.origin.x, y: frame.origin.y,
-                width: frame.width, height: contentHeight
-            )
+            let stillAttached = notificationScreen.flatMap { screen in
+                NSScreen.screens.first { $0.displayID == screen.displayID }
+            }
+            if let geo = resolveGeometry(stillAttached) {
+                let contentHeight: CGFloat = activePermissionRequestId != nil ? 148 : 76
+                let panelWidth: CGFloat = geo.hasNotch ? geo.notchWidth + 200 : 380
+                let panelHeight: CGFloat = geo.hasNotch ? (geo.barHeight + contentHeight) : contentHeight
+                let frame = calculateFrame(panelWidth: panelWidth, panelHeight: panelHeight, geo: geo)
+                panel.setFrame(frame, display: true)
+                notifHoverMonitor.contentScreenRect = NSRect(
+                    x: frame.origin.x, y: frame.origin.y,
+                    width: frame.width, height: contentHeight
+                )
+            }
         }
 
         // Rebuild the pill — its notch dimensions are baked into the SwiftUI view
         pillHoverMonitor.stop()
         pillPanel?.orderOut(nil)
         pillPanel = nil
+        pillGeometryKey = nil
 
-        let manager = NotificationManager.shared
-        if manager.hasActiveSession, manager.showSessionPill, let first = manager.activeSessions.first {
-            showSessionPill(sessions: manager.activeSessions, primaryStartTime: first.startTime)
+        if manager.hasActiveSession, manager.showSessionPill, let primary = manager.primarySession {
+            showSessionPill(
+                sessions: manager.orderedSessions,
+                primaryStartTime: primary.startTime,
+                screen: manager.targetScreen(for: primary)
+            )
         }
     }
 
     // MARK: - Notification (transient expand + auto-dismiss)
 
-    func showNotification(_ notification: NotchNotification, sessionSourceBundleId: String? = nil, sessionCwd: String? = nil) {
+    func showNotification(
+        _ notification: NotchNotification,
+        sessionSourceBundleId: String? = nil,
+        sessionCwd: String? = nil,
+        sessionSourcePid: pid_t? = nil,
+        screen: NSScreen? = nil
+    ) {
         // Queue concurrent permission requests instead of replacing
         if notification.isInteractivePermission && activePermissionRequestId != nil {
             permissionQueue.append(notification)
-            permissionQueueMeta.append((sourceBundleId: sessionSourceBundleId, cwd: sessionCwd))
+            permissionQueueMeta.append((
+                sourceBundleId: sessionSourceBundleId,
+                cwd: sessionCwd,
+                sourcePid: sessionSourcePid
+            ))
             return
         }
 
@@ -211,11 +264,11 @@ class NotchWindowController {
         pillPanel?.orderOut(nil)
         pillHoverMonitor.stop()
 
-        let hasNotch = NotchGeometry.hasNotch
-        let geo = NotchGeometry.calculate()
-
-        let notchH = geo?.notchHeight ?? 32
-        let notchW = geo?.notchWidth ?? 185
+        guard let geo = resolveGeometry(screen) else { return }
+        notificationScreen = NSScreen.screens.first { $0.frame == geo.screenFrame }
+        let hasNotch = geo.hasNotch
+        let notchH = geo.barHeight
+        let notchW = geo.notchWidth
 
         // Permission notifications are taller to fit buttons
         let isPermission = notification.isInteractivePermission
@@ -223,12 +276,7 @@ class NotchWindowController {
         let panelWidth: CGFloat = hasNotch ? notchW + 200 : 380
         let panelHeight: CGFloat = hasNotch ? (notchH + contentHeight) : contentHeight
 
-        let frame = calculateFrame(
-            panelWidth: panelWidth,
-            panelHeight: panelHeight,
-            hasNotch: hasNotch,
-            geo: geo
-        )
+        let frame = calculateFrame(panelWidth: panelWidth, panelHeight: panelHeight, geo: geo)
 
         if panel == nil {
             panel = NotchPanel(contentRect: frame)
@@ -256,7 +304,12 @@ class NotchWindowController {
                 Task { @MainActor in
                     NotificationManager.shared.muteRepeats(sessionId: notification.sessionId, type: notification.type)
                 }
-                TerminalLauncher.focusClaudeCode(sessionId: notification.sessionId, sourceBundleId: resolvedBundleId, cwd: resolvedCwd)
+                TerminalLauncher.focusClaudeCode(
+                    sessionId: notification.sessionId,
+                    sourceBundleId: resolvedBundleId,
+                    cwd: resolvedCwd,
+                    sourcePid: sessionSourcePid
+                )
             },
             onDismiss: { [weak self] in
                 self?.dismiss()
@@ -316,7 +369,12 @@ class NotchWindowController {
         guard !permissionQueue.isEmpty else { return }
         let next = permissionQueue.removeFirst()
         let meta = permissionQueueMeta.removeFirst()
-        showNotification(next, sessionSourceBundleId: meta.sourceBundleId, sessionCwd: meta.cwd)
+        showNotification(
+            next,
+            sessionSourceBundleId: meta.sourceBundleId,
+            sessionCwd: meta.cwd,
+            sessionSourcePid: meta.sourcePid
+        )
     }
 
     /// Dismiss a specific permission by request ID (e.g. on timeout)
@@ -428,58 +486,25 @@ class NotchWindowController {
             })
         } else {
             // Pill panel was never created — rebuild from current session state
-            let sessions = manager.activeSessions
-            if let first = sessions.first {
-                showSessionPill(sessions: sessions, primaryStartTime: first.startTime)
+            if let primary = manager.primarySession {
+                showSessionPill(
+                    sessions: manager.orderedSessions,
+                    primaryStartTime: primary.startTime,
+                    screen: manager.targetScreen(for: primary)
+                )
             }
         }
     }
 
-    /// Compute the expanded pill height, matching SessionPillView's layout exactly.
-    private static func computeExpandedHeight(sessions: [NotificationManager.SessionInfo], notchH: CGFloat) -> CGFloat {
-        let dropPad: CGFloat = 4 + 10
-        let sessionRowH: CGFloat = 36
-        let groupHeaderH: CGFloat = 22
-        let subSessionRowH: CGFloat = 32
-        let subagentRowH: CGFloat = 24
-
-        // Group sessions by project (same logic as SessionGroup.from)
-        var groups: [String: [NotificationManager.SessionInfo]] = [:]
-        var order: [String] = []
-        for s in sessions {
-            if groups[s.projectName] == nil { order.append(s.projectName) }
-            groups[s.projectName, default: []].append(s)
-        }
-
-        var contentH: CGFloat = dropPad
-        for name in order {
-            let groupSessions = groups[name] ?? []
-            if groupSessions.count == 1 {
-                contentH += sessionRowH
-                contentH += subagentRowH * CGFloat(groupSessions[0].subagents.count)
-            } else {
-                contentH += groupHeaderH
-                for s in groupSessions {
-                    contentH += subSessionRowH
-                    contentH += subagentRowH * CGFloat(s.subagents.count)
-                }
-            }
-        }
-
-        return notchH + contentH
-    }
-
+    /// Centre horizontally on the target display and hang down from its top —
+    /// the screen's edge on a notched display, just under the menu bar elsewhere.
     private func calculateFrame(panelWidth: CGFloat, panelHeight: CGFloat,
-                                hasNotch: Bool, geo: NotchGeometry?) -> NSRect {
-        if hasNotch, let geo = geo {
-            let x = geo.centerX - panelWidth / 2
-            let y = geo.screenTopY - panelHeight
-            return NSRect(x: x, y: y, width: panelWidth, height: panelHeight)
-        } else {
-            let fallback = NotchGeometry.fallbackOrigin()
-            let x = fallback.x - panelWidth / 2
-            let y = fallback.y - panelHeight
-            return NSRect(x: x, y: y, width: panelWidth, height: panelHeight)
-        }
+                                geo: NotchGeometry) -> NSRect {
+        NSRect(
+            x: geo.centerX - panelWidth / 2,
+            y: geo.topY - panelHeight,
+            width: panelWidth,
+            height: panelHeight
+        )
     }
 }

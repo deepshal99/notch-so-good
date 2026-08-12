@@ -1,6 +1,6 @@
 cask "notch-so-good" do
-  version "4.3.0"
-  sha256 "600aa6490bcbf93588242cce63bb9b6e9de1425c7746fa0b5307f54a35309151"
+  version "4.4.0"
+  sha256 "863dc97840ecc7592b17ffd498b0471c72b0116064dd9f4e2a7398d89ffe7a60"
 
   url "https://github.com/deepshal99/notch-so-good/releases/download/v#{version}/NotchSoGood-#{version}.zip"
   name "Notch So Good"
@@ -29,8 +29,11 @@ cask "notch-so-good" do
   ]
 
   caveats <<~EOS
-    Launch the app once, then install the agent hooks from the menu bar
-    (Reinstall Hooks) or run:
-      bash HookInstaller/install-hooks.sh
+    Launch the app once and it installs the Claude Code / Codex CLI hooks for
+    you. To reinstall them later: menu bar Chawd icon -> Settings -> Reinstall
+    hooks.
+
+    For notifications to land on the display you're working on, and to focus the
+    exact terminal window, grant Accessibility access when prompted.
   EOS
 end

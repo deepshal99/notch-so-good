@@ -25,6 +25,19 @@ enum SessionStatus: String {
         }
     }
 
+    /// How loudly this state wants the user. The collapsed pill has room for
+    /// exactly one status, so with several sessions running it must show the
+    /// one that's blocked on the user — not whichever happened to start first.
+    var attentionPriority: Int {
+        switch self {
+        case .needsPermission: return 4
+        case .needsInput:      return 3
+        case .compacting:      return 2
+        case .running:         return 1
+        case .completed:       return 0
+        }
+    }
+
     var label: String? {
         switch self {
         case .running: return nil
