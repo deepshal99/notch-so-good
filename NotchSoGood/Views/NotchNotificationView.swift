@@ -112,6 +112,11 @@ struct NotchNotificationView: View {
                 .onTapGesture {
                     if !isPermission { onTap() }
                 }
+                .accessibilityElement(children: isPermission ? .contain : .combine)
+                .accessibilityLabel("\(notification.displayTitle). \(notification.message)")
+                .accessibilityHint(isPermission
+                    ? "Control Option A to allow, Control Option D to deny"
+                    : "Opens the session in its terminal")
             }
             .frame(width: fullWidth, height: fullHeight, alignment: .top)
         }
@@ -247,7 +252,8 @@ struct NotchNotificationView: View {
             PermissionButton(
                 label: "Deny",
                 icon: "xmark",
-                style: .deny
+                style: .deny,
+                hint: "Blocks this tool call"
             ) {
                 onDeny?()
             }
@@ -255,7 +261,8 @@ struct NotchNotificationView: View {
             PermissionButton(
                 label: "Allow",
                 icon: "checkmark",
-                style: .approve
+                style: .approve,
+                hint: "Allows this tool call once"
             ) {
                 onApprove?()
             }
@@ -263,7 +270,8 @@ struct NotchNotificationView: View {
             PermissionButton(
                 label: "Always",
                 icon: "checkmark.circle.fill",
-                style: .alwaysAllow
+                style: .alwaysAllow,
+                hint: "Adds a permanent allow rule to your settings"
             ) {
                 onAlwaysAllow?()
             }
@@ -321,6 +329,7 @@ private struct PermissionButton: View {
     let label: String
     let icon: String
     let style: Style
+    var hint: String? = nil
     let action: () -> Void
 
     @State private var isHovered = false
@@ -372,6 +381,8 @@ private struct PermissionButton: View {
             .contentShape(RoundedRectangle(cornerRadius: 8))
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(label)
+        .accessibilityHint(hint ?? "")
         .scaleEffect(isPressed ? 0.95 : (isHovered ? 1.02 : 1.0))
         .animation(.snappy, value: isHovered)
         .animation(.snappy, value: isPressed)

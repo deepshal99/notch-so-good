@@ -38,7 +38,7 @@ curl -fsSL https://raw.githubusercontent.com/deepshal99/notch-so-good/main/get.s
 ### Requirements
 
 - **macOS 14+** (Sonoma or later) — MacBook with a notch recommended
-- **Claude Code** — [get it here](https://docs.anthropic.com/en/docs/claude-code)
+- **Claude Code** — [get it here](https://docs.anthropic.com/en/docs/claude-code) — or **OpenAI Codex CLI**
 
 ---
 
@@ -46,13 +46,13 @@ curl -fsSL https://raw.githubusercontent.com/deepshal99/notch-so-good/main/get.s
 
 **He watches.** When Claude Code is running, a black pill extends your notch. Chawd sits on the left, a live timer ticks on the right.
 
-**He performs.** 13 idle animations — wave, dance, sneeze, peek-a-boo, backflip, levitate, yawn, hiccup, spin, stretch, and more. He has absolutely no chill.
+**He performs.** 17 idle animations — wave, dance, sneeze, peek-a-boo, strut, levitate, yawn, hiccup, spin, stretch, shiver, and more. He has absolutely no chill.
 
-**He follows your eyes.** Move your mouse near the notch and Chawd's tiny pixel eyes track your cursor. Get close and he gets excited. Leave him alone too long and he falls asleep. Come back and he does a startled little jolt.
+**He reacts.** Hover the pill and he gets excited and starts dancing. He also dresses for the job: glasses while the agent reads, a pencil while it edits, confetti when a task lands. Leave him alone too long and he gets drowsy. Come back and he does a startled little jolt.
 
 **He tells you things.** When Claude needs input, your notch expands into a notification. Color-coded by type — green for done, blue for questions, amber for permissions. Click anywhere to jump back to your terminal.
 
-**He approves things.** When Claude wants to run a command or edit a file, Allow/Deny buttons appear right in the notch. No need to switch to the terminal — approve tool executions without leaving what you're doing.
+**He approves things.** When Claude wants to run a command or edit a file, Allow / Always / Deny buttons appear right in the notch, or use ⌃⌥A / ⌃⌥D. And he stays out of the way: in bypass, auto, or plan mode the agent is deciding for itself, so Chawd never adds a second prompt.
 
 ```
          ┌──────────────────────────────────────┐
@@ -72,6 +72,16 @@ curl -fsSL https://raw.githubusercontent.com/deepshal99/notch-so-good/main/get.s
 
 ---
 
+## What's New in 4.4.0
+
+- **Respects your permission mode** — in bypass, auto, or plan mode the agent already decides for itself, so the notch no longer raises a second (blocking) prompt. `acceptEdits` skips prompts for file edits. A small badge on the session row shows the mode.
+- **Status you can trust** — sessions the app didn't see start are now picked up from any event, the pill shows whichever session most needs you instead of whichever started first, phase icons no longer freeze after a status change, and a session stops claiming "Needs approval" once you've answered.
+- **Lands on the right window** — the owning terminal or IDE is resolved by walking the hook's process tree, so it works under tmux, ssh, and login shells where the old environment sniffing came up empty. Kitty and WezTerm deep-linking actually runs now, and a dead session no longer opens an unrelated Terminal window.
+- **Lands on the display you're working on** — notifications and the pill now follow the session's terminal to whichever screen it's on, instead of always appearing on the built-in notch. On a screen without a notch the pill becomes a rounded capsule under the menu bar. Needs Accessibility access; toggle it off with **Follow active display** to pin everything to the built-in screen.
+- **Project-local permission rules** — `allow` rules in a repo's `.claude/settings.local.json` are honored, not just the global ones.
+- **Hook bridge rewritten** as a real Python file instead of a JSON-escaped one-liner, with hook timeouts corrected (they were 1000× too large).
+- Long session lists scroll instead of being clipped, notch text is length-clamped, and the pill, rows, and buttons have VoiceOver labels.
+
 ## What's New in 4.3.0
 
 - **Codex limits, side by side with Claude** — the menu shows session and weekly usage bars for both Claude Code and Codex CLI, each with "% left" and a reset countdown, read from your own local logins. No cloud, no accounts.
@@ -84,7 +94,7 @@ Full history in [Releases](https://github.com/deepshal99/notch-so-good/releases)
 
 ## How It Works
 
-Hooks into [Claude Code's hook system](https://docs.anthropic.com/en/docs/claude-code/hooks) via URL scheme callbacks and a local permission server. No cloud, no polling, no network requests.
+Hooks into [Claude Code's hook system](https://docs.anthropic.com/en/docs/claude-code/hooks). A small Python bridge sends events over a local Unix socket that the app listens on, and permission checks are bidirectional — the hook waits for your Allow/Deny from the notch. No cloud, no polling.
 
 ```
   Claude starts    →  🦀 Chawd appears
@@ -124,7 +134,7 @@ Requires Xcode Command Line Tools (`xcode-select --install`).
 
 ## Macs Without a Notch
 
-Notifications appear centered below the menu bar. Chawd prefers notch MacBooks but doesn't discriminate.
+Notifications and the pill appear centered just below the menu bar, as a rounded capsule instead of a notch cutout. Chawd prefers notch MacBooks but doesn't discriminate — and on a multi-display setup he shows up on whichever screen your session is on.
 
 ---
 

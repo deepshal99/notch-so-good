@@ -6,6 +6,9 @@ struct SessionPillView: View {
     @ObservedObject var dataSource: PillDataSource
     let notchWidth: CGFloat
     let notchHeight: CGFloat
+    /// False on displays with no notch: there's no bezel to merge with, so the
+    /// pill becomes a free-floating rounded capsule under the menu bar.
+    var hasNotch: Bool = true
     let onTap: (String?) -> Void
     @ObservedObject var hoverMonitor: PillHoverMonitor
 
@@ -15,45 +18,22 @@ struct SessionPillView: View {
     private var sessions: [NotificationManager.SessionInfo] { dataSource.sessions }
     private var primaryStartTime: Date { dataSource.primaryStartTime }
 
-    // Collapsed: small wings
-    private let wingCollapsed: CGFloat = 56
-    // Expanded: wider wings for session detail
-    private let wingExpanded: CGFloat = 110
-    // Drop-down sizing
-    private let dropTopPad: CGFloat = 4
-    private let dropBottomPad: CGFloat = 10
-    private let sessionRowHeight: CGFloat = 36
-    private let groupHeaderHeight: CGFloat = 22
-    private let subSessionRowHeight: CGFloat = 32
-    private let overflowRowHeight: CGFloat = 20
+    // Wing + row metrics are shared with NotchWindowController via PillLayout
+    private let wingCollapsed = PillLayout.wingCollapsed
+    private let wingExpanded = PillLayout.wingExpanded
 
     // Group sessions by project name for hierarchical display
     private var sessionGroups: [SessionGroup] {
         SessionGroup.from(sessions)
     }
 
-    private let subagentRowHeight: CGFloat = 24
-
     private var expandedContentHeight: CGFloat {
-        var h: CGFloat = dropTopPad + dropBottomPad
-        for group in sessionGroups {
-            if group.sessions.count == 1 {
-                let session = group.sessions[0]
-                h += sessionRowHeight
-                h += subagentRowHeight * CGFloat(session.subagents.count)
-            } else {
-                h += groupHeaderHeight
-                for session in group.sessions {
-                    h += subSessionRowHeight
-                    h += subagentRowHeight * CGFloat(session.subagents.count)
-                }
-            }
-        }
-        return h
+        PillLayout.contentHeight(for: sessions)
     }
 
-    // Cap max height for the panel (generous to avoid clipping)
-    private static let maxContentHeight: CGFloat = 300
+    private var needsScrolling: Bool {
+        PillLayout.needsScrolling(sessions)
+    }
 
     // Derive Chawd's tool-aware activity from the primary (first) session.
     private var primaryActivity: MiniChawdView.Activity? {
@@ -79,13 +59,13 @@ struct SessionPillView: View {
     private var wing: CGFloat { hovered ? wingExpanded : wingCollapsed }
     private var pillWidth: CGFloat { notchWidth + (wing * 2) }
     private var maxWidth: CGFloat { notchWidth + (wingExpanded * 2) }
-    private var maxHeight: CGFloat { notchHeight + Self.maxContentHeight }
+    private var maxHeight: CGFloat { notchHeight + PillLayout.maxContentHeight }
     private var pillTotalHeight: CGFloat { hovered ? (notchHeight + expandedContentHeight) : notchHeight }
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
             let seconds = Int(context.date.timeIntervalSince(primaryStartTime))
-            let elapsed = formatElapsed(seconds)
+            let elapsed = ElapsedFormatter.compact(seconds)
 
             ZStack(alignment: .top) {
                 // === BLACK PILL SHAPE ===
@@ -129,7 +109,11 @@ struct SessionPillView: View {
                             .font(.system(size: hovered ? 11 : 10, weight: .semibold, design: .monospaced))
                             .monospacedDigit()
                             .foregroundColor(isWaiting ? Color(hex: "FBBF24").opacity(0.85) : .white.opacity(0.7))
-                            .fixedSize(horizontal: true, vertical: false)
+                            // Never let the timer push past the wing: `fixedSize`
+                            // made it overflow and get clipped by the pill once a
+                            // session passed an hour.
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
                     }
                     .padding(.trailing, 6)
                     .frame(width: wing)
@@ -139,10 +123,10 @@ struct SessionPillView: View {
 
                 // === EXPANDED SESSION LIST ===
                 if hovered {
-                    expandedContent(now: context.date)
-                        .padding(.top, notchHeight + 4)
+                    expandedList(now: context.date)
+                        .padding(.top, notchHeight + PillLayout.dropTopPad)
                         .padding(.horizontal, 18)
-                        .padding(.bottom, 10)
+                        .padding(.bottom, PillLayout.dropBottomPad)
                         .frame(width: pillWidth, alignment: .top)
                         .transition(.opacity.combined(with: .offset(y: -4)).combined(with: .scale(scale: 0.97, anchor: .top)))
                 }
@@ -155,6 +139,8 @@ struct SessionPillView: View {
             }
             .scaleEffect(x: appeared ? 1 : 0.85, y: 1, anchor: .center)
             .animation(.smooth, value: hovered)
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel(pillAccessibilityLabel)
         }
         .frame(width: maxWidth, height: maxHeight, alignment: .top)
         .onAppear {
@@ -166,14 +152,48 @@ struct SessionPillView: View {
 
     // MARK: - Pill shape
 
-    private var pillShape: some Shape {
-        NotchShape(
+    private var pillShape: AnyShape {
+        guard hasNotch else {
+            // Free-floating: round every corner, no concave bezel fillets.
+            return AnyShape(RoundedRectangle(
+                cornerRadius: hovered ? 18 : notchHeight / 2,
+                style: .continuous
+            ))
+        }
+        return AnyShape(NotchShape(
             topRadius: hovered ? 9 : 6,
             bottomRadius: hovered ? 18 : notchHeight / 2
+        ))
+    }
+
+    private var pillAccessibilityLabel: String {
+        guard let primary = sessions.first else { return "Notch So Good" }
+        let phase = primary.status.phaseLabel(
+            toolName: primary.activeToolName,
+            toolDetail: primary.activeToolDetail
         )
+        if sessions.count > 1 {
+            return "\(primary.projectName), \(phase). \(sessions.count) sessions active."
+        }
+        return "\(primary.projectName), \(phase)"
     }
 
     // MARK: - Expanded content (grouped by project)
+
+    /// Scrolls once the list outgrows the panel. Without this the extra rows were
+    /// clipped with no affordance at all.
+    @ViewBuilder
+    private func expandedList(now: Date) -> some View {
+        if needsScrolling {
+            ScrollView(.vertical) {
+                expandedContent(now: now)
+            }
+            .scrollIndicators(.hidden)
+            .frame(height: PillLayout.maxContentHeight - PillLayout.dropTopPad - PillLayout.dropBottomPad)
+        } else {
+            expandedContent(now: now)
+        }
+    }
 
     private func expandedContent(now: Date) -> some View {
         VStack(spacing: 0) {
@@ -254,10 +274,15 @@ struct SessionPillView: View {
                     HStack(spacing: 4) {
                         Text(session.projectName)
                             .font(.system(size: 10, weight: .medium, design: .rounded))
-                            .foregroundColor(.white.opacity(0.85))
+                            .truncationMode(.tail)
                             .lineLimit(1)
+                            .foregroundColor(.white.opacity(0.85))
 
                         AgentBadge(source: session.agentSource)
+
+                        if let mode = session.permissionMode.badgeLabel {
+                            ModeBadge(label: mode)
+                        }
                     }
 
                     HStack(spacing: 4) {
@@ -296,6 +321,21 @@ struct SessionPillView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(SessionRowButtonStyle())
+        .accessibilityLabel(rowAccessibilityLabel(session, now: now))
+        .accessibilityHint("Opens this session in its terminal")
+    }
+
+    private func rowAccessibilityLabel(_ session: NotificationManager.SessionInfo, now: Date) -> String {
+        let phase = session.status.phaseLabel(
+            toolName: session.activeToolName,
+            toolDetail: session.activeToolDetail
+        )
+        let elapsed = formatElapsed(Int(now.timeIntervalSince(session.startTime)))
+        var label = "\(session.projectName), \(session.agentSource.displayName), \(phase), \(elapsed)"
+        if let mode = session.permissionMode.badgeLabel {
+            label += ", \(mode) mode"
+        }
+        return label
     }
 
     // MARK: - Project group header
@@ -352,6 +392,10 @@ struct SessionPillView: View {
 
                 AgentBadge(source: session.agentSource)
 
+                if let mode = session.permissionMode.badgeLabel {
+                    ModeBadge(label: mode)
+                }
+
                 Spacer(minLength: 4)
 
                 if !session.subagents.isEmpty {
@@ -369,6 +413,8 @@ struct SessionPillView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(SessionRowButtonStyle())
+        .accessibilityLabel(rowAccessibilityLabel(session, now: now))
+        .accessibilityHint("Opens this session in its terminal")
     }
 
     // MARK: - Subagent row (nested under parent session with tree connector)
@@ -418,16 +464,9 @@ struct SessionPillView: View {
 
     // MARK: - Format
 
+    /// Precise elapsed time, for the expanded rows where there's room for it.
     private func formatElapsed(_ seconds: Int) -> String {
-        if seconds < 60 {
-            return String(format: "%02ds", seconds)
-        } else if seconds < 3600 {
-            return "\(seconds / 60):\(String(format: "%02d", seconds % 60))"
-        } else {
-            let h = seconds / 3600
-            let m = (seconds % 3600) / 60
-            return "\(h):\(String(format: "%02d", m)):\(String(format: "%02d", seconds % 60))"
-        }
+        ElapsedFormatter.precise(seconds)
     }
 }
 
@@ -550,7 +589,6 @@ struct MiniChawdView: View {
             drawEyes(ctx: ctx, ox: ox, oy: oy, px: px)
             drawMouth(ctx: ctx, ox: ox, oy: oy, px: px)
 
-            let wiggle: CGFloat = 0
             let danceL: CGFloat = gimmick == .dance ? 0.25 : 0
             let danceR: CGFloat = gimmick == .dance ? -0.25 : 0
             // Walking legs: alternate forward/back (for walk and strut)
@@ -560,14 +598,14 @@ struct MiniChawdView: View {
             // Waiting activity: right leg taps impatiently every couple seconds
             let legTap: CGFloat = (activity == .waiting && waitingLegTap) ? -1.2 : 0
             px_fill(ctx, ox: ox, oy: oy, px: px,
-                    x: 4.5 - wiggle + danceL + walkL, y: 7, w: 1.5, h: 3, color: skin)
+                    x: 4.5 + danceL + walkL, y: 7, w: 1.5, h: 3, color: skin)
             px_fill(ctx, ox: ox, oy: oy, px: px,
-                    x: 9 + wiggle + danceR + walkR, y: 7 + legTap, w: 1.5, h: 3, color: skin)
+                    x: 9 + danceR + walkR, y: 7 + legTap, w: 1.5, h: 3, color: skin)
 
             px_fill(ctx, ox: ox, oy: oy, px: px,
-                    x: 4.5 - wiggle + danceL + walkL, y: 9.5, w: 1.5, h: 0.8, color: skinDark)
+                    x: 4.5 + danceL + walkL, y: 9.5, w: 1.5, h: 0.8, color: skinDark)
             px_fill(ctx, ox: ox, oy: oy, px: px,
-                    x: 9 + wiggle + danceR + walkR, y: 9.5 + legTap, w: 1.5, h: 0.8, color: skinDark)
+                    x: 9 + danceR + walkR, y: 9.5 + legTap, w: 1.5, h: 0.8, color: skinDark)
 
             drawExtras(ctx: ctx, ox: ox, oy: oy, px: px)
         }
@@ -1944,6 +1982,27 @@ struct AgentBadge: View {
             .background(
                 Capsule().fill(source.accentColor.opacity(0.12))
             )
+            .accessibilityHidden(true)
+    }
+}
+
+// MARK: - Permission mode badge
+
+/// Shown when a session runs in a non-default permission mode, so the notch is
+/// never ambiguous about whether it's gating anything.
+struct ModeBadge: View {
+    let label: String
+
+    var body: some View {
+        Text(label)
+            .font(.system(size: 8, weight: .semibold, design: .rounded))
+            .foregroundColor(.white.opacity(0.45))
+            .padding(.horizontal, 4)
+            .padding(.vertical, 1)
+            .background(
+                Capsule().fill(.white.opacity(0.08))
+            )
+            .accessibilityHidden(true)
     }
 }
 

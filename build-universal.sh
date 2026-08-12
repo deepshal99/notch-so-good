@@ -55,8 +55,18 @@ mkdir -p "$MACOS" "$RESOURCES" "$FRAMEWORKS"
 
 cp "$UNIVERSAL_BIN" "$MACOS/$APP_NAME"
 cp "NotchSoGood/Info.plist" "$CONTENTS/Info.plist"
-cp "HookInstaller/install-hooks.sh" "$RESOURCES/install-hooks.sh"
-chmod +x "$RESOURCES/install-hooks.sh"
+
+# Hook installers + the shared Python bridge. The Codex installer used to be
+# missing here, so universal builds silently shipped without Codex support.
+for f in install-hooks.sh install-codex-hooks.sh hook.py; do
+    cp "HookInstaller/$f" "$RESOURCES/$f"
+    chmod +x "$RESOURCES/$f"
+done
+
+# SwiftPM resource bundle (Assets.xcassets), if present
+for bundle in .build/arm64-apple-macosx/release/*.bundle; do
+    [ -e "$bundle" ] && cp -R "$bundle" "$RESOURCES/"
+done
 
 if [ -f "AppIcon.icns" ]; then
     cp "AppIcon.icns" "$RESOURCES/AppIcon.icns"

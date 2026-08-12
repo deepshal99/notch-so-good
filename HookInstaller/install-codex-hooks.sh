@@ -1,30 +1,40 @@
 #!/bin/bash
-# Installs Codex CLI hooks for Notch So Good
-# Communicates via Unix domain socket at /tmp/notchsogood.sock
-# Only dependency: python3 (pre-installed on macOS)
-
+# Installs OpenAI Codex CLI hooks for Notch So Good.
+# Shares the same Python bridge as the Claude Code hooks.
 set -e
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CODEX_DIR="$HOME/.codex"
 CONFIG_FILE="$CODEX_DIR/config.toml"
 HOOKS_FILE="$CODEX_DIR/hooks.json"
+BRIDGE_DIR="$HOME/.notchsogood"
+BRIDGE="$BRIDGE_DIR/hook.py"
 SOCKET_PATH="/tmp/notchsogood.sock"
 
-# Create directory if needed
-mkdir -p "$CODEX_DIR"
+if ! command -v python3 &> /dev/null; then
+    echo "Error: python3 is required (should be pre-installed on macOS)."
+    exit 1
+fi
 
-# Enable hooks feature flag in config.toml
+if [ ! -f "$SCRIPT_DIR/hook.py" ]; then
+    echo "Error: hook.py not found next to this script ($SCRIPT_DIR)."
+    exit 1
+fi
+
+mkdir -p "$CODEX_DIR"
+mkdir -p "$BRIDGE_DIR"
+cp "$SCRIPT_DIR/hook.py" "$BRIDGE"
+chmod +x "$BRIDGE"
+
+# Enable the hooks feature flag in config.toml
 if [ -f "$CONFIG_FILE" ]; then
     if grep -q 'codex_hooks' "$CONFIG_FILE"; then
-        # Update existing flag
         sed -i '' 's/codex_hooks.*/codex_hooks = true/' "$CONFIG_FILE"
     elif grep -q '\[features\]' "$CONFIG_FILE"; then
-        # Add under existing [features] section
         sed -i '' '/\[features\]/a\
 codex_hooks = true
 ' "$CONFIG_FILE"
     else
-        # Add new [features] section
         printf '\n[features]\ncodex_hooks = true\n' >> "$CONFIG_FILE"
     fi
 else
@@ -34,88 +44,45 @@ codex_hooks = true
 EOF
 fi
 
-if ! command -v python3 &> /dev/null; then
-    echo "Error: python3 is required (should be pre-installed on macOS)."
-    exit 1
-fi
-
-# Backup existing hooks file
 if [ -f "$HOOKS_FILE" ]; then
     cp "$HOOKS_FILE" "$HOOKS_FILE.backup.$(date +%s)"
 fi
 
-# Write hooks.json with all supported events
-# All hooks communicate via Unix socket at /tmp/notchsogood.sock
-cat > "$HOOKS_FILE" << 'HOOKSEOF'
-{
-  "hooks": {
-    "SessionStart": [
-      {
+# Codex `timeout` is in seconds, same as Claude Code.
+BRIDGE="$BRIDGE" python3 - "$HOOKS_FILE" <<'PYEOF'
+import json, os, sys
+
+hooks_path = sys.argv[1]
+bridge = os.environ["BRIDGE"]
+
+FIRE_AND_FORGET = ["SessionStart", "Stop", "UserPromptSubmit", "PostToolUse"]
+
+def entry(event, timeout):
+    command = 'python3 %s %s --agent codex' % (json.dumps(bridge), event)
+    return [{
         "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 -c \"\nimport sys, json, socket, os\ntry:\n    d = json.load(sys.stdin)\n    msg = json.dumps({\n        'event': 'SessionStart',\n        'session_id': d.get('session_id', ''),\n        'cwd': d.get('cwd', ''),\n        'source_app': 'codex',\n        'model': d.get('model', '')\n    })\n    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)\n    s.connect('/tmp/notchsogood.sock')\n    s.sendall(msg.encode())\n    s.close()\nexcept: pass\n\"",
-            "timeout": 5
-          }
-        ]
-      }
-    ],
-    "Stop": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 -c \"\nimport sys, json, socket\ntry:\n    d = json.load(sys.stdin)\n    msg = json.dumps({\n        'event': 'Stop',\n        'session_id': d.get('session_id', ''),\n        'last_assistant_message': d.get('last_assistant_message', 'Task completed')[:200]\n    })\n    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)\n    s.connect('/tmp/notchsogood.sock')\n    s.sendall(msg.encode())\n    s.close()\nexcept: pass\n\"",
-            "timeout": 5
-          }
-        ]
-      }
-    ],
-    "UserPromptSubmit": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 -c \"\nimport sys, json, socket\ntry:\n    d = json.load(sys.stdin)\n    msg = json.dumps({\n        'event': 'UserPromptSubmit',\n        'session_id': d.get('session_id', '')\n    })\n    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)\n    s.connect('/tmp/notchsogood.sock')\n    s.sendall(msg.encode())\n    s.close()\nexcept: pass\n\"",
-            "timeout": 5
-          }
-        ]
-      }
-    ],
-    "PostToolUse": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 -c \"\nimport sys, json, socket\ntry:\n    d = json.load(sys.stdin)\n    msg = json.dumps({\n        'event': 'PostToolUse',\n        'session_id': d.get('session_id', ''),\n        'tool_name': d.get('tool_name', '')\n    })\n    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)\n    s.connect('/tmp/notchsogood.sock')\n    s.sendall(msg.encode())\n    s.close()\nexcept: pass\n\"",
-            "timeout": 5
-          }
-        ]
-      }
-    ],
-    "PreToolUse": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 -c \"\nimport sys, json, socket\n\ntry:\n    d = json.load(sys.stdin)\nexcept:\n    sys.exit(0)\n\ntn = d.get('tool_name', '')\nti = d.get('tool_input', {})\nsid = d.get('session_id', '')\n\n# Extract human-readable summary from tool_input (which is an object in Codex)\nif isinstance(ti, dict):\n    if tn == 'Bash':\n        summary = ti.get('command', json.dumps(ti))[:200]\n    elif tn in ('Edit', 'Write', 'Read'):\n        summary = ti.get('file_path', json.dumps(ti))[:200]\n    else:\n        summary = json.dumps(ti)[:200]\nelse:\n    summary = str(ti)[:200]\n\n# Send to NotchSoGood socket (bidirectional — wait for response)\ntry:\n    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)\n    sock.settimeout(120)\n    sock.connect('/tmp/notchsogood.sock')\n    msg = json.dumps({\n        'event': 'PreToolUse',\n        'tool_name': tn,\n        'tool_input': summary,\n        'session_id': sid,\n        'source_app': 'codex'\n    })\n    sock.sendall(msg.encode())\n    sock.shutdown(socket.SHUT_WR)\n    resp = b''\n    while True:\n        chunk = sock.recv(4096)\n        if not chunk:\n            break\n        resp += chunk\n    sock.close()\n    if resp:\n        r = json.loads(resp.decode())\n        if r.get('decision') == 'deny':\n            reason = r.get('reason', 'Denied from Notch So Good')\n            sys.stderr.write(reason)\n            sys.exit(2)\n        else:\n            print(json.dumps({'permissionDecision': 'allow'}))\nexcept SystemExit:\n    raise\nexcept:\n    pass\n\"",
-            "timeout": 300
-          }
-        ]
-      }
-    ]
-  }
-}
-HOOKSEOF
+        "hooks": [{"type": "command", "command": command, "timeout": timeout}],
+    }]
+
+hooks = {}
+for event in FIRE_AND_FORGET:
+    hooks[event] = entry(event, 5)
+hooks["PreToolUse"] = entry("PreToolUse", 130)
+
+with open(hooks_path, "w") as handle:
+    json.dump({"hooks": hooks}, handle, indent=2)
+    handle.write("\n")
+PYEOF
+
+# Keep only the 3 most recent backups.
+ls -t "$HOOKS_FILE.backup."* 2>/dev/null | tail -n +4 | while read -r stale; do
+    rm -f "$stale"
+done
 
 echo "Codex CLI hooks installed!"
 echo "  Config:  $CONFIG_FILE (codex_hooks = true)"
 echo "  Hooks:   $HOOKS_FILE"
+echo "  Bridge:  $BRIDGE"
 echo "  Events:  SessionStart, Stop, UserPromptSubmit, PreToolUse, PostToolUse"
 echo "  Socket:  $SOCKET_PATH"
 echo ""

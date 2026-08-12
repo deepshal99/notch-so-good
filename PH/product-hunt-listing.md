@@ -12,9 +12,9 @@ The world's smallest coworker lives in your Mac's notch — a pixel-art crab tha
 
 Meet Chawd. He's a mass of pixels. He lives in your MacBook's notch. And he has one job: watch Claude Code so you don't have to.
 
-When Claude is working, Chawd appears — hopping, dancing, and tracking your mouse with his tiny eyes. When Claude needs you, your notch expands with a notification. Click it, you're back in your terminal. Done.
+When Claude is working, Chawd appears — hopping, dancing, and dressing for the job (glasses while it reads, a pencil while it edits). When Claude needs you, your notch expands with a notification. Click it, you're back in your terminal. Done.
 
-He gets drowsy if you leave him alone too long. He does a startled little jolt when you come back. He has 13 idle animations and absolutely no chill.
+He gets drowsy if you leave him alone too long. He does a startled little jolt when you come back. He has 17 idle animations and absolutely no chill.
 
 𝗢𝗻𝗲 𝗰𝗼𝗺𝗺𝗮𝗻𝗱 𝘁𝗼 𝗶𝗻𝘀𝘁𝗮𝗹𝗹:
 npx notch-so-good
@@ -33,7 +33,7 @@ So I put a crab in my notch.
 
 Chawd (he named himself) sits quietly in a black pill next to your MacBook's notch. When Claude is working, you see a tiny timer. When Claude needs input — your notch expands, you click, you're back.
 
-The animations started as a joke. "What if the crab danced?" Then it got eyes that follow your mouse. Then it started falling asleep if you ignored it. Now it has 13 animations and more personality than most apps I've shipped.
+The animations started as a joke. "What if the crab danced?" Then it got glasses for reading and a pencil for editing. Then it started falling asleep if you ignored it. Now it has 17 animations and more personality than most apps I've shipped.
 
 It's open source, MIT licensed, and installs in one command. The crab demands more gimmicks — PRs welcome.
 
@@ -65,7 +65,7 @@ Image 3 (hover expanded with sessions):
 Hover to see all active Claude sessions, grouped by project.
 
 Image 4 (animations showcase):
-13 idle animations. Wave, dance, sneeze, peek-a-boo, spin, yawn...
+17 idle animations. Wave, dance, sneeze, peek-a-boo, spin, yawn...
 
 Image 5 (install terminal):
 npx notch-so-good — 10 seconds, done.

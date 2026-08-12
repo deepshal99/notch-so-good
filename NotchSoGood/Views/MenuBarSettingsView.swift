@@ -78,9 +78,7 @@ struct MenuBarSettingsView: View {
         VStack(spacing: 12) {
             headerCard
 
-            if !limitsStore.windows.isEmpty {
-                limitsCard
-            }
+            limitsCard
 
             todayTiles
 
@@ -164,18 +162,70 @@ struct MenuBarSettingsView: View {
 
     // MARK: - Limits card
 
+    /// Always rendered. When there's nothing to show it explains itself — the
+    /// card used to disappear on any failure, which is indistinguishable from
+    /// the feature not existing.
+    @ViewBuilder
     private var limitsCard: some View {
         VStack(spacing: 0) {
             let windows = limitsStore.windows
-            ForEach(windows) { window in
-                limitRow(window)
-                if window.id != windows.last?.id {
-                    Rectangle().fill(sep).frame(height: 0.5).padding(.horizontal, 14)
+            if windows.isEmpty {
+                limitsPlaceholder
+            } else {
+                ForEach(windows) { window in
+                    limitRow(window)
+                    if window.id != windows.last?.id {
+                        Rectangle().fill(sep).frame(height: 0.5).padding(.horizontal, 14)
+                    }
                 }
             }
         }
         .background(cardBg)
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private var limitsPlaceholder: some View {
+        let (message, detail): (String, String) = {
+            switch limitsStore.status {
+            case .loading:
+                return ("Checking usage limits…", "")
+            case .signedOut:
+                return ("Usage limits unavailable", "Run /login in Claude Code, then reopen this menu")
+            case .unavailable, .ready:
+                return ("Usage limits unavailable", "Couldn't reach the usage endpoint — tap to retry")
+            }
+        }()
+
+        return Button {
+            limitsStore.refresh(force: true)
+        } label: {
+            HStack(spacing: 9) {
+                Image(systemName: limitsStore.status == .loading
+                      ? "clock.arrow.circlepath" : "exclamationmark.triangle")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(dim)
+                    .frame(width: 18)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(message)
+                        .font(.system(size: 12.5, weight: .semibold, design: .rounded))
+                        .foregroundColor(body_)
+                    if !detail.isEmpty {
+                        Text(detail)
+                            .font(.system(size: 10.5, weight: .regular, design: .rounded))
+                            .foregroundColor(dim)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(MenuRowButtonStyle())
+        .accessibilityLabel(detail.isEmpty ? message : "\(message). \(detail)")
     }
 
     private func limitRow(_ window: UsageLimitsStore.LimitWindow) -> some View {
@@ -300,7 +350,12 @@ struct MenuBarSettingsView: View {
 
     private func sessionRow(_ session: NotificationManager.SessionInfo, now: Date) -> some View {
         Button {
-            TerminalLauncher.focusClaudeCode(sessionId: session.id, sourceBundleId: session.sourceBundleId, cwd: session.cwd)
+            TerminalLauncher.focusClaudeCode(
+                sessionId: session.id,
+                sourceBundleId: session.sourceBundleId,
+                cwd: session.cwd,
+                sourcePid: session.sourcePid
+            )
         } label: {
             HStack(spacing: 10) {
                 ZStack {
@@ -341,9 +396,7 @@ struct MenuBarSettingsView: View {
     }
 
     private func elapsed(since start: Date, now: Date) -> String {
-        let secs = max(0, Int(now.timeIntervalSince(start)))
-        if secs < 3600 { return String(format: "%d:%02d", secs / 60, secs % 60) }
-        return String(format: "%d:%02d:%02d", secs / 3600, (secs % 3600) / 60, secs % 60)
+        ElapsedFormatter.clock(Int(now.timeIntervalSince(start)))
     }
 
     // MARK: - Recent card
@@ -450,6 +503,8 @@ struct MenuBarSettingsView: View {
                 settingRow(icon: "capsule", label: "Session pill", isOn: $notificationManager.showSessionPill)
                 insetSep
                 settingRow(icon: "bell.badge", label: "Nudge when waiting", isOn: $notificationManager.nudgeEnabled)
+                insetSep
+                settingRow(icon: "display.2", label: "Follow active display", isOn: $notificationManager.followActiveDisplay)
                 insetSep
                 settingRow(icon: "play.circle", label: "Launch at login", isOn: launchAtLoginBinding)
                 insetSep

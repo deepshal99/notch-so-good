@@ -28,8 +28,19 @@ final class UsageLimitsStore: ObservableObject {
         var id: String { "\(source.rawValue)_\(label)" }
     }
 
+    /// Why the card has nothing to show. Surfaced in the menu instead of hiding
+    /// the card entirely — silently vanishing is indistinguishable from "the
+    /// feature isn't there", which is how this looked when a fetch failed.
+    enum Status: Equatable {
+        case loading
+        case ready
+        case signedOut        // no OAuth token we can read
+        case unavailable      // network error, non-200, or unparseable response
+    }
+
     @Published var windows: [LimitWindow] = []
     @Published var lastUpdated: Date?
+    @Published var status: Status = .loading
 
     private var refreshTimer: Timer?
     private var lastFetchAt: Date?
@@ -60,6 +71,7 @@ final class UsageLimitsStore: ObservableObject {
         }
         lastFetchAt = Date()
         isFetching = true
+        if windows.isEmpty { status = .loading }
 
         Task { [weak self] in
             // Runs off the main actor — first Keychain/file read may prompt once.
@@ -67,19 +79,25 @@ final class UsageLimitsStore: ObservableObject {
             // slow or failing one never blocks the other.
             async let claudeFetch = Self.fetchWindows()
             async let codexFetch = Self.fetchCodexWindows()
-            let claudeWindows = await claudeFetch
-            let codexWindows = await codexFetch
+            let claude = await claudeFetch
+            let codex = await codexFetch
             guard let self else { return }
             self.isFetching = false
+
             // Ordering contract: all Claude windows first, then Codex.
-            let combined = (claudeWindows ?? []) + (codexWindows ?? [])
+            let combined = (claude.windows ?? []) + (codex.windows ?? [])
             if !combined.isEmpty {
                 self.windows = combined
                 self.lastUpdated = Date()
+                self.status = .ready
                 self.checkLowSessionLimit()
-            } else {
-                self.windows = []
+                return
             }
+
+            // Nothing came back. Keep whatever we last showed rather than
+            // blanking the card because of one flaky request, but record why so
+            // the menu can say something instead of silently hiding the card.
+            self.status = (claude.signedOut && codex.signedOut) ? .signedOut : .unavailable
         }
     }
 
@@ -116,9 +134,20 @@ final class UsageLimitsStore: ObservableObject {
 
     // MARK: - Fetch (off main actor)
 
-    nonisolated private static func fetchWindows() async -> [LimitWindow]? {
-        guard let token = loadAccessToken(),
-              let url = URL(string: "https://api.anthropic.com/api/oauth/usage") else { return nil }
+    /// Outcome of one fetch. `signedOut` is kept separate from a plain failure so
+    /// the menu can say "sign in" rather than the useless "unavailable".
+    struct FetchResult {
+        var windows: [LimitWindow]?
+        var signedOut: Bool = false
+    }
+
+    nonisolated private static func fetchWindows() async -> FetchResult {
+        guard let token = loadAccessToken() else {
+            return FetchResult(windows: nil, signedOut: true)
+        }
+        guard let url = URL(string: "https://api.anthropic.com/api/oauth/usage") else {
+            return FetchResult(windows: nil)
+        }
 
         var request = URLRequest(url: url)
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
@@ -131,11 +160,13 @@ final class UsageLimitsStore: ObservableObject {
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let http = response as? HTTPURLResponse, http.statusCode == 200,
                   let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-                return nil
+                return FetchResult(windows: nil)
             }
-            return parseWindows(json)
+            return FetchResult(windows: UsageLimitsParser.parseClaude(json).map {
+                LimitWindow(label: $0.label, percentLeft: $0.percentLeft, resetsAt: $0.resetsAt, source: .claude)
+            })
         } catch {
-            return nil
+            return FetchResult(windows: nil)
         }
     }
 
@@ -182,90 +213,6 @@ final class UsageLimitsStore: ObservableObject {
         return token
     }
 
-    // MARK: - Parsing
-
-    nonisolated private static func parseWindows(_ json: [String: Any]) -> [LimitWindow] {
-        var result: [LimitWindow] = []
-        var seenLabels = Set<String>()
-
-        func append(label: String, percentUsed: Double, resetsAt: Date?) {
-            guard seenLabels.insert(label).inserted else { return }
-            let left = max(0, min(100, 100 - Int(percentUsed.rounded())))
-            result.append(LimitWindow(label: label, percentLeft: left, resetsAt: resetsAt))
-        }
-
-        // Known windows first (stable display order), then anything the API
-        // adds later — unknown keys with the same shape become extra rows.
-        let knownOrder = ["five_hour", "seven_day", "seven_day_opus", "seven_day_sonnet"]
-        let extraKeys = json.keys
-            .filter { !knownOrder.contains($0) && $0 != "limits" && $0 != "extra_usage" }
-            .sorted()
-        for key in knownOrder + extraKeys {
-            guard let dict = json[key] as? [String: Any],
-                  let utilization = (dict["utilization"] as? NSNumber)?.doubleValue else { continue }
-            append(label: prettyLabel(key),
-                   percentUsed: utilization,
-                   resetsAt: parseDate(dict["resets_at"] as? String))
-        }
-
-        // Newer schema variant: self-describing entries in a "limits" array
-        // ({kind, percent, resets_at, scope.model.display_name}).
-        if let limits = json["limits"] as? [[String: Any]] {
-            for entry in limits {
-                guard let percent = (entry["percent"] as? NSNumber)?.doubleValue else { continue }
-                var label: String
-                switch entry["kind"] as? String {
-                case "session": label = "Session"
-                case "weekly_all": label = "Weekly"
-                case let kind?: label = prettyLabel(kind)
-                case nil: label = "Limit"
-                }
-                if let scope = entry["scope"] as? [String: Any],
-                   let model = scope["model"] as? [String: Any],
-                   let name = model["display_name"] as? String {
-                    label = "Weekly · \(name)"
-                }
-                append(label: label,
-                       percentUsed: percent,
-                       resetsAt: parseDate(entry["resets_at"] as? String))
-            }
-        }
-
-        return result
-    }
-
-    nonisolated private static func prettyLabel(_ key: String) -> String {
-        switch key {
-        case "five_hour": return "Session"
-        case "seven_day": return "Weekly"
-        default:
-            if key.hasPrefix("seven_day_") {
-                let model = key.dropFirst("seven_day_".count)
-                    .replacingOccurrences(of: "_", with: " ").capitalized
-                return "Weekly · \(model)"
-            }
-            return key.replacingOccurrences(of: "_", with: " ").capitalized
-        }
-    }
-
-    nonisolated private static func parseDate(_ raw: String?) -> Date? {
-        guard let raw else { return nil }
-        let fractional = ISO8601DateFormatter()
-        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = fractional.date(from: raw) { return date }
-        let plain = ISO8601DateFormatter()
-        if let date = plain.date(from: raw) { return date }
-        // The API sends microsecond fractions ("...59.771647+00:00") which
-        // ISO8601DateFormatter can't parse — strip the fraction and retry.
-        if let dotIndex = raw.firstIndex(of: ".") {
-            let tail = raw[raw.index(after: dotIndex)...]
-            if let endIndex = tail.firstIndex(where: { !$0.isNumber }) {
-                return plain.date(from: String(raw[..<dotIndex]) + String(raw[endIndex...]))
-            }
-        }
-        return nil
-    }
-
     // MARK: - Codex (off main actor)
 
     /// Mirrors `fetchWindows()` above but for OpenAI Codex CLI. Reads the
@@ -273,9 +220,13 @@ final class UsageLimitsStore: ObservableObject {
     /// (undocumented) endpoint that backs the ChatGPT web usage dashboard.
     /// Any failure — missing file, missing token, network error, or an
     /// unexpected response shape — is silent and returns nil; it never crashes.
-    nonisolated private static func fetchCodexWindows() async -> [LimitWindow]? {
-        guard let credentials = loadCodexCredentials(),
-              let url = URL(string: "https://chatgpt.com/backend-api/wham/usage") else { return nil }
+    nonisolated private static func fetchCodexWindows() async -> FetchResult {
+        guard let credentials = loadCodexCredentials() else {
+            return FetchResult(windows: nil, signedOut: true)
+        }
+        guard let url = URL(string: "https://chatgpt.com/backend-api/wham/usage") else {
+            return FetchResult(windows: nil)
+        }
 
         var request = URLRequest(url: url)
         request.setValue("Bearer \(credentials.accessToken)", forHTTPHeaderField: "Authorization")
@@ -290,11 +241,14 @@ final class UsageLimitsStore: ObservableObject {
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let http = response as? HTTPURLResponse, http.statusCode == 200,
                   let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-                return nil
+                return FetchResult(windows: nil)
             }
-            return parseCodexWindows(json)
+            let parsed = UsageLimitsParser.parseCodex(json)
+            return FetchResult(windows: parsed.map {
+                LimitWindow(label: $0.label, percentLeft: $0.percentLeft, resetsAt: $0.resetsAt, source: .codex)
+            })
         } catch {
-            return nil
+            return FetchResult(windows: nil)
         }
     }
 
@@ -313,44 +267,4 @@ final class UsageLimitsStore: ObservableObject {
         return (accessToken, accountId)
     }
 
-    nonisolated private static func parseCodexWindows(_ json: [String: Any]) -> [LimitWindow] {
-        guard let rateLimit = json["rate_limit"] as? [String: Any] else { return [] }
-        var result: [LimitWindow] = []
-
-        func append(label: String, dict: [String: Any]?) {
-            guard let dict,
-                  let usedPercent = (dict["used_percent"] as? NSNumber)?.doubleValue else { return }
-            let left = max(0, min(100, 100 - Int(usedPercent.rounded())))
-            result.append(LimitWindow(
-                label: label,
-                percentLeft: left,
-                resetsAt: codexResetDate(from: dict),
-                source: .codex))
-        }
-
-        // primary_window = rolling 5-hour window, secondary_window = rolling weekly window.
-        append(label: "Session", dict: rateLimit["primary_window"] as? [String: Any])
-        append(label: "Weekly", dict: rateLimit["secondary_window"] as? [String: Any])
-
-        return result
-    }
-
-    /// The endpoint has been observed to report the reset either as an
-    /// absolute epoch timestamp ("reset_at" / "resets_at") or as a countdown
-    /// in seconds ("resets_in_seconds"); an ISO8601 string is accepted too.
-    nonisolated private static func codexResetDate(from dict: [String: Any]) -> Date? {
-        if let seconds = (dict["resets_in_seconds"] as? NSNumber)?.doubleValue {
-            return Date().addingTimeInterval(seconds)
-        }
-        if let epoch = (dict["reset_at"] as? NSNumber)?.doubleValue {
-            return Date(timeIntervalSince1970: epoch)
-        }
-        if let epoch = (dict["resets_at"] as? NSNumber)?.doubleValue {
-            return Date(timeIntervalSince1970: epoch)
-        }
-        if let raw = (dict["reset_at"] as? String) ?? (dict["resets_at"] as? String) {
-            return parseDate(raw)
-        }
-        return nil
-    }
 }

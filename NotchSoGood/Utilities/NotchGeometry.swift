@@ -1,57 +1,85 @@
 import AppKit
 
+extension NSScreen {
+    var displayID: CGDirectDisplayID {
+        (deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value ?? 0
+    }
+}
+
+/// Where to draw on a given screen.
+///
+/// Every screen gets geometry, not just the one with a notch — that's what lets
+/// a session's notification appear on the display it's actually running on.
+/// Screens without a notch hang their panel just below the menu bar instead of
+/// merging with a bezel.
 struct NotchGeometry {
-    /// Width of the physical notch
+    /// True when this screen physically has a notch to blend into.
+    let hasNotch: Bool
+    /// Width of the physical notch; 0 on screens without one.
     let notchWidth: CGFloat
-    /// Height of the safe area inset (notch + menubar area)
-    let notchHeight: CGFloat
-    /// Center X of the screen (and notch)
+    /// Height of the black bar the pill lives in — the notch's safe-area inset,
+    /// or a nominal pill height on screens without a notch.
+    let barHeight: CGFloat
+    /// Center X of the screen (and of the notch).
     let centerX: CGFloat
-    /// Top Y of the screen in macOS coordinates (origin bottom-left)
-    let screenTopY: CGFloat
-    /// Full screen frame
+    /// The Y panels hang from: the screen's top edge on a notched screen, or
+    /// just below the menu bar elsewhere.
+    let topY: CGFloat
     let screenFrame: NSRect
+    let displayID: CGDirectDisplayID
 
-    /// Calculate notch geometry for the screen with the notch (or the main screen).
-    /// Checks all screens so it works on multi-display setups where the notch screen isn't .main.
-    static func calculate() -> NotchGeometry? {
-        // Prefer the screen that actually has a notch
-        let screen = notchScreen ?? NSScreen.main
-        guard let screen else { return nil }
-        let safeTop = screen.safeAreaInsets.top
-        guard safeTop > 0 else { return nil }
+    /// Nominal pill height on screens with no notch to match.
+    private static let floatingBarHeight: CGFloat = 28
 
+    static func geometry(for screen: NSScreen) -> NotchGeometry {
         let frame = screen.frame
-        let leftArea = screen.auxiliaryTopLeftArea
-        let rightArea = screen.auxiliaryTopRightArea
-        // Both areas must be non-nil for valid notch width calculation
-        guard let leftArea, let rightArea else { return nil }
-        let notchWidth = frame.width - leftArea.width - rightArea.width
-        guard notchWidth > 0, notchWidth < frame.width else { return nil }
+        let safeTop = screen.safeAreaInsets.top
 
+        if safeTop > 0,
+           let leftArea = screen.auxiliaryTopLeftArea,
+           let rightArea = screen.auxiliaryTopRightArea {
+            let width = frame.width - leftArea.width - rightArea.width
+            if width > 0, width < frame.width {
+                return NotchGeometry(
+                    hasNotch: true,
+                    notchWidth: width,
+                    barHeight: safeTop,
+                    centerX: frame.midX,
+                    topY: frame.maxY,
+                    screenFrame: frame,
+                    displayID: screen.displayID
+                )
+            }
+        }
+
+        // No notch: sit below the menu bar as a free-floating pill.
+        let menuBarHeight = max(24, frame.maxY - screen.visibleFrame.maxY)
         return NotchGeometry(
-            notchWidth: notchWidth,
-            notchHeight: safeTop,
+            hasNotch: false,
+            notchWidth: 0,
+            barHeight: floatingBarHeight,
             centerX: frame.midX,
-            screenTopY: frame.maxY,
-            screenFrame: frame
+            topY: frame.maxY - menuBarHeight,
+            screenFrame: frame,
+            displayID: screen.displayID
         )
     }
 
-    /// Fallback origin for Macs without a notch — positions below the menu bar, centered.
-    static func fallbackOrigin() -> (x: CGFloat, y: CGFloat, menubarHeight: CGFloat) {
-        let screen = NSScreen.main ?? NSScreen.screens.first
-        guard let screen else { return (0, 0, 24) }
-        let menubarHeight: CGFloat = NSApplication.shared.mainMenu?.menuBarHeight ?? 24
-        return (screen.frame.midX, screen.frame.maxY - menubarHeight, menubarHeight)
-    }
-
-    static var hasNotch: Bool {
-        notchScreen != nil
-    }
-
-    /// Find the screen that has a physical notch (safeAreaInsets.top > 0).
-    private static var notchScreen: NSScreen? {
+    /// The screen that physically has a notch, if any.
+    static var notchScreen: NSScreen? {
         NSScreen.screens.first { $0.safeAreaInsets.top > 0 }
+    }
+
+    static var hasNotch: Bool { notchScreen != nil }
+
+    /// Geometry for the notch screen, falling back to the main display.
+    /// This is the default target when we can't tell where a session lives.
+    static func calculate() -> NotchGeometry? {
+        guard let screen = notchScreen ?? NSScreen.main ?? NSScreen.screens.first else { return nil }
+        return geometry(for: screen)
+    }
+
+    static func screen(withDisplayID id: CGDirectDisplayID) -> NSScreen? {
+        NSScreen.screens.first { $0.displayID == id }
     }
 }
