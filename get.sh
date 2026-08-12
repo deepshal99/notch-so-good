@@ -39,11 +39,16 @@ fi
 
 # Get latest release info
 echo -e "  ${DIM}Fetching latest release...${RESET}"
+# printf, not echo: some shells expand the \n escapes inside the JSON body and
+# corrupt it. strict=False for the same reason, belt and braces.
 RELEASE_JSON=$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest")
-TAG=$(echo "$RELEASE_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin)['tag_name'])")
-DOWNLOAD_URL=$(echo "$RELEASE_JSON" | python3 -c "
+TAG=$(printf '%s' "$RELEASE_JSON" | python3 -c "
 import sys, json
-release = json.load(sys.stdin)
+print(json.loads(sys.stdin.read(), strict=False).get('tag_name', ''))
+")
+DOWNLOAD_URL=$(printf '%s' "$RELEASE_JSON" | python3 -c "
+import sys, json
+release = json.loads(sys.stdin.read(), strict=False)
 for asset in release.get('assets', []):
     if asset['name'].endswith('.zip'):
         print(asset['browser_download_url'])
