@@ -4,7 +4,7 @@ cask "notch-so-good" do
 
   url "https://github.com/deepshal99/notch-so-good/releases/download/v#{version}/NotchSoGood-#{version}.zip"
   name "Notch So Good"
-  desc "Pixel-art crab in your notch that watches Claude Code, Codex, and Gemini sessions"
+  desc "Pixel-art crab in your notch that watches Claude Code and Codex CLI sessions"
   homepage "https://github.com/deepshal99/notch-so-good"
 
   livecheck do
