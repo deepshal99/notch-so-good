@@ -19,7 +19,7 @@ Notch So Good is a free, open-source macOS menubar app for developers who run AI
 - Notification history: recent alerts in the menu bar, click to jump back
 - Nudge: one gentle re-ping if a session waits 2+ minutes — repeat hook events are deduped so it never spams
 - Multi-agent, multi-session: Claude / Codex badges (Gemini is detected but has no hook installer yet), sessions grouped by project, subagent tree
-- 17 idle animations, drowsiness system, menu bar attention dot
+- 15 idle animations, drowsiness system, menu bar attention dot
 - Launch at Login, auto-update via Sparkle
 
 ## Install

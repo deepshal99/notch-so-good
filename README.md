@@ -46,7 +46,7 @@ curl -fsSL https://raw.githubusercontent.com/deepshal99/notch-so-good/main/get.s
 
 **He watches.** When Claude Code is running, a black pill extends your notch. Chawd sits on the left, a live timer ticks on the right.
 
-**He performs.** 17 idle animations — wave, dance, sneeze, peek-a-boo, strut, levitate, yawn, hiccup, spin, stretch, shiver, and more. He has absolutely no chill.
+**He performs.** 15 idle animations — wave, dance, moonwalk, walk-off-and-back, peek-a-boo, strut, levitate, yawn, spin, shiver, and more. He has absolutely no chill.
 
 **He reacts.** Hover the pill and he gets excited and starts dancing. He also dresses for the job: glasses while the agent reads, a pencil while it edits, confetti when a task lands. Leave him alone too long and he gets drowsy. Come back and he does a startled little jolt.
 
@@ -71,6 +71,11 @@ curl -fsSL https://raw.githubusercontent.com/deepshal99/notch-so-good/main/get.s
 **He sets himself up.** Hooks install automatically on first launch. No manual setup, no config files to edit.
 
 ---
+
+## What's New in 4.5.0
+
+- **Chawd got a choreography pass** — the exaggerated squash-and-stretch moves (stretch, sneeze, hiccup) are gone; every remaining animation moves the body through translation and rotation only, so the pixel art never warps. New: a full moonwalk (backward glide, spin flourish, glide back). The walk-off animation now leaves in a random direction each time and returns with a clean hop instead of a squashed landing. 15 animations total.
+- Fixed `install.sh` writing its own stale, pre-4.0 hook set on a from-source install — it now installs the same hooks as everything else.
 
 ## What's New in 4.4.0
 

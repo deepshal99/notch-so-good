@@ -510,13 +510,18 @@ struct MiniChawdView: View {
     @State private var danceTick = false
     @State private var waveTick = false
     @State private var jumpOffset: CGFloat = 0
-    @State private var squashStretch: CGFloat = 1.0  // <1 = squash, >1 = stretch
+    /// Uniform "impact pop" — landings, jolts, surprise beats. Deliberately
+    /// scales x and y together so the pixel body never warps out of proportion;
+    /// a body that stretches non-uniformly is what read as fake.
+    @State private var impactScale: CGFloat = 1.0
     @State private var excitedWiggleTimer: Timer?
     @State private var walkOffset: CGFloat = 0
     @State private var walkStep = false
     @State private var walkTimer: Timer?
     @State private var walkPhase: WalkPhase = .idle
-    @State private var sneezePhase: SneezePhase = .idle
+    /// +1 = crosses right first (re-enters from the left), -1 = mirrored.
+    /// Re-rolled each time walk plays so it doesn't always exit the same side.
+    @State private var walkDir: CGFloat = 1
     @State private var peekOffset: CGFloat = 0
     @State private var strutOffset: CGFloat = 0    // strut left/right
     @State private var nodAngle: Double = 0        // nod tilt
@@ -525,10 +530,7 @@ struct MiniChawdView: View {
     @State private var levitateScale: CGFloat = 1.0 // shrink as floating away
     @State private var levitateOpacity: Double = 1.0
     @State private var yawnPhase: YawnPhase = .idle
-    @State private var hiccupJolt: CGFloat = 0
     @State private var spinAngle: Double = 0
-    @State private var stretchScale: CGFloat = 1.0  // vertical stretch for stretch gimmick
-    @State private var stretchArmOffset: CGFloat = 0 // arms go up during stretch
 
     // Waiting activity — impatient leg tap
     @State private var waitingLegTap = false
@@ -548,12 +550,10 @@ struct MiniChawdView: View {
     @State private var drowsinessTimer: Timer?
     @State private var wakeUpReaction: Bool = false
 
-    enum SneezePhase {
-        case idle, windup, explode, dazed
-    }
-
+    /// `inTransit` covers both legs of the walk/moonwalk trip — the eye/lean
+    /// direction only ever depends on `walkDir`, so one state does for both.
     enum WalkPhase {
-        case idle, walkingRight, behindNotch, walkingLeft, arrived
+        case idle, inTransit, arrived
     }
 
     private let skin = Color(hex: "C4896C")
@@ -561,7 +561,7 @@ struct MiniChawdView: View {
     private let skinDark = Color(hex: "B07A5E")
 
     enum ChawdGimmick: CaseIterable {
-        case none, wave, bounce, lookAround, dance, doze, sparkle, walk, sneeze, peekaboo, strut, nod, shiver, levitate, yawn, hiccup, spin, stretch
+        case none, wave, bounce, lookAround, dance, doze, sparkle, walk, moonwalk, peekaboo, strut, nod, shiver, levitate, yawn, spin
     }
 
     var body: some View {
@@ -572,9 +572,9 @@ struct MiniChawdView: View {
             let ox = (size.width - totalW) / 2
             let oy = (size.height - totalH) / 2
 
-            // Arm top can rise (wave/stretch) but the bottom edge stays fused to the
+            // Arm top can rise while waving; the bottom edge stays fused to the
             // body at y=4.5 so the claw never detaches into a floating pixel.
-            let armTop: CGFloat = gimmick == .wave ? (waveTick ? -0.5 : 1) : (gimmick == .stretch ? stretchArmOffset : 1.5)
+            let armTop: CGFloat = gimmick == .wave ? (waveTick ? -0.5 : 1) : 1.5
             let armY: CGFloat = armTop
             let armH: CGFloat = 4.5 - armTop
             px_fill(ctx, ox: ox, oy: oy, px: px,
@@ -591,8 +591,8 @@ struct MiniChawdView: View {
 
             let danceL: CGFloat = gimmick == .dance ? 0.25 : 0
             let danceR: CGFloat = gimmick == .dance ? -0.25 : 0
-            // Walking legs: alternate forward/back (for walk and strut)
-            let isWalking = (gimmick == .walk || gimmick == .strut) && walkStep
+            // Walking legs: alternate forward/back (walk, moonwalk, strut)
+            let isWalking = (gimmick == .walk || gimmick == .strut || gimmick == .moonwalk) && walkStep
             let walkL: CGFloat = isWalking ? -1.0 : 0
             let walkR: CGFloat = isWalking ? 1.0 : 0
             // Waiting activity: right leg taps impatiently every couple seconds
@@ -609,13 +609,16 @@ struct MiniChawdView: View {
 
             drawExtras(ctx: ctx, ox: ox, oy: oy, px: px)
         }
+        // Marching lean — walk and strut only; moonwalk glides flat, which is
+        // what makes it read as a slide rather than a stride.
         .scaleEffect(x: (gimmick == .walk || gimmick == .strut) ? (walkStep ? -1 : 1) * 0.03 + 1 : 1.0,
                      y: 1.0, anchor: .bottom) // subtle sway while walking
         .rotationEffect(.degrees((gimmick == .walk || gimmick == .strut) ? (walkStep ? 3 : -3) : 0))
         .offset(x: walkOffset)
-        .scaleEffect(x: 1.0, y: squashStretch, anchor: .bottom)
-        .scaleEffect(x: squashStretch > 1 ? 0.92 : (squashStretch < 1 ? 1.1 : 1.0),
-                     y: 1.0, anchor: .center)
+        // Uniform impact pop — replaces the old non-uniform squash/stretch
+        // everywhere a landing or jolt needs weight. Same scale on both axes,
+        // so the pixel body compresses and springs back without warping.
+        .scaleEffect(impactScale)
         // Running activity: slight determined lean
         .rotationEffect(.degrees(activity == .running && !excited ? -4 : 0))
         .animation(.smooth, value: activity)
@@ -631,12 +634,8 @@ struct MiniChawdView: View {
         .offset(y: levitateOffset)
         .scaleEffect(levitateScale)
         .opacity(levitateOpacity)
-        // Spin
+        // Spin / moonwalk flourish
         .rotationEffect(.degrees(spinAngle))
-        // Stretch gimmick — vertical elongation
-        .scaleEffect(x: 1.0, y: stretchScale, anchor: .bottom)
-        // Hiccup jolt
-        .offset(y: hiccupJolt)
         .onChange(of: excited) { _, isExcited in
             if isExcited {
                 cancelWalk()
@@ -649,13 +648,13 @@ struct MiniChawdView: View {
                     idleSeconds = 0
                     wakeUpReaction = true
                     withAnimation(.spring(response: 0.1, dampingFraction: 0.3)) {
-                        squashStretch = 1.15
+                        impactScale = 1.15
                     }
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [self] in
                         guard isAlive else { return }
                         wakeUpReaction = false
                         withAnimation(.spring(response: 0.15, dampingFraction: 0.5)) {
-                            squashStretch = 1.0
+                            impactScale = 1.0
                         }
                         startExcitedWiggle()
                     }
@@ -740,7 +739,7 @@ struct MiniChawdView: View {
             gimmick = .none
             danceTick = false
             waveTick = false
-            squashStretch = 1.0
+            impactScale = 1.0
         }
         // Resume gimmick cycle after hover ends
         scheduleNextGimmick()
@@ -800,28 +799,10 @@ struct MiniChawdView: View {
         if blink || gimmick == .doze {
             px_fill(ctx, ox: ox, oy: oy, px: px, x: 5, y: 2.8, w: 1, h: 0.6, color: .black)
             px_fill(ctx, ox: ox, oy: oy, px: px, x: 9, y: 2.8, w: 1, h: 0.6, color: .black)
-        } else if gimmick == .sneeze {
-            if sneezePhase == .windup {
-                // Squinting, about to sneeze
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 5, y: 2.5, w: 1.2, h: 0.5, color: .black)
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 9, y: 2.5, w: 1.2, h: 0.5, color: .black)
-            } else if sneezePhase == .explode {
-                // Wide shocked eyes
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 4.5, y: 1.2, w: 1.5, h: 2.8, color: .black)
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 9, y: 1.2, w: 1.5, h: 2.8, color: .black)
-            } else {
-                // Dazed - spiral eyes (X shape)
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 5, y: 1.8, w: 0.4, h: 0.4, color: .black)
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 5.8, y: 1.8, w: 0.4, h: 0.4, color: .black)
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 5.4, y: 2.2, w: 0.4, h: 0.4, color: .black)
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 5, y: 2.6, w: 0.4, h: 0.4, color: .black)
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 5.8, y: 2.6, w: 0.4, h: 0.4, color: .black)
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 9, y: 1.8, w: 0.4, h: 0.4, color: .black)
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 9.8, y: 1.8, w: 0.4, h: 0.4, color: .black)
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 9.4, y: 2.2, w: 0.4, h: 0.4, color: .black)
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 9, y: 2.6, w: 0.4, h: 0.4, color: .black)
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 9.8, y: 2.6, w: 0.4, h: 0.4, color: .black)
-            }
+        } else if gimmick == .moonwalk {
+            // Confident wink — one eye closed, pleased with itself
+            px_fill(ctx, ox: ox, oy: oy, px: px, x: 5, y: 2.7, w: 1, h: 0.5, color: .black)
+            px_fill(ctx, ox: ox, oy: oy, px: px, x: 9, y: 1.5, w: 0.8, h: 2.5, color: .black)
         } else if gimmick == .peekaboo {
             if peekOffset > 8 {
                 // Hidden — no eyes visible
@@ -881,25 +862,15 @@ struct MiniChawdView: View {
                 px_fill(ctx, ox: ox, oy: oy, px: px, x: 5, y: 1.5, w: 0.8, h: 2.5, color: .black)
                 px_fill(ctx, ox: ox, oy: oy, px: px, x: 9, y: 1.5, w: 0.8, h: 2.5, color: .black)
             }
-        } else if gimmick == .hiccup {
-            // Surprised wide eyes during hiccup
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: 4.8, y: 1.2, w: 1.3, h: 2.8, color: .black)
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: 5.1, y: 1.5, w: 0.5, h: 0.5, color: .white.opacity(0.5))
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: 8.8, y: 1.2, w: 1.3, h: 2.8, color: .black)
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: 9.1, y: 1.5, w: 0.5, h: 0.5, color: .white.opacity(0.5))
         } else if gimmick == .spin {
             // Dizzy spiral eyes during spin
             px_fill(ctx, ox: ox, oy: oy, px: px, x: 5, y: 2, w: 1.2, h: 0.5, color: .black)
             px_fill(ctx, ox: ox, oy: oy, px: px, x: 5.4, y: 1.6, w: 0.5, h: 1.2, color: .black)
             px_fill(ctx, ox: ox, oy: oy, px: px, x: 9, y: 2, w: 1.2, h: 0.5, color: .black)
             px_fill(ctx, ox: ox, oy: oy, px: px, x: 9.4, y: 1.6, w: 0.5, h: 1.2, color: .black)
-        } else if gimmick == .stretch {
-            // Eyes closed peacefully during stretch
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: 5, y: 2.5, w: 1.2, h: 0.5, color: .black)
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: 9, y: 2.5, w: 1.2, h: 0.5, color: .black)
         } else if gimmick == .walk {
-            // Walking: eyes look in direction of travel
-            let eyeShift: CGFloat = walkPhase == .walkingLeft ? -0.5 : 0.5
+            // Walking: eyes look in the direction it's actually travelling
+            let eyeShift: CGFloat = walkDir > 0 ? 0.5 : -0.5
             if walkPhase == .arrived {
                 // Surprised/happy eyes on arrival
                 px_fill(ctx, ox: ox, oy: oy, px: px, x: 5, y: 2.2, w: 1.2, h: 0.6, color: .black)
@@ -970,22 +941,6 @@ struct MiniChawdView: View {
     // MARK: - Mouth
 
     private func drawMouth(ctx: GraphicsContext, ox: CGFloat, oy: CGFloat, px: CGFloat) {
-        if gimmick == .sneeze {
-            if sneezePhase == .windup {
-                // Scrunched mouth
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 7, y: 5.5, w: 1, h: 0.5, color: skinDark)
-            } else if sneezePhase == .explode {
-                // Wide open mouth
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 6, y: 4.8, w: 3, h: 2, color: skinDark)
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 6.5, y: 5.2, w: 2, h: 1.2, color: Color(hex: "A06850"))
-            } else {
-                // Dazed wavy mouth
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 6, y: 5.2, w: 1, h: 0.5, color: skinDark)
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 7, y: 5.5, w: 1, h: 0.5, color: skinDark)
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 8, y: 5.2, w: 1, h: 0.5, color: skinDark)
-            }
-            return
-        }
         if gimmick == .peekaboo {
             if peekOffset <= 0 {
                 // Happy grin after popping back
@@ -995,8 +950,8 @@ struct MiniChawdView: View {
             }
             return
         }
-        if gimmick == .strut {
-            // Confident little smirk
+        if gimmick == .strut || gimmick == .moonwalk {
+            // Confident little smirk — strut struts it, moonwalk earns it
             px_fill(ctx, ox: ox, oy: oy, px: px, x: 7, y: 5.2, w: 2, h: 0.5, color: skinDark)
             px_fill(ctx, ox: ox, oy: oy, px: px, x: 9.5, y: 4, w: 1.5, h: 1, color: Color(hex: "E8756B").opacity(0.2))
             return
@@ -1027,22 +982,9 @@ struct MiniChawdView: View {
             }
             return
         }
-        if gimmick == .hiccup {
-            // Small surprised O mouth
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: 7, y: 4.8, w: 1.5, h: 1.5, color: skinDark)
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: 7.3, y: 5.1, w: 0.9, h: 0.9, color: Color(hex: "A06850"))
-            return
-        }
         if gimmick == .spin {
             // Dizzy open mouth
             px_fill(ctx, ox: ox, oy: oy, px: px, x: 7, y: 5, w: 1.5, h: 1, color: skinDark)
-            return
-        }
-        if gimmick == .stretch {
-            // Relaxed smile + blush
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: 6.5, y: 5, w: 2, h: 0.5, color: skinDark)
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: 4, y: 4, w: 1.5, h: 1, color: Color(hex: "E8756B").opacity(0.25))
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: 9.5, y: 4, w: 1.5, h: 1, color: Color(hex: "E8756B").opacity(0.25))
             return
         }
         if gimmick == .levitate {
@@ -1126,23 +1068,15 @@ struct MiniChawdView: View {
             px_fill(ctx, ox: ox, oy: oy, px: px, x: 12, y: 3.5, w: 0.5, h: 0.8, color: .white.opacity(0.35))
             return
         }
-        if gimmick == .stretch {
-            // Relaxation sparkles
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: -1, y: 0, w: 0.6, h: 0.6, color: .yellow.opacity(0.5))
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: 14, y: -1, w: 0.6, h: 0.6, color: .yellow.opacity(0.4))
-            return
-        }
-        if gimmick == .sneeze && sneezePhase == .explode {
-            // Sneeze particles flying out
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: 14, y: 3, w: 0.6, h: 0.6, color: .white.opacity(0.6))
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: 15, y: 1, w: 0.5, h: 0.5, color: .white.opacity(0.4))
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: 13, y: 5, w: 0.5, h: 0.5, color: .white.opacity(0.5))
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: 16, y: 4, w: 0.4, h: 0.4, color: .white.opacity(0.3))
-            return
-        }
         if gimmick == .strut {
             // Little confidence sparkle
             px_fill(ctx, ox: ox, oy: oy, px: px, x: 14, y: -1, w: 0.6, h: 0.6, color: .yellow.opacity(0.6))
+            return
+        }
+        if gimmick == .moonwalk {
+            // A little extra flair for the signature move
+            px_fill(ctx, ox: ox, oy: oy, px: px, x: 14, y: -1, w: 0.6, h: 0.6, color: .yellow.opacity(0.6))
+            px_fill(ctx, ox: ox, oy: oy, px: px, x: -1, y: 1, w: 0.5, h: 0.5, color: .yellow.opacity(0.4))
             return
         }
         if gimmick == .walk && walkPhase == .arrived {
@@ -1234,10 +1168,10 @@ struct MiniChawdView: View {
            let match = ChawdGimmick.allCases.first(where: { "\($0)" == force }) {
             picked = match
         } else if isDrowsy {
-            let sleepyOptions: [ChawdGimmick] = [.doze, .doze, .doze, .yawn, .yawn, .nod, .stretch]
+            let sleepyOptions: [ChawdGimmick] = [.doze, .doze, .doze, .yawn, .yawn, .nod]
             picked = sleepyOptions.randomElement() ?? .doze
         } else {
-            let options: [ChawdGimmick] = [.wave, .bounce, .lookAround, .dance, .doze, .sparkle, .walk, .sneeze, .peekaboo, .strut, .nod, .shiver, .levitate, .yawn, .hiccup, .spin, .stretch]
+            let options: [ChawdGimmick] = [.wave, .bounce, .lookAround, .dance, .doze, .sparkle, .walk, .moonwalk, .peekaboo, .strut, .nod, .shiver, .levitate, .yawn, .spin]
             picked = options.randomElement() ?? .wave
         }
         // Avoid repeating the same gimmick twice (feels mechanical)
@@ -1257,6 +1191,10 @@ struct MiniChawdView: View {
         case .walk:
             withAnimation(enterSpring(0.3, 0.65)) { gimmick = .walk }
             doWalk()
+            return
+        case .moonwalk:
+            withAnimation(enterSpring(0.35, 0.7)) { gimmick = .moonwalk } // smooth, cool
+            doMoonwalk()
             return
         case .strut:
             withAnimation(enterSpring(0.25, 0.6)) { gimmick = .strut }
@@ -1278,21 +1216,9 @@ struct MiniChawdView: View {
             withAnimation(enterSpring(0.5, 0.8)) { gimmick = .yawn } // lazy
             doYawn()
             return
-        case .hiccup:
-            withAnimation(enterSpring(0.12, 0.3)) { gimmick = .hiccup } // snappy
-            doHiccup()
-            return
         case .spin:
             withAnimation(enterSpring(0.2, 0.45)) { gimmick = .spin } // bouncy
             doSpin()
-            return
-        case .stretch:
-            withAnimation(enterSpring(0.45, 0.7)) { gimmick = .stretch } // luxurious
-            doStretch()
-            return
-        case .sneeze:
-            withAnimation(enterSpring(0.25, 0.5)) { gimmick = .sneeze }
-            doSneeze()
             return
         case .peekaboo:
             withAnimation(enterSpring(0.3, 0.55)) { gimmick = .peekaboo }
@@ -1407,10 +1333,9 @@ struct MiniChawdView: View {
     // MARK: - Nod animation (gentle head bob like agreeing or dozing)
 
     private func doNod() {
-        // Nod down
+        // Nod down — rotation only, no body scaling
         withAnimation(.easeInOut(duration: 0.3)) {
             nodAngle = 8
-            squashStretch = 0.95
         }
 
         // Back up
@@ -1418,7 +1343,6 @@ struct MiniChawdView: View {
             guard self.isAlive else { return }
             withAnimation(.easeInOut(duration: 0.25)) {
                 nodAngle = -2
-                squashStretch = 1.0
             }
         }
 
@@ -1427,7 +1351,6 @@ struct MiniChawdView: View {
             guard self.isAlive else { return }
             withAnimation(.easeInOut(duration: 0.25)) {
                 nodAngle = 5
-                squashStretch = 0.97
             }
         }
 
@@ -1436,7 +1359,6 @@ struct MiniChawdView: View {
             guard self.isAlive else { return }
             withAnimation(.easeInOut(duration: 0.3)) {
                 nodAngle = 0
-                squashStretch = 1.0
             }
         }
 
@@ -1533,36 +1455,21 @@ struct MiniChawdView: View {
     // MARK: - Yawn animation (mouth opens wide, eyes squeeze, stretches tall)
 
     private func doYawn() {
+        // Mouth opening/closing and eyes shutting carry the whole animation —
+        // no body scaling needed to read as a yawn.
         yawnPhase = .opening
 
-        // Phase 1: Mouth starts opening, slight stretch up
-        withAnimation(.easeIn(duration: 0.5)) {
-            squashStretch = 1.08
-        }
-
-        // Phase 2: Peak yawn — eyes shut, mouth wide, max stretch
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
             guard self.isAlive else { return }
-            yawnPhase = .peak
-            withAnimation(.easeInOut(duration: 0.4)) {
-                squashStretch = 1.15
+            withAnimation(.easeInOut(duration: 0.1)) {
+                yawnPhase = .peak
             }
         }
 
-        // Phase 3: Hold peak
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
             guard self.isAlive else { return }
-            yawnPhase = .closing
-            withAnimation(.easeOut(duration: 0.5)) {
-                squashStretch = 0.95
-            }
-        }
-
-        // Phase 4: Settle back with a sigh
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.7) {
-            guard self.isAlive else { return }
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
-                squashStretch = 1.0
+            withAnimation(.easeOut(duration: 0.1)) {
+                yawnPhase = .closing
             }
         }
 
@@ -1575,52 +1482,12 @@ struct MiniChawdView: View {
         }
     }
 
-    // MARK: - Hiccup animation (quick jolts upward, 3 times)
-
-    private func doHiccup() {
-        doOneHiccup(remaining: 3, delay: 0)
-    }
-
-    private func doOneHiccup(remaining: Int, delay: Double) {
-        guard remaining > 0, isAlive else {
-            // End after all hiccups
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay + 0.3) { [self] in
-                guard isAlive else { return }
-                gimmick = .none
-                hiccupJolt = 0
-                scheduleNextGimmick()
-            }
-            return
-        }
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-            guard self.isAlive else { return }
-            // Jolt up
-            withAnimation(.spring(response: 0.08, dampingFraction: 0.3)) {
-                hiccupJolt = -3
-                squashStretch = 1.1
-            }
-
-            // Settle back
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                guard self.isAlive else { return }
-                withAnimation(.spring(response: 0.2, dampingFraction: 0.5)) {
-                    hiccupJolt = 0
-                    squashStretch = 1.0
-                }
-            }
-
-            // Next hiccup
-            self.doOneHiccup(remaining: remaining - 1, delay: 0.45)
-        }
-    }
-
-    // MARK: - Spin animation (full 360 rotation with bounce landing)
+    // MARK: - Spin animation (full 360 rotation, uniform pop on landing)
 
     private func doSpin() {
-        // Wind up — slight crouch
+        // Wind up — a little crouch via translate, not a body squash
         withAnimation(.easeIn(duration: 0.15)) {
-            squashStretch = 0.88
+            impactScale = 0.94
             jumpOffset = 0.5
         }
 
@@ -1629,7 +1496,7 @@ struct MiniChawdView: View {
             guard self.isAlive else { return }
             withAnimation(.easeOut(duration: 0.12)) {
                 jumpOffset = -3
-                squashStretch = 1.05
+                impactScale = 1.04
             }
             withAnimation(.easeInOut(duration: 0.5)) {
                 spinAngle = 360
@@ -1641,7 +1508,7 @@ struct MiniChawdView: View {
             guard self.isAlive else { return }
             withAnimation(.spring(response: 0.15, dampingFraction: 0.45)) {
                 jumpOffset = 0
-                squashStretch = 0.85
+                impactScale = 0.9
             }
         }
 
@@ -1649,7 +1516,7 @@ struct MiniChawdView: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
             guard self.isAlive else { return }
             withAnimation(.spring(response: 0.2, dampingFraction: 0.55)) {
-                squashStretch = 1.0
+                impactScale = 1.0
             }
         }
 
@@ -1658,113 +1525,6 @@ struct MiniChawdView: View {
             guard isAlive else { return }
             gimmick = .none
             spinAngle = 0
-            scheduleNextGimmick()
-        }
-    }
-
-    // MARK: - Stretch animation (arms up, body elongates, relaxes)
-
-    private func doStretch() {
-        // Phase 1: Arms rise, body starts stretching
-        withAnimation(.easeInOut(duration: 0.6)) {
-            stretchArmOffset = -0.5  // arm top rises, base stays attached
-            stretchScale = 1.15
-        }
-
-        // Phase 2: Hold the stretch, slight wobble
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
-            guard self.isAlive else { return }
-            withAnimation(.easeInOut(duration: 0.3)) {
-                stretchScale = 1.12
-            }
-        }
-
-        // Phase 3: Peak stretch
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-            guard self.isAlive else { return }
-            withAnimation(.easeInOut(duration: 0.3)) {
-                stretchScale = 1.18
-            }
-        }
-
-        // Phase 4: Release — arms drop, body relaxes
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-            guard self.isAlive else { return }
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.5)) {
-                stretchArmOffset = 0
-                stretchScale = 0.95
-            }
-        }
-
-        // Phase 5: Settle
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.9) {
-            guard self.isAlive else { return }
-            withAnimation(.spring(response: 0.25, dampingFraction: 0.6)) {
-                stretchScale = 1.0
-            }
-        }
-
-        // End
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.3) { [self] in
-            guard isAlive else { return }
-            gimmick = .none
-            scheduleNextGimmick()
-        }
-    }
-
-    // MARK: - Sneeze animation
-
-    private func doSneeze() {
-        sneezePhase = .windup
-
-        // Phase 1: Wind up — squash down, scrunching
-        withAnimation(.easeIn(duration: 0.5)) {
-            squashStretch = 0.85
-            jumpOffset = 1
-        }
-
-        // Phase 2: Bigger wind up
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            guard self.isAlive else { return }
-            withAnimation(.easeIn(duration: 0.25)) {
-                squashStretch = 0.75
-                jumpOffset = 1.5
-            }
-        }
-
-        // Phase 3: EXPLODE! — stretch tall, jump, particles
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.75) {
-            guard self.isAlive else { return }
-            sneezePhase = .explode
-            withAnimation(.spring(response: 0.12, dampingFraction: 0.3)) {
-                squashStretch = 1.25
-                jumpOffset = -2.5
-            }
-        }
-
-        // Phase 4: Recoil back
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.95) {
-            guard self.isAlive else { return }
-            withAnimation(.spring(response: 0.2, dampingFraction: 0.5)) {
-                squashStretch = 0.9
-                jumpOffset = 0
-            }
-        }
-
-        // Phase 5: Dazed
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.15) {
-            guard self.isAlive else { return }
-            sneezePhase = .dazed
-            withAnimation(.spring(response: 0.2, dampingFraction: 0.6)) {
-                squashStretch = 1.0
-            }
-        }
-
-        // Phase 6: Recover + end
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [self] in
-            guard isAlive else { return }
-            sneezePhase = .idle
-            gimmick = .none
             scheduleNextGimmick()
         }
     }
@@ -1795,17 +1555,17 @@ struct MiniChawdView: View {
             }
         }
 
-        // Phase 6: Little celebration bounce
+        // Phase 6: Little celebration pop — uniform, no distortion
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.7) {
             guard self.isAlive else { return }
             withAnimation(.spring(response: 0.15, dampingFraction: 0.4)) {
-                squashStretch = 0.85
+                impactScale = 0.9
             }
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.85) {
             guard self.isAlive else { return }
             withAnimation(.spring(response: 0.2, dampingFraction: 0.5)) {
-                squashStretch = 1.0
+                impactScale = 1.0
             }
         }
 
@@ -1817,7 +1577,7 @@ struct MiniChawdView: View {
         }
     }
 
-    // MARK: - Walk animation
+    // MARK: - Walk / Moonwalk shared state
 
     private func cancelWalk() {
         walkTimer?.invalidate()
@@ -1828,7 +1588,6 @@ struct MiniChawdView: View {
     }
 
     private func cancelGimmickState(animated: Bool = false) {
-        sneezePhase = .idle
         yawnPhase = .idle
         if animated {
             withAnimation(.smooth) {
@@ -1839,12 +1598,9 @@ struct MiniChawdView: View {
                 nodAngle = 0
                 shiverOffset = 0
                 levitateOffset = 0
-                squashStretch = 1.0
+                impactScale = 1.0
                 jumpOffset = 0
-                hiccupJolt = 0
                 spinAngle = 0
-                stretchScale = 1.0
-                stretchArmOffset = 0
             }
         } else {
             levitateOpacity = 1.0
@@ -1854,63 +1610,61 @@ struct MiniChawdView: View {
             nodAngle = 0
             shiverOffset = 0
             levitateOffset = 0
-            squashStretch = 1.0
+            impactScale = 1.0
             jumpOffset = 0
-            hiccupJolt = 0
             spinAngle = 0
-            stretchScale = 1.0
-            stretchArmOffset = 0
         }
     }
 
+    // MARK: - Walk animation (cross fully behind the notch, re-enter from the
+    // opposite side — direction re-rolled each time so it isn't always the same)
+
     private func doWalk() {
-        walkPhase = .walkingRight
+        walkDir = Bool.random() ? 1 : -1
+        walkPhase = .inTransit
         startWalkSteps()
 
-        // Phase 1: Walk right → disappear behind notch (~1.2s)
+        // Phase 1: Walk off-screen, fully behind the notch (~1.2s)
         withAnimation(.easeIn(duration: 1.2)) {
-            walkOffset = 40
+            walkOffset = 40 * walkDir
         }
 
-        // Phase 2: Behind notch — stop steps, teleport to left
+        // Phase 2: Fully hidden — stop stepping, teleport to the opposite edge
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.3) { [self] in
             guard isAlive, gimmick == .walk else { return }
-            walkPhase = .behindNotch
             stopWalkSteps()
-
-            // Instantly jump to far left (off-screen)
             withAnimation(.none) {
-                walkOffset = -40
+                walkOffset = -40 * walkDir
             }
 
-            // Phase 3: Walk left → center (~1.2s)
+            // Phase 3: Walk back in from the opposite side (~1.0s)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [self] in
                 guard isAlive, gimmick == .walk else { return }
-                walkPhase = .walkingLeft
                 startWalkSteps()
 
                 withAnimation(.easeOut(duration: 1.0)) {
                     walkOffset = 0
                 }
 
-                // Phase 4: Arrived! Celebration
+                // Phase 4: Arrived — a happy hop, not a shape change
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [self] in
                     guard isAlive, gimmick == .walk else { return }
                     stopWalkSteps()
                     walkPhase = .arrived
 
-                    // Little bounce on arrival
-                    withAnimation(.spring(response: 0.2, dampingFraction: 0.4)) {
-                        squashStretch = 0.85
+                    withAnimation(.spring(response: 0.2, dampingFraction: 0.45)) {
+                        impactScale = 0.92
+                        jumpOffset = -1.5
                     }
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
                         guard self.isAlive else { return }
                         withAnimation(.spring(response: 0.25, dampingFraction: 0.5)) {
-                            squashStretch = 1.0
+                            impactScale = 1.0
+                            jumpOffset = 0
                         }
                     }
 
-                    // End walk gimmick after celebration
+                    // End walk gimmick after the hop
                     DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [self] in
                         guard isAlive else { return }
                         walkPhase = .idle
@@ -1922,8 +1676,73 @@ struct MiniChawdView: View {
         }
     }
 
-    private func startWalkSteps() {
-        walkTimer = Timer.scheduledTimer(withTimeInterval: 0.18, repeats: true) { _ in
+    // MARK: - Moonwalk animation (stylish backward glide, spin flourish, glide back)
+
+    private func doMoonwalk() {
+        startWalkSteps(interval: 0.1)
+
+        // Phase 1: Smooth backward glide
+        withAnimation(.easeOut(duration: 0.5)) {
+            walkOffset = -14
+        }
+
+        // Phase 2: Keep gliding
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            guard self.isAlive else { return }
+            withAnimation(.easeInOut(duration: 0.4)) {
+                self.walkOffset = -22
+            }
+        }
+
+        // Phase 3: Stop, strike a pose — hop + signature spin (pure rotation)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
+            guard self.isAlive else { return }
+            self.stopWalkSteps()
+            withAnimation(.spring(response: 0.2, dampingFraction: 0.45)) {
+                jumpOffset = -3
+            }
+            withAnimation(.easeInOut(duration: 0.45)) {
+                spinAngle = 360
+            }
+        }
+
+        // Phase 4: Land the flourish — uniform pop, no distortion
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.35) {
+            guard self.isAlive else { return }
+            withAnimation(.spring(response: 0.2, dampingFraction: 0.5)) {
+                jumpOffset = 0
+                impactScale = 0.92
+            }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            guard self.isAlive else { return }
+            withAnimation(.spring(response: 0.25, dampingFraction: 0.55)) {
+                impactScale = 1.0
+            }
+        }
+
+        // Phase 5: Glide back to center
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.7) {
+            guard self.isAlive else { return }
+            self.startWalkSteps(interval: 0.1)
+            withAnimation(.easeInOut(duration: 0.5)) {
+                self.walkOffset = 0
+            }
+        }
+
+        // End
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.3) { [self] in
+            guard isAlive else { return }
+            stopWalkSteps()
+            gimmick = .none
+            spinAngle = 0
+            scheduleNextGimmick()
+        }
+    }
+
+    private func startWalkSteps(interval: TimeInterval = 0.18) {
+        walkTimer?.invalidate()
+        walkTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { _ in
             guard isAlive else { return }
             walkStep.toggle()
         }

@@ -1,6 +1,6 @@
 # Notch So Good
 
-The world's smallest coworker lives in your Mac's notch. A pixel-art crab called Chawd watches Claude Code so you don't have to. He has 17 animations and absolutely no chill.
+The world's smallest coworker lives in your Mac's notch. A pixel-art crab called Chawd watches Claude Code so you don't have to. He has 15 animations and absolutely no chill.
 
 ## Tech Stack
 - Swift / SwiftUI, macOS 14+ (Sonoma)
