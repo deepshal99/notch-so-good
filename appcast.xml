@@ -6,19 +6,22 @@
         <description>Automatic updates for Notch So Good</description>
         <language>en</language>
         <item>
-            <title>Version 4.3.0</title>
-            <pubDate>Wed, 22 Jul 2026 11:47:05 +0530</pubDate>
-            <sparkle:version>18</sparkle:version>
-            <sparkle:shortVersionString>4.3.0</sparkle:shortVersionString>
-            <description><![CDATA[<h2>What's New in 4.3.0</h2><p>Codex usage limits side by side with Claude, Control-Center-style menu redesign, motion overhaul with Reduce Motion support, fullscreen-aware pill, and a permanent fix for the repeating Keychain prompt.</p>]]></description>
-            <enclosure
-                url="https://github.com/deepshal99/notch-so-good/releases/download/v4.3.0/NotchSoGood-4.3.0.zip"
-                sparkle:version="18"
-                sparkle:shortVersionString="4.3.0"
-                sparkle:edSignature="V5FiXY7Gx9L16NXWdZSWgCkjqQLfmNjrAs5D/yF/nv3YCXg/9Rp5l8psPuOP2HMj9H03YujXidrRnMgArwYCBw=="
-                length="2080133"
-                type="application/octet-stream"
-            />
+            <title>Version 4.5.0</title>
+            <pubDate>Thu, 13 Aug 2026 18:08:37 +0530</pubDate>
+            <sparkle:version>20</sparkle:version>
+            <sparkle:shortVersionString>4.5.0</sparkle:shortVersionString>
+            <description><![CDATA[
+                <h2>What's New in 4.5.0</h2>
+                <p>Chawd's choreography pass — the exaggerated squash-and-stretch moves (stretch, sneeze, hiccup) are gone; every animation now moves through translation and rotation only, so the pixel art never warps. New: a full moonwalk. Walk now leaves in a random direction each time.</p>
+                <p>Since 4.4.0: respects your permission mode (no more double prompts in bypass/auto/plan), accurate session status, lands on the right window and the right display, project-local permission rules, and a rewritten hook bridge.</p>
+                <p><b>This update can't be verified automatically</b> — click below to open the release page and download it directly, or run <code>brew upgrade notch-so-good</code>.</p>
+            ]]></description>
+            <!-- No <enclosure>: this is a Sparkle information-only update. We can't
+                 sign this build on this machine, and Sparkle refuses to auto-install
+                 anything it can't verify — by design, to protect you from installing
+                 a tampered update. This still surfaces "an update is available" and
+                 links you to the real release instead of silently doing nothing. -->
+            <link>https://github.com/deepshal99/notch-so-good/releases/tag/v4.5.0</link>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
         </item>
     </channel>
