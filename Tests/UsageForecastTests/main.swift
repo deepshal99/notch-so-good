@@ -34,6 +34,11 @@ check(UsageForecast.outcome(percentLeft: 0, resetsAt: now.addingTimeInterval(360
 check(UsageForecast.outcome(percentLeft: 50, resetsAt: now.addingTimeInterval(-60), windowLength: fiveHours, now: now) == nil,
       "no forecast once the window has reset")
 
+check(UsageForecast.headsUpLevel(percentLeft: 25) == nil, "no heads-up at 75% used")
+check(UsageForecast.headsUpLevel(percentLeft: 20) == 80, "heads-up at 80% used")
+check(UsageForecast.headsUpLevel(percentLeft: 6) == 80, "still the 80% level at 94% used")
+check(UsageForecast.headsUpLevel(percentLeft: 5) == 95, "heads-up at 95% used")
+check(UsageForecast.headsUpLevel(percentLeft: 0) == 95, "empty is the 95% level")
 check(UsageForecast.windowLength(label: "Session") == fiveHours, "Session is five hours")
 check(UsageForecast.windowLength(label: "Weekly · Opus") == 7 * 86400, "Weekly windows are seven days")
 check(UsageForecast.windowLength(label: "Other") == nil, "unknown windows have no length")

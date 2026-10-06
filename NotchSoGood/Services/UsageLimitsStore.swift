@@ -46,7 +46,11 @@ final class UsageLimitsStore: ObservableObject {
     private var lastFetchAt: Date?
     private var isFetching = false
     /// resets_at values we've already alerted for — one low-limit nudge per window.
-    private var alertedResetKeys: Set<String> = []
+    /// Heads-ups already shown, kept across launches so a restart doesn't
+    /// repeat one. Only the most recent few are kept.
+    private var alertedResetKeys: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "usage.alerted") ?? []) {
+        didSet { UserDefaults.standard.set(Array(alertedResetKeys.sorted().suffix(24)), forKey: "usage.alerted") }
+    }
 
     private static let minRefreshInterval: TimeInterval = 5 * 60
     private static let autoRefreshInterval: TimeInterval = 10 * 60
@@ -105,20 +109,28 @@ final class UsageLimitsStore: ObservableObject {
 
     // MARK: - Low-limit warning
 
+    /// A heads-up when a 5-hour window passes 80% and again at 95% used, once
+    /// per level per window (keyed on its reset time). If both are crossed
+    /// between two fetches, only the higher one fires.
     private func checkLowSessionLimit() {
-        guard let session = windows.first(where: { $0.source == .claude && $0.label == "Session" }),
-              session.percentLeft < 10 else { return }
-        // Dedupe on the reset timestamp so we fire once per 5-hour window.
-        let key = session.resetsAt.map { String($0.timeIntervalSince1970) } ?? "unknown"
-        guard !alertedResetKeys.contains(key) else { return }
-        alertedResetKeys.insert(key)
+        for session in windows where session.label == "Session" {
+            guard let level = UsageForecast.headsUpLevel(percentLeft: session.percentLeft) else { continue }
+            let window = session.resetsAt.map { String(Int($0.timeIntervalSince1970)) } ?? "unknown"
+            let key = "\(session.source.rawValue)-\(window)-\(level)"
+            guard !alertedResetKeys.contains(key) else { continue }
+            // Mark this level and every lower one as said.
+            for lower in UsageForecast.headsUpLevels where lower <= level {
+                alertedResetKeys.insert("\(session.source.rawValue)-\(window)-\(lower)")
+            }
 
-        let countdown = session.resetsAt.map { Self.resetCountdown($0) } ?? "soon"
-        NotificationManager.shared.handleNotification(NotchNotification(
-            type: .general,
-            message: "Under 10% of the 5-hour window left. Resets in \(countdown).",
-            title: NotchNotification.limitsTitle
-        ))
+            let countdown = session.resetsAt.map { Self.resetCountdown($0) } ?? "soon"
+            let agent = session.source == .claude ? "" : "\(session.source.displayName): "
+            NotificationManager.shared.handleNotification(NotchNotification(
+                type: .general,
+                message: "\(agent)\(level)% of the 5-hour window used. Resets in \(countdown).",
+                title: NotchNotification.limitsTitle
+            ))
+        }
     }
 
     /// The 5-hour window for an agent: the one number worth glancing at mid-task.

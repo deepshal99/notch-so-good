@@ -10,6 +10,15 @@ enum UsageForecast {
         case runsOut(Date)
     }
 
+    /// Heads-up points, as percent of a window used.
+    static let headsUpLevels = [80, 95]
+
+    /// The highest heads-up level a window has crossed, or nil below the first.
+    static func headsUpLevel(percentLeft: Int) -> Int? {
+        let used = 100 - min(100, max(0, percentLeft))
+        return headsUpLevels.last { used >= $0 }
+    }
+
     /// How long each window runs, by the label the parser gives it.
     static func windowLength(label: String) -> TimeInterval? {
         if label == "Session" { return 5 * 3600 }
