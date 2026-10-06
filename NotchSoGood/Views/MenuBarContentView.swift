@@ -56,6 +56,10 @@ struct MenuBarContentView: View {
         .font(.system(size: 13))
         .padding(.vertical, 5)
         .frame(width: 296)
+        // Always the island's dark surface. Following the system glass made the
+        // menu grey-on-grey in Light mode over dark windows.
+        .background(MenuMetrics.surface)
+        .environment(\.colorScheme, .dark)
         .onAppear {
             axTrusted = AXIsProcessTrusted()
             limits.refresh(force: true)
@@ -281,6 +285,8 @@ private struct UsageMeterRow: View {
 private enum MenuMetrics {
     /// Text inset from the window edge, as in system menus.
     static let inset: CGFloat = 14
+    /// Near-black, a step up from the notch so the menu reads as a surface.
+    static let surface = Color(red: 0.086, green: 0.086, blue: 0.094)
 }
 
 private struct MenuSeparator: View {
