@@ -62,6 +62,10 @@ struct NotchNotification: Identifiable {
         return trimmed
     }
 
+    /// Titles the app itself uses for its own heads-ups; the character keys off them.
+    static let limitsTitle = "Running low"
+    static let nudgeTitle = "Still waiting on you"
+
     var displayTitle: String {
         title ?? type.defaultTitle
     }

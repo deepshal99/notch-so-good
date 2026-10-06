@@ -1,7 +1,8 @@
 import SwiftUI
 
-/// A Dynamic Island pill that extends the notch left and right while an AI agent is active.
-/// On hover, it expands fluidly to show session details.
+/// A Dynamic Island pill that extends the notch left and right while an agent
+/// is active: the character on the left, the 5-hour runway on the right. On
+/// hover it opens into the session list.
 struct SessionPillView: View {
     @ObservedObject var dataSource: PillDataSource
     let notchWidth: CGFloat
@@ -12,204 +13,174 @@ struct SessionPillView: View {
     let onTap: (String?) -> Void
     @ObservedObject var hoverMonitor: PillHoverMonitor
 
-    @State private var appeared = false
+    @State private var appeared: Bool
+    @ObservedObject private var limits = UsageLimitsStore.shared
+
+    init(dataSource: PillDataSource, notchWidth: CGFloat, notchHeight: CGFloat, hasNotch: Bool = true,
+         onTap: @escaping (String?) -> Void, hoverMonitor: PillHoverMonitor, appearImmediately: Bool = false) {
+        self.dataSource = dataSource
+        self.notchWidth = notchWidth
+        self.notchHeight = notchHeight
+        self.hasNotch = hasNotch
+        self.onTap = onTap
+        self.hoverMonitor = hoverMonitor
+        _appeared = State(initialValue: appearImmediately)
+    }
     private var hovered: Bool { hoverMonitor.isHovered }
 
     private var sessions: [NotificationManager.SessionInfo] { dataSource.sessions }
     private var primaryStartTime: Date { dataSource.primaryStartTime }
 
-    // Wing + row metrics are shared with NotchWindowController via PillLayout
     private let wingCollapsed = PillLayout.wingCollapsed
     private let wingExpanded = PillLayout.wingExpanded
 
-    // Group sessions by project name for hierarchical display
-    private var sessionGroups: [SessionGroup] {
-        SessionGroup.from(sessions)
-    }
+    /// The concave fillets at the top corners: the pill's walls sit this far in.
+    private var wall: CGFloat { hasNotch ? (hovered ? 9 : 6) : 0 }
+    /// Wall → text column. Matches the notification cards (24 from the wall).
+    private let column: CGFloat = Island.inset + Island.cardPadding
 
-    private var expandedContentHeight: CGFloat {
-        PillLayout.contentHeight(for: sessions)
-    }
+    /// The character reflects whichever session most needs the user.
+    private var characterState: CharacterState { CharacterState(session: sessions.first) }
 
-    private var needsScrolling: Bool {
-        PillLayout.needsScrolling(sessions)
-    }
-
-    // Derive Chawd's tool-aware activity from the primary (first) session.
-    private var primaryActivity: MiniChawdView.Activity? {
-        guard let session = sessions.first else { return nil }
-        switch session.status {
-        case .needsInput, .needsPermission:
-            return .waiting
-        case .completed:
-            return .celebrating
-        case .running:
-            switch session.activeToolName {
-            case "Read", "Glob", "Grep": return .reading
-            case "Edit", "Write": return .coding
-            case "Bash": return .running
-            case "WebSearch", "WebFetch": return .searching
-            default: return nil
-            }
-        case .compacting:
-            return nil
-        }
+    private var runway: UsageLimitsStore.LimitWindow? {
+        limits.sessionWindow(for: sessions.first?.agentSource ?? .claude)
     }
 
     private var wing: CGFloat { hovered ? wingExpanded : wingCollapsed }
     private var pillWidth: CGFloat { notchWidth + (wing * 2) }
     private var maxWidth: CGFloat { notchWidth + (wingExpanded * 2) }
     private var maxHeight: CGFloat { notchHeight + PillLayout.maxContentHeight }
+    private var expandedContentHeight: CGFloat {
+        PillLayout.contentHeight(for: sessions, runway: dataSource.showsRunway)
+    }
     private var pillTotalHeight: CGFloat { hovered ? (notchHeight + expandedContentHeight) : notchHeight }
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
-            let seconds = Int(context.date.timeIntervalSince(primaryStartTime))
-            let elapsed = ElapsedFormatter.compact(seconds)
-
             ZStack(alignment: .top) {
-                // === BLACK PILL SHAPE ===
                 pillShape
                     .fill(Color.black)
                     .frame(width: pillWidth, height: pillTotalHeight)
 
-                // === WING CONTENT ===
-                HStack(spacing: 0) {
-                    // Left wing — Mascot
-                    // Clip only horizontally so walk disappears behind notch
-                    // but hop animation isn't cut off vertically
-                    HStack(spacing: 0) {
-                        Spacer(minLength: 0)
-                        MiniChawdView(excited: hovered, activity: primaryActivity)
-                            .frame(width: 23, height: 23)
-                        Spacer(minLength: 0)
-                    }
-                    .frame(width: wing)
-                    // Clip horizontally (walk disappears at wing edge)
-                    // but allow vertical overflow (hop animation)
-                    .clipShape(HorizontalOnlyClip())
-                    .opacity(appeared ? 1 : 0)
+                header(now: context.date)
 
-                    Spacer()
-                        .frame(width: notchWidth)
-
-                    // Right wing — Phase icon + Timer
-                    HStack(spacing: 4) {
-                        let primary = sessions.first
-                        let primaryStatus = primary?.status ?? .running
-                        let isWaiting = primaryStatus == .needsInput || primaryStatus == .needsPermission
-                        PhaseIconView(
-                            status: primaryStatus,
-                            toolName: primary?.activeToolName,
-                            size: hovered ? 10 : 8,
-                            compact: true
-                        )
-
-                        Text(elapsed)
-                            .font(.system(size: hovered ? 11 : 10, weight: .semibold, design: .monospaced))
-                            .monospacedDigit()
-                            .foregroundColor(isWaiting ? Color(hex: "FBBF24").opacity(0.85) : .white.opacity(0.7))
-                            // Never let the timer push past the wing: `fixedSize`
-                            // made it overflow and get clipped by the pill once a
-                            // session passed an hour.
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.75)
-                    }
-                    .padding(.trailing, 6)
-                    .frame(width: wing)
-                    .opacity(appeared ? 1 : 0)
-                }
-                .frame(width: pillWidth, height: notchHeight)
-
-                // === EXPANDED SESSION LIST ===
                 if hovered {
-                    expandedList(now: context.date)
-                        .padding(.top, notchHeight + PillLayout.dropTopPad)
-                        .padding(.horizontal, 18)
-                        .padding(.bottom, PillLayout.dropBottomPad)
-                        .frame(width: pillWidth, alignment: .top)
-                        .transition(.opacity.combined(with: .offset(y: -4)).combined(with: .scale(scale: 0.97, anchor: .top)))
+                    VStack(spacing: 0) {
+                        sessionList(now: context.date)
+                        if dataSource.showsRunway {
+                            runwayFooter
+                        }
+                    }
+                    .padding(.top, notchHeight + PillLayout.dropTopPad)
+                    .padding(.horizontal, wall + Island.inset)
+                    .padding(.bottom, PillLayout.dropBottomPad)
+                    .frame(width: pillWidth, alignment: .top)
+                    .transition(.opacity.combined(with: .offset(y: -4)))
                 }
             }
             .frame(width: pillWidth, height: pillTotalHeight, alignment: .top)
             .clipShape(pillShape)
             .contentShape(pillShape)
-            .onTapGesture {
-                onTap(sessions.first?.id)
-            }
+            .onTapGesture { onTap(sessions.first?.id) }
             .scaleEffect(x: appeared ? 1 : 0.85, y: 1, anchor: .center)
-            .animation(.smooth, value: hovered)
+            .animation(Island.spring, value: hovered)
             .accessibilityElement(children: .contain)
             .accessibilityLabel(pillAccessibilityLabel)
         }
         .frame(width: maxWidth, height: maxHeight, alignment: .top)
         .onAppear {
-            withAnimation(.smooth) {
-                appeared = true
-            }
+            withAnimation(Island.spring) { appeared = true }
         }
     }
 
-    // MARK: - Pill shape
+    // MARK: - Header (level with the notch)
+
+    private func header(now: Date) -> some View {
+        HStack(spacing: 0) {
+            // Left wing: the character, hanging from the notch edge. Open, it
+            // slides to the text column and looks down at the list.
+            CharacterView(
+                state: characterState,
+                framing: .pill,
+                gaze: hovered ? SIMD2<Float>(0.03, -0.09) : nil,
+                // On screen for hours: 30 fps while it just works, full rate when
+                // it wants you, celebrates, or you're looking.
+                framesPerSecond: (hovered || characterState == .need || characterState == .done) ? 60 : 30
+            )
+            .frame(width: wingCollapsed, height: notchHeight)
+            .padding(.leading, hovered ? wall + column - 17 : 0)
+            .frame(width: wing, alignment: .leading)
+
+            Spacer().frame(width: notchWidth)
+
+            // Right wing: runway, read like a battery. The session timer stands
+            // in until usage is known (or when it can't be read).
+            // Collapsed, it centres in the wing clear of the corner fillet.
+            trailingStatus(now: now)
+                .frame(width: hovered ? nil : wing - wall - 2)
+                .padding(.trailing, hovered ? wall + column : wall + 2)
+                .frame(width: wing, alignment: .trailing)
+        }
+        .frame(width: pillWidth, height: notchHeight)
+        .opacity(appeared ? 1 : 0)
+    }
+
+    @ViewBuilder
+    private func trailingStatus(now: Date) -> some View {
+        if let runway {
+            RunwayIndicator(percentLeft: runway.percentLeft, compact: !hovered)
+        } else {
+            let primary = sessions.first
+            let waiting = primary?.status == .needsInput || primary?.status == .needsPermission
+            let elapsed = ElapsedFormatter.compact(Int(now.timeIntervalSince(primaryStartTime)))
+            Text(elapsed)
+                .font(.system(size: hovered ? 11.5 : 10.5, weight: .semibold))
+                .monospacedDigit()
+                .foregroundColor(waiting ? CharacterState.need.color : .white.opacity(0.72))
+                .lineLimit(1)
+                .fixedSize()
+                .accessibilityLabel("Elapsed \(elapsed)")
+        }
+    }
 
     private var pillShape: AnyShape {
         guard hasNotch else {
-            // Free-floating: round every corner, no concave bezel fillets.
-            return AnyShape(RoundedRectangle(
-                cornerRadius: hovered ? 18 : notchHeight / 2,
-                style: .continuous
-            ))
+            return AnyShape(RoundedRectangle(cornerRadius: hovered ? 24 : notchHeight / 2, style: .continuous))
         }
-        return AnyShape(NotchShape(
-            topRadius: hovered ? 9 : 6,
-            bottomRadius: hovered ? 18 : notchHeight / 2
-        ))
+        return AnyShape(NotchShape(topRadius: wall, bottomRadius: hovered ? 24 : notchHeight / 2))
     }
 
     private var pillAccessibilityLabel: String {
         guard let primary = sessions.first else { return "Notch So Good" }
-        let phase = primary.status.phaseLabel(
-            toolName: primary.activeToolName,
-            toolDetail: primary.activeToolDetail
-        )
+        let phase = primary.status.activityLine(toolName: primary.activeToolName, toolDetail: primary.activeToolDetail)
         if sessions.count > 1 {
             return "\(primary.projectName), \(phase). \(sessions.count) sessions active."
         }
         return "\(primary.projectName), \(phase)"
     }
 
-    // MARK: - Expanded content (grouped by project)
+    // MARK: - Session list
 
-    /// Scrolls once the list outgrows the panel. Without this the extra rows were
-    /// clipped with no affordance at all.
     @ViewBuilder
-    private func expandedList(now: Date) -> some View {
-        if needsScrolling {
-            ScrollView(.vertical) {
-                expandedContent(now: now)
-            }
-            .scrollIndicators(.hidden)
-            .frame(height: PillLayout.maxContentHeight - PillLayout.dropTopPad - PillLayout.dropBottomPad)
+    private func sessionList(now: Date) -> some View {
+        if PillLayout.needsScrolling(sessions) {
+            ScrollView(.vertical) { rows(now: now) }
+                .scrollIndicators(.hidden)
+                .frame(height: PillLayout.maxListHeight)
         } else {
-            expandedContent(now: now)
+            rows(now: now)
         }
     }
 
-    private func expandedContent(now: Date) -> some View {
+    private func rows(now: Date) -> some View {
         VStack(spacing: 0) {
-            // Flatten to get stagger index across all rows
-            let allRows = buildRowList()
-            ForEach(Array(allRows.enumerated()), id: \.element.id) { index, row in
+            ForEach(Array(buildRowList().enumerated()), id: \.element.id) { index, row in
                 Group {
                     switch row.kind {
-                    case .single(let session):
-                        sessionRow(session: session, now: now)
-                    case .header(let name):
-                        projectHeader(name: name)
-                    case .sub(let session):
-                        subSessionRow(session: session, now: now)
-                    case .subagent(let sub):
-                        subagentRow(sub: sub, now: now)
+                    case .single(let session): sessionRow(session, now: now)
+                    case .header(let name, let count): groupHeader(name, count: count)
+                    case .sub(let session): subSessionRow(session, now: now)
+                    case .subagent(let sub): subagentRow(sub, now: now)
                     }
                 }
                 .opacity(hovered ? 1 : 0)
@@ -219,1548 +190,231 @@ struct SessionPillView: View {
         }
     }
 
-    // Row type for stagger enumeration
-    private enum ExpandedRowKind {
+    private enum RowKind {
         case single(NotificationManager.SessionInfo)
-        case header(String)
+        case header(String, Int)
         case sub(NotificationManager.SessionInfo)
         case subagent(NotificationManager.SubagentInfo)
     }
 
-    private struct ExpandedRow: Identifiable {
+    private struct Row: Identifiable {
         let id: String
-        let kind: ExpandedRowKind
+        let kind: RowKind
     }
 
-    private func buildRowList() -> [ExpandedRow] {
-        var rows: [ExpandedRow] = []
-        for group in sessionGroups {
+    private func buildRowList() -> [Row] {
+        var rows: [Row] = []
+        for group in SessionGroup.from(sessions) {
             if group.sessions.count == 1 {
                 let session = group.sessions[0]
-                rows.append(ExpandedRow(id: session.id, kind: .single(session)))
-                // Add subagent rows under this session
-                for sub in session.subagents {
-                    rows.append(ExpandedRow(id: "sub-\(sub.id)", kind: .subagent(sub)))
-                }
+                rows.append(Row(id: session.id, kind: .single(session)))
+                rows += session.subagents.map { Row(id: "sub-\($0.id)", kind: .subagent($0)) }
             } else {
-                rows.append(ExpandedRow(id: "header-\(group.projectName)", kind: .header(group.projectName)))
+                rows.append(Row(id: "header-\(group.projectName)", kind: .header(group.projectName, group.sessions.count)))
                 for session in group.sessions {
-                    rows.append(ExpandedRow(id: session.id, kind: .sub(session)))
-                    for sub in session.subagents {
-                        rows.append(ExpandedRow(id: "sub-\(sub.id)", kind: .subagent(sub)))
-                    }
+                    rows.append(Row(id: session.id, kind: .sub(session)))
+                    rows += session.subagents.map { Row(id: "sub-\($0.id)", kind: .subagent($0)) }
                 }
             }
         }
         return rows
     }
 
-    // MARK: - Full session row (single session per project)
+    /// Row content inset from the list edge so text lands on the column.
+    private var rowInset: CGFloat { column - Island.inset }
 
-    private func sessionRow(session: NotificationManager.SessionInfo, now: Date) -> some View {
-        Button {
-            onTap(session.id)
-        } label: {
+    /// One session: dot, project, what it's doing; elapsed on the right.
+    private func sessionRow(_ session: NotificationManager.SessionInfo, now: Date) -> some View {
+        Button { onTap(session.id) } label: {
             HStack(spacing: 8) {
-                PhaseIconView(
-                    status: session.status,
-                    toolName: session.activeToolName,
-                    size: 11
-                )
-
-                VStack(alignment: .leading, spacing: 1) {
-                    let secs = Int(now.timeIntervalSince(session.startTime))
-
-                    HStack(spacing: 4) {
+                StatusDot(color: session.status.dotColor)
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
                         Text(session.projectName)
-                            .font(.system(size: 10, weight: .medium, design: .rounded))
-                            .truncationMode(.tail)
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(Island.primary)
                             .lineLimit(1)
-                            .foregroundColor(.white.opacity(0.85))
-
-                        AgentBadge(source: session.agentSource)
-
-                        if let mode = session.permissionMode.badgeLabel {
-                            ModeBadge(label: mode)
-                        }
+                        badges(for: session)
                     }
-
-                    HStack(spacing: 4) {
-                        Text(formatElapsed(secs))
-                            .font(.system(size: 9, weight: .regular, design: .monospaced))
-                            .monospacedDigit()
-                            .foregroundColor(.white.opacity(0.35))
-
-                        Text("·")
-                            .font(.system(size: 9, weight: .bold, design: .rounded))
-                            .foregroundColor(.white.opacity(0.15))
-
-                        Text(session.status.phaseLabel(toolName: session.activeToolName, toolDetail: session.activeToolDetail))
-                            .font(.system(size: 9, weight: .medium, design: .rounded))
-                            .foregroundColor(session.status.dotColor.opacity(0.8))
-                            .lineLimit(1)
-                            .contentTransition(.interpolate)
-                            .animation(.snappy, value: session.status)
-                    }
+                    activityText(session)
                 }
-
-                Spacer(minLength: 4)
-
-                if !session.subagents.isEmpty {
-                    SubagentBadge(count: session.subagents.filter { $0.status == .running }.count)
-                }
-
-                Image(systemName: "arrow.up.right")
-                    .font(.system(size: 7, weight: .bold))
-                    .foregroundColor(.white.opacity(0.3))
-                    .frame(width: 18, height: 18)
-                    .background(Circle().fill(.white.opacity(0.07)))
+                Spacer(minLength: 8)
+                trailing(session: session, now: now)
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
+            .padding(.leading, rowInset - 3.5)
+            .padding(.trailing, rowInset)
+            .frame(height: PillLayout.sessionRow)
             .contentShape(Rectangle())
         }
-        .buttonStyle(SessionRowButtonStyle())
+        .buttonStyle(SessionRowStyle())
         .accessibilityLabel(rowAccessibilityLabel(session, now: now))
         .accessibilityHint("Opens this session in its terminal")
+    }
+
+    /// Several sessions in one project: a quiet header, then a row each.
+    private func groupHeader(_ name: String, count: Int) -> some View {
+        HStack(spacing: 6) {
+            Text(name)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(Island.secondary)
+                .lineLimit(1)
+            Text("\(count) sessions")
+                .font(Island.caption)
+                .foregroundColor(Island.tertiary)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, rowInset)
+        .padding(.bottom, 4)
+        .frame(height: PillLayout.groupHeader, alignment: .bottom)
+    }
+
+    private func subSessionRow(_ session: NotificationManager.SessionInfo, now: Date) -> some View {
+        Button { onTap(session.id) } label: {
+            HStack(spacing: 8) {
+                StatusDot(color: session.status.dotColor, size: 6)
+                activityText(session, emphasised: true)
+                badges(for: session)
+                Spacer(minLength: 8)
+                trailing(session: session, now: now)
+            }
+            .padding(.leading, rowInset - 3)
+            .padding(.trailing, rowInset)
+            .frame(height: PillLayout.subSessionRow)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(SessionRowStyle())
+        .accessibilityLabel(rowAccessibilityLabel(session, now: now))
+        .accessibilityHint("Opens this session in its terminal")
+    }
+
+    /// A subagent, hung off its parent with a hairline.
+    private func subagentRow(_ sub: NotificationManager.SubagentInfo, now: Date) -> some View {
+        HStack(spacing: 7) {
+            Path { p in
+                p.move(to: CGPoint(x: 0.5, y: 0))
+                p.addLine(to: CGPoint(x: 0.5, y: 5))
+                p.addQuadCurve(to: CGPoint(x: 7, y: 11), control: CGPoint(x: 0.5, y: 11))
+            }
+            .stroke(Color.white.opacity(0.16), lineWidth: 1)
+            .frame(width: 7, height: 11, alignment: .top)
+            .offset(y: -4)
+            Circle()
+                .fill(sub.status.dotColor.opacity(sub.status == .completed ? 0.6 : 1))
+                .frame(width: 5, height: 5)
+            Text(sub.description)
+                .font(.system(size: 11.5))
+                .foregroundColor(Island.secondary)
+                .lineLimit(1)
+            Spacer(minLength: 8)
+            Text(ElapsedFormatter.precise(Int(now.timeIntervalSince(sub.startTime))))
+                .font(Island.numeric)
+                .foregroundColor(Island.tertiary)
+        }
+        .padding(.leading, rowInset + 3)
+        .padding(.trailing, rowInset)
+        .frame(height: PillLayout.subagentRow)
+        .accessibilityElement(children: .combine)
+    }
+
+    private func activityText(_ session: NotificationManager.SessionInfo, emphasised: Bool = false) -> some View {
+        let waiting = session.status == .needsInput || session.status == .needsPermission
+        return Text(session.status.activityLine(toolName: session.activeToolName, toolDetail: session.activeToolDetail))
+            .font(.system(size: emphasised ? 12.5 : 11.5, weight: emphasised ? .medium : .regular))
+            .foregroundColor(waiting ? session.status.dotColor : (emphasised ? Color.white.opacity(0.82) : Island.secondary))
+            .lineLimit(1)
+            .truncationMode(.tail)
+    }
+
+    @ViewBuilder
+    private func badges(for session: NotificationManager.SessionInfo) -> some View {
+        if session.agentSource != .claude {
+            Chip(text: session.agentSource.displayName, mono: false, tint: session.agentSource.accentColor, height: 17)
+        }
+        if let mode = session.permissionMode.badgeLabel {
+            Chip(text: mode, mono: false, height: 17)
+        }
+    }
+
+    private func trailing(session: NotificationManager.SessionInfo, now: Date) -> some View {
+        HStack(spacing: 8) {
+            let running = session.subagents.filter { $0.status == .running }.count
+            if running > 0 {
+                HStack(spacing: 3) {
+                    Image(systemName: "person.2.fill").font(.system(size: 9, weight: .semibold))
+                    Text("\(running)").font(Island.numeric)
+                }
+                .foregroundColor(Island.tertiary)
+                .accessibilityLabel("\(running) subagent\(running == 1 ? "" : "s") running")
+            }
+            Text(ElapsedFormatter.precise(Int(now.timeIntervalSince(session.startTime))))
+                .font(Island.numeric)
+                .foregroundColor(Island.tertiary)
+        }
     }
 
     private func rowAccessibilityLabel(_ session: NotificationManager.SessionInfo, now: Date) -> String {
-        let phase = session.status.phaseLabel(
-            toolName: session.activeToolName,
-            toolDetail: session.activeToolDetail
-        )
-        let elapsed = formatElapsed(Int(now.timeIntervalSince(session.startTime)))
+        let phase = session.status.activityLine(toolName: session.activeToolName, toolDetail: session.activeToolDetail)
+        let elapsed = ElapsedFormatter.precise(Int(now.timeIntervalSince(session.startTime)))
         var label = "\(session.projectName), \(session.agentSource.displayName), \(phase), \(elapsed)"
-        if let mode = session.permissionMode.badgeLabel {
-            label += ", \(mode) mode"
-        }
+        if let mode = session.permissionMode.badgeLabel { label += ", \(mode) mode" }
         return label
     }
 
-    // MARK: - Project group header
+    // MARK: - Runway footer
 
-    private func projectHeader(name: String) -> some View {
-        HStack(spacing: 5) {
-            Image(systemName: "folder.fill")
-                .font(.system(size: 8, weight: .medium))
-                .foregroundColor(.white.opacity(0.3))
-            Text(name)
-                .font(.system(size: 10, weight: .semibold, design: .rounded))
-                .foregroundColor(.white.opacity(0.5))
-                .lineLimit(1)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 8)
-        .padding(.top, 6)
-        .padding(.bottom, 2)
-    }
-
-    // MARK: - Sub-session row (multiple sessions under a project)
-
-    private func subSessionRow(session: NotificationManager.SessionInfo, now: Date) -> some View {
-        Button {
-            onTap(session.id)
-        } label: {
-            HStack(spacing: 6) {
-                Spacer().frame(width: 6)
-
-                PhaseIconView(
-                    status: session.status,
-                    toolName: session.activeToolName,
-                    size: 9,
-                    compact: true
-                )
-
-                let secs = Int(now.timeIntervalSince(session.startTime))
-
-                Text(formatElapsed(secs))
-                    .font(.system(size: 10, weight: .medium, design: .monospaced))
-                    .monospacedDigit()
-                    .foregroundColor(.white.opacity(0.6))
-
-                Text("·")
-                    .font(.system(size: 9, weight: .bold, design: .rounded))
-                    .foregroundColor(.white.opacity(0.15))
-
-                Text(session.status.phaseLabel(toolName: session.activeToolName, toolDetail: session.activeToolDetail))
-                    .font(.system(size: 9, weight: .medium, design: .rounded))
-                    .foregroundColor(session.status.dotColor.opacity(0.8))
-                    .lineLimit(1)
-                    .contentTransition(.interpolate)
-                    .animation(.snappy, value: session.status)
-
-                AgentBadge(source: session.agentSource)
-
-                if let mode = session.permissionMode.badgeLabel {
-                    ModeBadge(label: mode)
+    private var runwayFooter: some View {
+        let window = runway
+        let pct = window?.percentLeft ?? 0
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 4) {
+                Text("5-hour window")
+                    .font(Island.caption)
+                    .foregroundColor(Island.secondary)
+                Spacer(minLength: 6)
+                Text("\(pct)% left")
+                    .font(Island.numeric)
+                    .foregroundColor(Color.white.opacity(0.85))
+                if let resets = window?.resetsAt {
+                    Text("· resets in \(UsageLimitsStore.resetCountdown(resets))")
+                        .font(Island.numeric)
+                        .foregroundColor(Island.tertiary)
                 }
-
-                Spacer(minLength: 4)
-
-                if !session.subagents.isEmpty {
-                    SubagentBadge(count: session.subagents.filter { $0.status == .running }.count)
-                }
-
-                Image(systemName: "arrow.up.right")
-                    .font(.system(size: 7, weight: .bold))
-                    .foregroundColor(.white.opacity(0.25))
-                    .frame(width: 16, height: 16)
-                    .background(Circle().fill(.white.opacity(0.05)))
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 5)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(SessionRowButtonStyle())
-        .accessibilityLabel(rowAccessibilityLabel(session, now: now))
-        .accessibilityHint("Opens this session in its terminal")
-    }
-
-    // MARK: - Subagent row (nested under parent session with tree connector)
-
-    private func subagentRow(sub: NotificationManager.SubagentInfo, now: Date) -> some View {
-        HStack(spacing: 0) {
-            // Tree connector — L-shaped line
-            HStack(spacing: 0) {
-                Spacer().frame(width: 14)
-                VStack(spacing: 0) {
-                    Rectangle()
-                        .fill(.white.opacity(0.08))
-                        .frame(width: 1, height: 12)
-                    HStack(spacing: 0) {
-                        Rectangle()
-                            .fill(.white.opacity(0.08))
-                            .frame(width: 8, height: 1)
-                        Spacer(minLength: 0)
-                    }
+            GeometryReader { g in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.white.opacity(0.08))
+                    Capsule().fill(UsageTint.notch(pct))
+                        .frame(width: max(3, g.size.width * CGFloat(min(100, max(0, pct))) / 100))
                 }
-                .frame(width: 10, height: 13, alignment: .topLeading)
             }
-
-            PhaseIconView(
-                status: sub.status,
-                size: 8,
-                compact: true
-            )
-
-            Text(sub.description)
-                .font(.system(size: 9, weight: .medium, design: .rounded))
-                .foregroundColor(.white.opacity(0.45))
-                .lineLimit(1)
-                .padding(.leading, 4)
-
-            Spacer(minLength: 4)
-
-            let secs = Int(now.timeIntervalSince(sub.startTime))
-            Text(formatElapsed(secs))
-                .font(.system(size: 8, weight: .regular, design: .monospaced))
-                .monospacedDigit()
-                .foregroundColor(.white.opacity(0.25))
-                .padding(.trailing, 8)
+            .frame(height: 3)
         }
-        .padding(.vertical, 3)
-    }
-
-    // MARK: - Format
-
-    /// Precise elapsed time, for the expanded rows where there's room for it.
-    private func formatElapsed(_ seconds: Int) -> String {
-        ElapsedFormatter.precise(seconds)
+        .padding(.horizontal, rowInset)
+        .padding(.top, 13)
+        .frame(height: PillLayout.runwayFooter, alignment: .top)
+        .overlay(alignment: .top) {
+            Rectangle().fill(Island.hairline).frame(height: 1).padding(.horizontal, rowInset)
+        }
+        .opacity(hovered ? 1 : 0)
+        .accessibilityElement(children: .combine)
     }
 }
 
-// MARK: - Session row button style (subtle highlight on hover)
+// MARK: - Row style
 
-private struct SessionRowButtonStyle: ButtonStyle {
-    @State private var isHovered = false
+/// A soft highlight on hover, concentric with the island's bottom corners.
+private struct SessionRowStyle: ButtonStyle {
+    @State private var hovered = false
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(.white.opacity(isHovered ? 0.06 : 0))
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(Color.white.opacity(configuration.isPressed ? 0.1 : (hovered ? 0.06 : 0)))
             )
-            .scaleEffect(configuration.isPressed ? 0.97 : 1.0)
-            .onHover { h in
-                withAnimation(.snappy) { isHovered = h }
-            }
-    }
-}
-
-// MARK: - Mini Chawd — a tiny pixel-art crab for the pill
-
-struct MiniChawdView: View {
-    /// Tool-aware activity derived from the primary session's status + active tool.
-    /// While set, random idle gimmicks are suppressed (blink keeps running) — hover excitement still wins.
-    enum Activity: Equatable {
-        case reading, coding, running, searching, waiting, celebrating
-    }
-
-    var excited: Bool = false
-    var forceGimmick: String? = nil
-    var activity: Activity? = nil
-
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var isAlive = false  // guards recursive asyncAfter loops
-    @State private var blink = false
-    @State private var blinkTimer: Timer?
-    @State private var gimmick: ChawdGimmick = .none
-    @State private var gimmickTimer: Timer?
-    @State private var danceTick = false
-    @State private var waveTick = false
-    @State private var jumpOffset: CGFloat = 0
-    /// Uniform "impact pop" — landings, jolts, surprise beats. Deliberately
-    /// scales x and y together so the pixel body never warps out of proportion;
-    /// a body that stretches non-uniformly is what read as fake.
-    @State private var impactScale: CGFloat = 1.0
-    @State private var excitedWiggleTimer: Timer?
-    @State private var walkOffset: CGFloat = 0
-    @State private var walkStep = false
-    @State private var walkTimer: Timer?
-    @State private var walkPhase: WalkPhase = .idle
-    /// +1 = crosses right first (re-enters from the left), -1 = mirrored.
-    /// Re-rolled each time walk plays so it doesn't always exit the same side.
-    @State private var walkDir: CGFloat = 1
-    @State private var peekOffset: CGFloat = 0
-    @State private var strutOffset: CGFloat = 0    // strut left/right
-    @State private var nodAngle: Double = 0        // nod tilt
-    @State private var shiverOffset: CGFloat = 0   // shiver shake
-    @State private var levitateOffset: CGFloat = 0  // levitate up/down
-    @State private var levitateScale: CGFloat = 1.0 // shrink as floating away
-    @State private var levitateOpacity: Double = 1.0
-    @State private var yawnPhase: YawnPhase = .idle
-    @State private var spinAngle: Double = 0
-
-    // Waiting activity — impatient leg tap
-    @State private var waitingLegTap = false
-    @State private var waitingTapTimer: Timer?
-
-    // Celebrating activity — one-shot confetti fall on completion
-    @State private var confettiVisible = false
-    @State private var confettiFall: CGFloat = 0
-
-    enum YawnPhase {
-        case idle, opening, peak, closing
-    }
-
-    // Drowsiness system — gets sleepy after prolonged idle
-    @State private var idleSeconds: Int = 0
-    @State private var isDrowsy: Bool = false
-    @State private var drowsinessTimer: Timer?
-    @State private var wakeUpReaction: Bool = false
-
-    /// `inTransit` covers both legs of the walk/moonwalk trip — the eye/lean
-    /// direction only ever depends on `walkDir`, so one state does for both.
-    enum WalkPhase {
-        case idle, inTransit, arrived
-    }
-
-    private let skin = Color(hex: "C4896C")
-    private let skinLight = Color(hex: "D49A7C")
-    private let skinDark = Color(hex: "B07A5E")
-
-    enum ChawdGimmick: CaseIterable {
-        case none, wave, bounce, lookAround, dance, doze, sparkle, walk, moonwalk, peekaboo, strut, nod, shiver, levitate, yawn, spin
-    }
-
-    var body: some View {
-        Canvas { ctx, size in
-            let px: CGFloat = 1.6
-            let totalW: CGFloat = 14 * px
-            let totalH: CGFloat = 11 * px
-            let ox = (size.width - totalW) / 2
-            let oy = (size.height - totalH) / 2
-
-            // Arm top can rise while waving; the bottom edge stays fused to the
-            // body at y=4.5 so the claw never detaches into a floating pixel.
-            let armTop: CGFloat = gimmick == .wave ? (waveTick ? -0.5 : 1) : 1.5
-            let armY: CGFloat = armTop
-            let armH: CGFloat = 4.5 - armTop
-            px_fill(ctx, ox: ox, oy: oy, px: px,
-                    x: 0, y: armY, w: 2, h: armH, color: skin)
-
-            px_fill(ctx, ox: ox, oy: oy, px: px,
-                    x: 2, y: 0, w: 10, h: 7, color: skin)
-
-            px_fill(ctx, ox: ox, oy: oy, px: px,
-                    x: 2, y: 0, w: 10, h: 0.8, color: skinLight.opacity(0.3))
-
-            drawEyes(ctx: ctx, ox: ox, oy: oy, px: px)
-            drawMouth(ctx: ctx, ox: ox, oy: oy, px: px)
-
-            let danceL: CGFloat = gimmick == .dance ? 0.25 : 0
-            let danceR: CGFloat = gimmick == .dance ? -0.25 : 0
-            // Walking legs: alternate forward/back (walk, moonwalk, strut)
-            let isWalking = (gimmick == .walk || gimmick == .strut || gimmick == .moonwalk) && walkStep
-            let walkL: CGFloat = isWalking ? -1.0 : 0
-            let walkR: CGFloat = isWalking ? 1.0 : 0
-            // Waiting activity: right leg taps impatiently every couple seconds
-            let legTap: CGFloat = (activity == .waiting && waitingLegTap) ? -1.2 : 0
-            px_fill(ctx, ox: ox, oy: oy, px: px,
-                    x: 4.5 + danceL + walkL, y: 7, w: 1.5, h: 3, color: skin)
-            px_fill(ctx, ox: ox, oy: oy, px: px,
-                    x: 9 + danceR + walkR, y: 7 + legTap, w: 1.5, h: 3, color: skin)
-
-            px_fill(ctx, ox: ox, oy: oy, px: px,
-                    x: 4.5 + danceL + walkL, y: 9.5, w: 1.5, h: 0.8, color: skinDark)
-            px_fill(ctx, ox: ox, oy: oy, px: px,
-                    x: 9 + danceR + walkR, y: 9.5 + legTap, w: 1.5, h: 0.8, color: skinDark)
-
-            drawExtras(ctx: ctx, ox: ox, oy: oy, px: px)
-        }
-        // Marching lean — walk and strut only; moonwalk glides flat, which is
-        // what makes it read as a slide rather than a stride.
-        .scaleEffect(x: (gimmick == .walk || gimmick == .strut) ? (walkStep ? -1 : 1) * 0.03 + 1 : 1.0,
-                     y: 1.0, anchor: .bottom) // subtle sway while walking
-        .rotationEffect(.degrees((gimmick == .walk || gimmick == .strut) ? (walkStep ? 3 : -3) : 0))
-        .offset(x: walkOffset)
-        // Uniform impact pop — replaces the old non-uniform squash/stretch
-        // everywhere a landing or jolt needs weight. Same scale on both axes,
-        // so the pixel body compresses and springs back without warping.
-        .scaleEffect(impactScale)
-        // Running activity: slight determined lean
-        .rotationEffect(.degrees(activity == .running && !excited ? -4 : 0))
-        .animation(.smooth, value: activity)
-        .scaleEffect(gimmick == .bounce ? 1.12 : 1.0)
-        .offset(y: gimmick == .bounce ? -2 : (jumpOffset + peekOffset))
-        .offset(x: gimmick == .dance ? (danceTick ? 0.8 : -0.8) : 0)
-        .rotationEffect(.degrees(gimmick == .dance ? (danceTick ? 3 : -3) : 0))
-        // Strut offset (walk left/right in place)
-        .offset(x: strutOffset + shiverOffset)
-        // Nod tilt
-        .rotationEffect(.degrees(nodAngle))
-        // Levitate
-        .offset(y: levitateOffset)
-        .scaleEffect(levitateScale)
-        .opacity(levitateOpacity)
-        // Spin / moonwalk flourish
-        .rotationEffect(.degrees(spinAngle))
-        .onChange(of: excited) { _, isExcited in
-            if isExcited {
-                cancelWalk()
-                cancelGimmickState(animated: true)
-                gimmickTimer?.invalidate()
-                gimmickTimer = nil
-                // Wake-up reaction if drowsy
-                if isDrowsy {
-                    isDrowsy = false
-                    idleSeconds = 0
-                    wakeUpReaction = true
-                    withAnimation(.spring(response: 0.1, dampingFraction: 0.3)) {
-                        impactScale = 1.15
-                    }
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [self] in
-                        guard isAlive else { return }
-                        wakeUpReaction = false
-                        withAnimation(.spring(response: 0.15, dampingFraction: 0.5)) {
-                            impactScale = 1.0
-                        }
-                        startExcitedWiggle()
-                    }
-                } else {
-                    startExcitedWiggle()
-                }
-            } else {
-                stopExcitedWiggle()
-            }
-        }
-        .onChange(of: activity) { oldValue, newValue in
-            // Tool-aware activity suppresses random gimmicks (keep blink) — hover wins over all of this.
-            if newValue != nil {
-                gimmickTimer?.invalidate()
-                gimmickTimer = nil
-                cancelGimmickState(animated: true)
-            } else if oldValue != nil {
-                scheduleNextGimmick()
-            }
-
-            if newValue == .waiting {
-                startWaitingTap()
-            } else {
-                stopWaitingTap()
-            }
-
-            if newValue == .celebrating && oldValue != .celebrating {
-                triggerCelebration()
-            }
-        }
-        .onAppear {
-            isAlive = true
-            startBlink()
-            startDrowsinessTracker()
-            scheduleNextGimmick()
-            if activity == .waiting {
-                startWaitingTap()
-            }
-            if activity == .celebrating {
-                triggerCelebration()
-            }
-        }
-        .onDisappear {
-            isAlive = false
-            blinkTimer?.invalidate()
-            blinkTimer = nil
-            gimmickTimer?.invalidate()
-            gimmickTimer = nil
-            excitedWiggleTimer?.invalidate()
-            excitedWiggleTimer = nil
-            walkTimer?.invalidate()
-            walkTimer = nil
-            drowsinessTimer?.invalidate()
-            drowsinessTimer = nil
-            waitingTapTimer?.invalidate()
-            waitingTapTimer = nil
-        }
-    }
-
-    // MARK: - Excited wiggle (happy dance while hovered — no vertical offset)
-
-    private func startExcitedWiggle() {
-        guard !reduceMotion else { return }
-        danceTick = false
-        waveTick = false
-        withAnimation(.bouncy) {
-            gimmick = .dance
-        }
-        excitedWiggleTimer = Timer.scheduledTimer(withTimeInterval: 0.4, repeats: true) { _ in
-            guard isAlive else { return }
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.55)) {
-                danceTick.toggle()
-                waveTick = danceTick
-            }
-        }
-    }
-
-    private func stopExcitedWiggle() {
-        excitedWiggleTimer?.invalidate()
-        excitedWiggleTimer = nil
-        withAnimation(.snappy) {
-            gimmick = .none
-            danceTick = false
-            waveTick = false
-            impactScale = 1.0
-        }
-        // Resume gimmick cycle after hover ends
-        scheduleNextGimmick()
-    }
-
-    // MARK: - Waiting activity (impatient leg tap)
-
-    private func startWaitingTap() {
-        stopWaitingTap()
-        waitingTapTimer = Timer.scheduledTimer(withTimeInterval: 2.4, repeats: true) { _ in
-            guard isAlive else { return }
-            withAnimation(.spring(response: 0.15, dampingFraction: 0.4)) {
-                waitingLegTap = true
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                guard isAlive else { return }
-                withAnimation(.spring(response: 0.2, dampingFraction: 0.5)) {
-                    waitingLegTap = false
-                }
-            }
-        }
-    }
-
-    private func stopWaitingTap() {
-        waitingTapTimer?.invalidate()
-        waitingTapTimer = nil
-        waitingLegTap = false
-    }
-
-    // MARK: - Celebrating activity (one-shot confetti fall)
-
-    private func triggerCelebration() {
-        guard !reduceMotion else { return }
-        confettiVisible = true
-        confettiFall = 0
-        withAnimation(.easeIn(duration: 1.8)) {
-            confettiFall = 1
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [self] in
-            guard isAlive else { return }
-            confettiVisible = false
-            confettiFall = 0
-        }
-    }
-
-    // MARK: - Eyes
-
-    private func drawEyes(ctx: GraphicsContext, ox: CGFloat, oy: CGFloat, px: CGFloat) {
-        if wakeUpReaction {
-            // Startled wide eyes on wake-up
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: 4.5, y: 1, w: 1.5, h: 3, color: .black)
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: 4.8, y: 1.3, w: 0.6, h: 0.6, color: .white.opacity(0.6))
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: 8.5, y: 1, w: 1.5, h: 3, color: .black)
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: 8.8, y: 1.3, w: 0.6, h: 0.6, color: .white.opacity(0.6))
-            return
-        }
-        if blink || gimmick == .doze {
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: 5, y: 2.8, w: 1, h: 0.6, color: .black)
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: 9, y: 2.8, w: 1, h: 0.6, color: .black)
-        } else if gimmick == .moonwalk {
-            // Confident wink — one eye closed, pleased with itself
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: 5, y: 2.7, w: 1, h: 0.5, color: .black)
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: 9, y: 1.5, w: 0.8, h: 2.5, color: .black)
-        } else if gimmick == .peekaboo {
-            if peekOffset > 8 {
-                // Hidden — no eyes visible
-            } else if peekOffset > 0 {
-                // Peeking up — wide surprised eyes
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 5, y: 1.2, w: 1.3, h: 2.8, color: .black)
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 5.3, y: 1.5, w: 0.7, h: 0.7, color: .white)
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 9, y: 1.2, w: 1.3, h: 2.8, color: .black)
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 9.3, y: 1.5, w: 0.7, h: 0.7, color: .white)
-            } else {
-                // Back up — happy star eyes
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 5, y: 2.2, w: 1.2, h: 0.6, color: .black)
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 5, y: 1.8, w: 0.5, h: 1, color: .black)
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 5.7, y: 1.8, w: 0.5, h: 1, color: .black)
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 9, y: 2.2, w: 1.2, h: 0.6, color: .black)
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 9, y: 1.8, w: 0.5, h: 1, color: .black)
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 9.7, y: 1.8, w: 0.5, h: 1, color: .black)
-            }
-        } else if gimmick == .strut {
-            // Strut — eyes look in direction of movement, confident
-            let strutEyeShift: CGFloat = strutOffset > 0 ? 0.4 : (strutOffset < 0 ? -0.4 : 0)
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: 5 + strutEyeShift, y: 1.5, w: 0.8, h: 2.5, color: .black)
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: 9 + strutEyeShift, y: 1.5, w: 0.8, h: 2.5, color: .black)
-        } else if gimmick == .nod {
-            // Nod — slightly droopy/relaxed eyes
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: 5, y: 2, w: 1, h: 2, color: .black)
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: 9, y: 2, w: 1, h: 2, color: .black)
-        } else if gimmick == .shiver {
-            // Shiver — wide startled eyes
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: 4.8, y: 1.3, w: 1.3, h: 2.8, color: .black)
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: 5.1, y: 1.6, w: 0.6, h: 0.6, color: .white.opacity(0.5))
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: 8.8, y: 1.3, w: 1.3, h: 2.8, color: .black)
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: 9.1, y: 1.6, w: 0.6, h: 0.6, color: .white.opacity(0.5))
-        } else if gimmick == .levitate {
-            if levitateOffset > 10 {
-                // Coming back from below — wide surprised eyes
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 4.8, y: 1.2, w: 1.3, h: 2.8, color: .black)
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 5.1, y: 1.5, w: 0.6, h: 0.6, color: .white.opacity(0.6))
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 8.8, y: 1.2, w: 1.3, h: 2.8, color: .black)
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 9.1, y: 1.5, w: 0.6, h: 0.6, color: .white.opacity(0.6))
-            } else {
-                // Floating up — zen closed eyes (happy arcs)
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 5, y: 2.5, w: 1.2, h: 0.5, color: .black)
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 9, y: 2.5, w: 1.2, h: 0.5, color: .black)
-            }
-        } else if gimmick == .yawn {
-            if yawnPhase == .peak {
-                // Eyes squeezed shut during yawn peak
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 5, y: 2.8, w: 1.2, h: 0.4, color: .black)
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 9, y: 2.8, w: 1.2, h: 0.4, color: .black)
-            } else if yawnPhase == .closing {
-                // Drowsy half-open eyes
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 5, y: 2.2, w: 0.8, h: 1.5, color: .black)
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 9, y: 2.2, w: 0.8, h: 1.5, color: .black)
-            } else {
-                // Opening — normal eyes
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 5, y: 1.5, w: 0.8, h: 2.5, color: .black)
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 9, y: 1.5, w: 0.8, h: 2.5, color: .black)
-            }
-        } else if gimmick == .spin {
-            // Dizzy spiral eyes during spin
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: 5, y: 2, w: 1.2, h: 0.5, color: .black)
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: 5.4, y: 1.6, w: 0.5, h: 1.2, color: .black)
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: 9, y: 2, w: 1.2, h: 0.5, color: .black)
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: 9.4, y: 1.6, w: 0.5, h: 1.2, color: .black)
-        } else if gimmick == .walk {
-            // Walking: eyes look in the direction it's actually travelling
-            let eyeShift: CGFloat = walkDir > 0 ? 0.5 : -0.5
-            if walkPhase == .arrived {
-                // Surprised/happy eyes on arrival
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 5, y: 2.2, w: 1.2, h: 0.6, color: .black)
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 5, y: 1.8, w: 0.5, h: 1, color: .black)
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 5.7, y: 1.8, w: 0.5, h: 1, color: .black)
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 9, y: 2.2, w: 1.2, h: 0.6, color: .black)
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 9, y: 1.8, w: 0.5, h: 1, color: .black)
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 9.7, y: 1.8, w: 0.5, h: 1, color: .black)
-            } else {
-                // Determined eyes, shifted in walk direction
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 5 + eyeShift, y: 1.5, w: 0.8, h: 2.5, color: .black)
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 9 + eyeShift, y: 1.5, w: 0.8, h: 2.5, color: .black)
-            }
-        } else if gimmick == .lookAround {
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: 5.5, y: 1.5, w: 0.8, h: 2.5, color: .black)
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: 9.5, y: 1.5, w: 0.8, h: 2.5, color: .black)
-        } else if let activity, !excited {
-            // Tool-aware activity eyes (suppressed while hovered/excited or mid-gimmick)
-            switch activity {
-            case .reading:
-                // Focused reading eyes with tiny black glasses over them
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 5.1, y: 1.9, w: 0.8, h: 1.8, color: .black)
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 9.1, y: 1.9, w: 0.8, h: 1.8, color: .black)
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 4.6, y: 1.6, w: 1.8, h: 0.35, color: .black)
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 4.6, y: 3.85, w: 1.8, h: 0.35, color: .black)
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 8.6, y: 1.6, w: 1.8, h: 0.35, color: .black)
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 8.6, y: 3.85, w: 1.8, h: 0.35, color: .black)
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 6.4, y: 2.4, w: 2.2, h: 0.35, color: .black)
-            case .coding:
-                // Narrow, focused eyes
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 5.1, y: 1.9, w: 0.7, h: 2.1, color: .black)
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 9.1, y: 1.9, w: 0.7, h: 2.1, color: .black)
-            case .running:
-                // Determined eyes shifted forward
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 4.7, y: 1.6, w: 0.9, h: 2.3, color: .black)
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 8.7, y: 1.6, w: 0.9, h: 2.3, color: .black)
-            case .searching:
-                // One eye normal, one squinted
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 5, y: 1.5, w: 0.8, h: 2.5, color: .black)
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 9, y: 2.7, w: 1.2, h: 0.5, color: .black)
-            case .waiting:
-                // Eyes shifted up — looking up impatiently
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 5, y: 0.8, w: 0.8, h: 2.2, color: .black)
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 9, y: 0.8, w: 0.8, h: 2.2, color: .black)
-            case .celebrating:
-                // Star eyes
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 5, y: 2.2, w: 1.2, h: 0.6, color: .black)
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 5, y: 1.8, w: 0.5, h: 1, color: .black)
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 5.7, y: 1.8, w: 0.5, h: 1, color: .black)
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 9, y: 2.2, w: 1.2, h: 0.6, color: .black)
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 9, y: 1.8, w: 0.5, h: 1, color: .black)
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 9.7, y: 1.8, w: 0.5, h: 1, color: .black)
-            }
-        } else if gimmick == .sparkle || gimmick == .bounce || excited {
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: 5, y: 2.2, w: 1.2, h: 0.6, color: .black)
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: 5, y: 1.8, w: 0.5, h: 1, color: .black)
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: 5.7, y: 1.8, w: 0.5, h: 1, color: .black)
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: 9, y: 2.2, w: 1.2, h: 0.6, color: .black)
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: 9, y: 1.8, w: 0.5, h: 1, color: .black)
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: 9.7, y: 1.8, w: 0.5, h: 1, color: .black)
-        } else {
-            // Static idle eyes
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: 5, y: 1.5, w: 0.8, h: 2.5, color: .black)
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: 9, y: 1.5, w: 0.8, h: 2.5, color: .black)
-        }
-    }
-
-    // MARK: - Mouth
-
-    private func drawMouth(ctx: GraphicsContext, ox: CGFloat, oy: CGFloat, px: CGFloat) {
-        if gimmick == .peekaboo {
-            if peekOffset <= 0 {
-                // Happy grin after popping back
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 6, y: 5.2, w: 3, h: 0.6, color: skinDark)
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 4, y: 4, w: 1.5, h: 1, color: Color(hex: "E8756B").opacity(0.3))
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 9.5, y: 4, w: 1.5, h: 1, color: Color(hex: "E8756B").opacity(0.3))
-            }
-            return
-        }
-        if gimmick == .strut || gimmick == .moonwalk {
-            // Confident little smirk — strut struts it, moonwalk earns it
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: 7, y: 5.2, w: 2, h: 0.5, color: skinDark)
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: 9.5, y: 4, w: 1.5, h: 1, color: Color(hex: "E8756B").opacity(0.2))
-            return
-        }
-        if gimmick == .nod {
-            // Relaxed smile
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: 6.5, y: 5, w: 2, h: 0.6, color: skinDark)
-            return
-        }
-        if gimmick == .shiver {
-            // Chattering teeth — wavy mouth
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: 6, y: 5, w: 1, h: 0.6, color: skinDark)
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: 7, y: 5.4, w: 1, h: 0.6, color: skinDark)
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: 8, y: 5, w: 1, h: 0.6, color: skinDark)
-            return
-        }
-        if gimmick == .yawn {
-            if yawnPhase == .peak {
-                // Wide open yawn mouth
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 6, y: 4.5, w: 3, h: 2.5, color: skinDark)
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 6.5, y: 5, w: 2, h: 1.5, color: Color(hex: "A06850"))
-            } else if yawnPhase == .opening {
-                // Mouth starting to open
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 6.5, y: 5, w: 2, h: 1.2, color: skinDark)
-            } else {
-                // Closing — gentle smile after yawn
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 6.5, y: 5, w: 2, h: 0.6, color: skinDark)
-            }
-            return
-        }
-        if gimmick == .spin {
-            // Dizzy open mouth
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: 7, y: 5, w: 1.5, h: 1, color: skinDark)
-            return
-        }
-        if gimmick == .levitate {
-            if levitateOffset > 10 {
-                // Surprised O mouth on return
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 7, y: 4.8, w: 1.5, h: 1.5, color: skinDark)
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 7.3, y: 5.1, w: 0.9, h: 0.9, color: Color(hex: "A06850"))
-            } else {
-                // Zen smile while floating
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 6.5, y: 5, w: 2, h: 0.5, color: skinDark)
-                // Blush
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 4, y: 4, w: 1.5, h: 1, color: Color(hex: "E8756B").opacity(0.25))
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 9.5, y: 4, w: 1.5, h: 1, color: Color(hex: "E8756B").opacity(0.25))
-            }
-            return
-        }
-        if gimmick == .walk {
-            if walkPhase == .arrived {
-                // Big happy grin on arrival + blush
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 6, y: 5.2, w: 3, h: 0.6, color: skinDark)
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 4, y: 4, w: 1.5, h: 1, color: Color(hex: "E8756B").opacity(0.3))
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 9.5, y: 4, w: 1.5, h: 1, color: Color(hex: "E8756B").opacity(0.3))
-            } else {
-                // Determined little mouth
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 7, y: 5.2, w: 1.5, h: 0.5, color: skinDark)
-            }
-            return
-        }
-        if let activity, !excited, gimmick == .none {
-            switch activity {
-            case .reading, .coding, .running:
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 6.8, y: 5.1, w: 1.8, h: 0.5, color: skinDark)
-            case .searching:
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 7, y: 5.2, w: 1.5, h: 0.5, color: skinDark)
-            case .waiting:
-                // Slight downturned mouth — impatient
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 7, y: 5.6, w: 1.4, h: 0.5, color: skinDark)
-            case .celebrating:
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 6, y: 5.2, w: 3, h: 0.6, color: skinDark)
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 4, y: 4, w: 1.5, h: 1, color: Color(hex: "E8756B").opacity(0.3))
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: 9.5, y: 4, w: 1.5, h: 1, color: Color(hex: "E8756B").opacity(0.3))
-            }
-        } else if gimmick == .doze {
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: 7, y: 5, w: 1.2, h: 1, color: skinDark)
-        } else if gimmick == .bounce || gimmick == .sparkle || excited {
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: 6, y: 5.2, w: 3, h: 0.6, color: skinDark)
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: 4, y: 4, w: 1.5, h: 1, color: Color(hex: "E8756B").opacity(0.3))
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: 9.5, y: 4, w: 1.5, h: 1, color: Color(hex: "E8756B").opacity(0.3))
-        } else if gimmick == .dance {
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: 6.5, y: 5, w: 2, h: 1.2, color: skinDark)
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: 7, y: 5.3, w: 1, h: 0.6, color: Color(hex: "A06850"))
-        } else {
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: 6.5, y: 5, w: 2, h: 0.6, color: skinDark)
-        }
-    }
-
-    // MARK: - Extras
-
-    private func drawExtras(ctx: GraphicsContext, ox: CGFloat, oy: CGFloat, px: CGFloat) {
-        if activity == .coding, !excited, gimmick == .none {
-            // Tiny pencil pixel held near the claw
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: -0.7, y: 0.4, w: 0.5, h: 2, color: Color(hex: "FBBF24"))
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: -0.7, y: 0.2, w: 0.5, h: 0.4, color: Color(hex: "F87171"))
-        }
-        if activity == .celebrating, confettiVisible, !excited, gimmick == .none {
-            // Falling confetti — soft accent colors, once per completion
-            let particles: [(x: CGFloat, startY: CGFloat, color: Color)] = [
-                (0, -3, Color(hex: "4ADE80")),
-                (5, -4.5, Color(hex: "60A5FA")),
-                (10, -3.5, Color(hex: "FBBF24")),
-                (14, -2.5, Color(hex: "A78BFA")),
-            ]
-            for particle in particles {
-                let fallY = particle.startY + confettiFall * 9
-                px_fill(ctx, ox: ox, oy: oy, px: px, x: particle.x, y: fallY, w: 0.7, h: 0.7,
-                        color: particle.color.opacity(1 - confettiFall * 0.6))
-            }
-        }
-        if gimmick == .yawn && yawnPhase == .peak {
-            // Teardrop from yawn
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: 12, y: 3.5, w: 0.5, h: 0.8, color: .white.opacity(0.35))
-            return
-        }
-        if gimmick == .strut {
-            // Little confidence sparkle
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: 14, y: -1, w: 0.6, h: 0.6, color: .yellow.opacity(0.6))
-            return
-        }
-        if gimmick == .moonwalk {
-            // A little extra flair for the signature move
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: 14, y: -1, w: 0.6, h: 0.6, color: .yellow.opacity(0.6))
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: -1, y: 1, w: 0.5, h: 0.5, color: .yellow.opacity(0.4))
-            return
-        }
-        if gimmick == .walk && walkPhase == .arrived {
-            // Celebration sparkles
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: -1, y: -1, w: 0.8, h: 0.8, color: .yellow.opacity(0.8))
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: 14, y: -1.5, w: 0.8, h: 0.8, color: .yellow.opacity(0.7))
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: 15, y: 2, w: 0.6, h: 0.6, color: .yellow.opacity(0.5))
-            return
-        }
-        if gimmick == .sparkle || excited {
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: -1, y: -1, w: 0.8, h: 0.8, color: .yellow.opacity(0.8))
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: 14, y: -1.5, w: 0.8, h: 0.8, color: .yellow.opacity(0.7))
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: 15, y: 2, w: 0.6, h: 0.6, color: .yellow.opacity(0.5))
-        } else if gimmick == .doze {
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: 13, y: -1, w: 0.5, h: 0.5, color: .white.opacity(0.25))
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: 14, y: -3, w: 0.7, h: 0.7, color: .white.opacity(0.3))
-            px_fill(ctx, ox: ox, oy: oy, px: px, x: 15, y: -5, w: 0.9, h: 0.9, color: .white.opacity(0.35))
-        }
-    }
-
-    private func px_fill(_ ctx: GraphicsContext, ox: CGFloat, oy: CGFloat, px: CGFloat,
-                         x: CGFloat, y: CGFloat, w: CGFloat, h: CGFloat, color: Color) {
-        let rect = CGRect(x: ox + x * px, y: oy + y * px, width: w * px, height: h * px)
-        ctx.fill(Path(rect), with: .color(color))
-    }
-
-    private func startBlink() {
-        blinkTimer = Timer.scheduledTimer(withTimeInterval: 3.5, repeats: true) { _ in
-            guard isAlive else { return }
-            guard gimmick == .none || gimmick == .wave || gimmick == .lookAround else { return }
-            withAnimation(.easeInOut(duration: 0.08)) { blink = true }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                guard isAlive else { return }
-                withAnimation(.easeInOut(duration: 0.08)) { blink = false }
-            }
-        }
-    }
-
-    // MARK: - Drowsiness system
-
-    private func startDrowsinessTracker() {
-        drowsinessTimer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [self] _ in
-            guard isAlive else { return }
-            // Reset counter when excited (hovered)
-            if excited {
-                idleSeconds = 0
-                if isDrowsy {
-                    isDrowsy = false
-                }
-                return
-            }
-            idleSeconds += 10
-            // Become drowsy after ~2 minutes of idle (±30s fuzz — precise thresholds feel robotic)
-            let drowsinessThreshold = 120 + Int.random(in: -30...30)
-            if idleSeconds >= drowsinessThreshold && !isDrowsy {
-                isDrowsy = true
-            }
-        }
-    }
-
-    @State private var isFirstGimmick = true
-
-    private func scheduleNextGimmick() {
-        guard isAlive else { return }
-        // A tool-aware activity is active — suppress random gimmicks (blink keeps running)
-        guard activity == nil else { return }
-        // Respect reduced motion — keep breathing but skip gimmicks
-        guard !reduceMotion || forceGimmick != nil else { return }
-        let delay: Double
-        if forceGimmick != nil && isFirstGimmick {
-            delay = 0.3  // fire immediately on first appear for demo/preview
-            isFirstGimmick = false
-        } else if forceGimmick != nil {
-            delay = 3.0
-        } else {
-            delay = isDrowsy ? Double.random(in: 8...14) : Double.random(in: 5...10)
-        }
-        gimmickTimer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { _ in
-            guard isAlive else { return }
-            performRandomGimmick()
-        }
-    }
-
-    @State private var lastGimmick: ChawdGimmick = .none
-
-    private func performRandomGimmick() {
-        var picked: ChawdGimmick
-        if let force = forceGimmick,
-           let match = ChawdGimmick.allCases.first(where: { "\($0)" == force }) {
-            picked = match
-        } else if isDrowsy {
-            let sleepyOptions: [ChawdGimmick] = [.doze, .doze, .doze, .yawn, .yawn, .nod]
-            picked = sleepyOptions.randomElement() ?? .doze
-        } else {
-            let options: [ChawdGimmick] = [.wave, .bounce, .lookAround, .dance, .doze, .sparkle, .walk, .moonwalk, .peekaboo, .strut, .nod, .shiver, .levitate, .yawn, .spin]
-            picked = options.randomElement() ?? .wave
-        }
-        // Avoid repeating the same gimmick twice (feels mechanical)
-        if picked == lastGimmick && forceGimmick == nil {
-            let fallbacks: [ChawdGimmick] = [.wave, .bounce, .lookAround, .sparkle, .nod]
-            picked = fallbacks.randomElement() ?? .wave
-        }
-        lastGimmick = picked
-
-        // Personality-matched spring for each gimmick entrance
-        func enterSpring(_ r: Double, _ d: Double) -> Animation {
-            .spring(response: r, dampingFraction: d)
-        }
-
-        // Each gimmick gets a spring that matches its personality
-        switch picked {
-        case .walk:
-            withAnimation(enterSpring(0.3, 0.65)) { gimmick = .walk }
-            doWalk()
-            return
-        case .moonwalk:
-            withAnimation(enterSpring(0.35, 0.7)) { gimmick = .moonwalk } // smooth, cool
-            doMoonwalk()
-            return
-        case .strut:
-            withAnimation(enterSpring(0.25, 0.6)) { gimmick = .strut }
-            doStrut()
-            return
-        case .nod:
-            withAnimation(enterSpring(0.4, 0.75)) { gimmick = .nod } // relaxed
-            doNod()
-            return
-        case .shiver:
-            withAnimation(enterSpring(0.15, 0.4)) { gimmick = .shiver } // snappy
-            doShiver()
-            return
-        case .levitate:
-            withAnimation(enterSpring(0.5, 0.7)) { gimmick = .levitate } // floaty
-            doLevitate()
-            return
-        case .yawn:
-            withAnimation(enterSpring(0.5, 0.8)) { gimmick = .yawn } // lazy
-            doYawn()
-            return
-        case .spin:
-            withAnimation(enterSpring(0.2, 0.45)) { gimmick = .spin } // bouncy
-            doSpin()
-            return
-        case .peekaboo:
-            withAnimation(enterSpring(0.3, 0.55)) { gimmick = .peekaboo }
-            doPeekaboo()
-            return
-        default:
-            break
-        }
-
-        let duration: Double
-        switch picked {
-        case .wave: duration = 1.2
-        case .bounce: duration = 0.8
-        case .lookAround: duration = 1.5
-        case .dance: duration = 1.6
-        case .doze: duration = 3.0  // longer — dozing should feel lazy
-        case .sparkle: duration = 1.4
-        default: duration = 0
-        }
-
-        withAnimation(.bouncy) {
-            gimmick = picked
-        }
-
-        if picked == .dance { doDanceWiggle(count: 4, interval: 0.2) }
-        if picked == .wave { doWavePump(count: 3, interval: 0.2) }
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + duration) { [self] in
-            guard isAlive else { return }
-            gimmick = .none
-            scheduleNextGimmick()
-        }
-    }
-
-    private func doDanceWiggle(count: Int, interval: Double) {
-        guard count > 0, isAlive else { return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + interval) {
-            guard isAlive else { return }
-            withAnimation(.spring(response: 0.15, dampingFraction: 0.4)) {
-                danceTick.toggle()
-            }
-            doDanceWiggle(count: count - 1, interval: interval)
-        }
-    }
-
-    private func doWavePump(count: Int, interval: Double) {
-        guard count > 0, isAlive else { return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + interval) {
-            guard isAlive else { return }
-            withAnimation(.spring(response: 0.12, dampingFraction: 0.4)) {
-                waveTick.toggle()
-            }
-            doWavePump(count: count - 1, interval: interval)
-        }
-    }
-
-    // MARK: - Strut animation (walk left a few steps, then right, like showing off)
-
-    private func doStrut() {
-        startWalkSteps()
-
-        // Phase 1: Walk left a couple steps
-        withAnimation(.easeInOut(duration: 0.6)) {
-            strutOffset = -6
-        }
-
-        // Phase 2: Pause, look around
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
-            guard self.isAlive else { return }
-            stopWalkSteps()
-        }
-
-        // Phase 3: Walk right past center
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-            guard self.isAlive else { return }
-            startWalkSteps()
-            withAnimation(.easeInOut(duration: 0.8)) {
-                strutOffset = 6
-            }
-        }
-
-        // Phase 4: Pause
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.9) {
-            guard self.isAlive else { return }
-            stopWalkSteps()
-        }
-
-        // Phase 5: Walk back to center
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) {
-            guard self.isAlive else { return }
-            startWalkSteps()
-            withAnimation(.easeInOut(duration: 0.5)) {
-                strutOffset = 0
-            }
-        }
-
-        // Phase 6: Stop and settle
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.7) {
-            guard self.isAlive else { return }
-            stopWalkSteps()
-        }
-
-        // End
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [self] in
-            guard isAlive else { return }
-            gimmick = .none
-            strutOffset = 0
-            scheduleNextGimmick()
-        }
-    }
-
-    // MARK: - Nod animation (gentle head bob like agreeing or dozing)
-
-    private func doNod() {
-        // Nod down — rotation only, no body scaling
-        withAnimation(.easeInOut(duration: 0.3)) {
-            nodAngle = 8
-        }
-
-        // Back up
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-            guard self.isAlive else { return }
-            withAnimation(.easeInOut(duration: 0.25)) {
-                nodAngle = -2
-            }
-        }
-
-        // Second nod (smaller)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
-            guard self.isAlive else { return }
-            withAnimation(.easeInOut(duration: 0.25)) {
-                nodAngle = 5
-            }
-        }
-
-        // Settle
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-            guard self.isAlive else { return }
-            withAnimation(.easeInOut(duration: 0.3)) {
-                nodAngle = 0
-            }
-        }
-
-        // End
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [self] in
-            guard isAlive else { return }
-            gimmick = .none
-            scheduleNextGimmick()
-        }
-    }
-
-    // MARK: - Shiver animation (quick shaking like a chill ran through)
-
-    private func doShiver() {
-        doShiverShake(count: 6, interval: 0.08)
-
-        // End
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [self] in
-            guard isAlive else { return }
-            shiverOffset = 0
-            gimmick = .none
-            scheduleNextGimmick()
-        }
-    }
-
-    private func doShiverShake(count: Int, interval: Double) {
-        guard count > 0, isAlive else { return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + interval) {
-            guard self.isAlive else { return }
-            withAnimation(.linear(duration: 0.06)) {
-                shiverOffset = count % 2 == 0 ? 1.2 : -1.2
-            }
-            doShiverShake(count: count - 1, interval: interval)
-        }
-    }
-
-    // MARK: - Levitate animation (float up and away, reappear from bottom)
-
-    private func doLevitate() {
-        // Phase 1: Gentle lift-off — rise slowly, shrink slightly
-        withAnimation(.easeIn(duration: 0.8)) {
-            levitateOffset = -8
-            levitateScale = 0.9
-        }
-
-        // Phase 2: Accelerate upward and fade out
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-            guard self.isAlive else { return }
-            withAnimation(.easeIn(duration: 0.5)) {
-                levitateOffset = -25
-                levitateScale = 0.6
-                levitateOpacity = 0
-            }
-        }
-
-        // Phase 3: Teleport to below (invisible)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
-            guard self.isAlive else { return }
-            withAnimation(.none) {
-                levitateOffset = 25
-                levitateScale = 0.6
-            }
-        }
-
-        // Phase 4: Rise up from bottom, surprised!
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.7) {
-            guard self.isAlive else { return }
-            withAnimation(.none) {
-                levitateOpacity = 1.0
-            }
-            withAnimation(.spring(response: 0.5, dampingFraction: 0.6)) {
-                levitateOffset = -2
-                levitateScale = 1.05
-            }
-        }
-
-        // Phase 5: Settle bounce
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.3) {
-            guard self.isAlive else { return }
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.5)) {
-                levitateOffset = 0
-                levitateScale = 1.0
-            }
-        }
-
-        // End
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.8) { [self] in
-            guard isAlive else { return }
-            gimmick = .none
-            scheduleNextGimmick()
-        }
-    }
-
-    // MARK: - Yawn animation (mouth opens wide, eyes squeeze, stretches tall)
-
-    private func doYawn() {
-        // Mouth opening/closing and eyes shutting carry the whole animation —
-        // no body scaling needed to read as a yawn.
-        yawnPhase = .opening
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            guard self.isAlive else { return }
-            withAnimation(.easeInOut(duration: 0.1)) {
-                yawnPhase = .peak
-            }
-        }
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
-            guard self.isAlive else { return }
-            withAnimation(.easeOut(duration: 0.1)) {
-                yawnPhase = .closing
-            }
-        }
-
-        // End
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) { [self] in
-            guard isAlive else { return }
-            yawnPhase = .idle
-            gimmick = .none
-            scheduleNextGimmick()
-        }
-    }
-
-    // MARK: - Spin animation (full 360 rotation, uniform pop on landing)
-
-    private func doSpin() {
-        // Wind up — a little crouch via translate, not a body squash
-        withAnimation(.easeIn(duration: 0.15)) {
-            impactScale = 0.94
-            jumpOffset = 0.5
-        }
-
-        // Launch + spin
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-            guard self.isAlive else { return }
-            withAnimation(.easeOut(duration: 0.12)) {
-                jumpOffset = -3
-                impactScale = 1.04
-            }
-            withAnimation(.easeInOut(duration: 0.5)) {
-                spinAngle = 360
-            }
-        }
-
-        // Land
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.65) {
-            guard self.isAlive else { return }
-            withAnimation(.spring(response: 0.15, dampingFraction: 0.45)) {
-                jumpOffset = 0
-                impactScale = 0.9
-            }
-        }
-
-        // Bounce recover
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-            guard self.isAlive else { return }
-            withAnimation(.spring(response: 0.2, dampingFraction: 0.55)) {
-                impactScale = 1.0
-            }
-        }
-
-        // End
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.3) { [self] in
-            guard isAlive else { return }
-            gimmick = .none
-            spinAngle = 0
-            scheduleNextGimmick()
-        }
-    }
-
-    // MARK: - Peek-a-boo animation
-
-    private func doPeekaboo() {
-        // Phase 1: Sink down below the pill edge
-        withAnimation(.easeIn(duration: 0.4)) {
-            peekOffset = 14
-        }
-
-        // Phase 2: Pause while hidden
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
-            guard self.isAlive else { return }
-            // Phase 3: Peek up slowly (just eyes visible)
-            withAnimation(.easeOut(duration: 0.4)) {
-                peekOffset = 5
-            }
-        }
-
-        // Phase 4: Pause peeking
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
-            guard self.isAlive else { return }
-            // Phase 5: Pop back up with bounce!
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.5)) {
-                peekOffset = 0
-            }
-        }
-
-        // Phase 6: Little celebration pop — uniform, no distortion
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.7) {
-            guard self.isAlive else { return }
-            withAnimation(.spring(response: 0.15, dampingFraction: 0.4)) {
-                impactScale = 0.9
-            }
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.85) {
-            guard self.isAlive else { return }
-            withAnimation(.spring(response: 0.2, dampingFraction: 0.5)) {
-                impactScale = 1.0
-            }
-        }
-
-        // End
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.3) { [self] in
-            guard isAlive else { return }
-            gimmick = .none
-            scheduleNextGimmick()
-        }
-    }
-
-    // MARK: - Walk / Moonwalk shared state
-
-    private func cancelWalk() {
-        walkTimer?.invalidate()
-        walkTimer = nil
-        walkPhase = .idle
-        walkOffset = 0
-        gimmick = .none
-    }
-
-    private func cancelGimmickState(animated: Bool = false) {
-        yawnPhase = .idle
-        if animated {
-            withAnimation(.smooth) {
-                levitateOpacity = 1.0
-                levitateScale = 1.0
-                peekOffset = 0
-                strutOffset = 0
-                nodAngle = 0
-                shiverOffset = 0
-                levitateOffset = 0
-                impactScale = 1.0
-                jumpOffset = 0
-                spinAngle = 0
-            }
-        } else {
-            levitateOpacity = 1.0
-            levitateScale = 1.0
-            peekOffset = 0
-            strutOffset = 0
-            nodAngle = 0
-            shiverOffset = 0
-            levitateOffset = 0
-            impactScale = 1.0
-            jumpOffset = 0
-            spinAngle = 0
-        }
-    }
-
-    // MARK: - Walk animation (cross fully behind the notch, re-enter from the
-    // opposite side — direction re-rolled each time so it isn't always the same)
-
-    private func doWalk() {
-        walkDir = Bool.random() ? 1 : -1
-        walkPhase = .inTransit
-        startWalkSteps()
-
-        // Phase 1: Walk off-screen, fully behind the notch (~1.2s)
-        withAnimation(.easeIn(duration: 1.2)) {
-            walkOffset = 40 * walkDir
-        }
-
-        // Phase 2: Fully hidden — stop stepping, teleport to the opposite edge
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.3) { [self] in
-            guard isAlive, gimmick == .walk else { return }
-            stopWalkSteps()
-            withAnimation(.none) {
-                walkOffset = -40 * walkDir
-            }
-
-            // Phase 3: Walk back in from the opposite side (~1.0s)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [self] in
-                guard isAlive, gimmick == .walk else { return }
-                startWalkSteps()
-
-                withAnimation(.easeOut(duration: 1.0)) {
-                    walkOffset = 0
-                }
-
-                // Phase 4: Arrived — a happy hop, not a shape change
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [self] in
-                    guard isAlive, gimmick == .walk else { return }
-                    stopWalkSteps()
-                    walkPhase = .arrived
-
-                    withAnimation(.spring(response: 0.2, dampingFraction: 0.45)) {
-                        impactScale = 0.92
-                        jumpOffset = -1.5
-                    }
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                        guard self.isAlive else { return }
-                        withAnimation(.spring(response: 0.25, dampingFraction: 0.5)) {
-                            impactScale = 1.0
-                            jumpOffset = 0
-                        }
-                    }
-
-                    // End walk gimmick after the hop
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [self] in
-                        guard isAlive else { return }
-                        walkPhase = .idle
-                        gimmick = .none
-                        scheduleNextGimmick()
-                    }
-                }
-            }
-        }
-    }
-
-    // MARK: - Moonwalk animation (stylish backward glide, spin flourish, glide back)
-
-    private func doMoonwalk() {
-        startWalkSteps(interval: 0.1)
-
-        // Phase 1: Smooth backward glide
-        withAnimation(.easeOut(duration: 0.5)) {
-            walkOffset = -14
-        }
-
-        // Phase 2: Keep gliding
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            guard self.isAlive else { return }
-            withAnimation(.easeInOut(duration: 0.4)) {
-                self.walkOffset = -22
-            }
-        }
-
-        // Phase 3: Stop, strike a pose — hop + signature spin (pure rotation)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
-            guard self.isAlive else { return }
-            self.stopWalkSteps()
-            withAnimation(.spring(response: 0.2, dampingFraction: 0.45)) {
-                jumpOffset = -3
-            }
-            withAnimation(.easeInOut(duration: 0.45)) {
-                spinAngle = 360
-            }
-        }
-
-        // Phase 4: Land the flourish — uniform pop, no distortion
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.35) {
-            guard self.isAlive else { return }
-            withAnimation(.spring(response: 0.2, dampingFraction: 0.5)) {
-                jumpOffset = 0
-                impactScale = 0.92
-            }
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-            guard self.isAlive else { return }
-            withAnimation(.spring(response: 0.25, dampingFraction: 0.55)) {
-                impactScale = 1.0
-            }
-        }
-
-        // Phase 5: Glide back to center
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.7) {
-            guard self.isAlive else { return }
-            self.startWalkSteps(interval: 0.1)
-            withAnimation(.easeInOut(duration: 0.5)) {
-                self.walkOffset = 0
-            }
-        }
-
-        // End
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.3) { [self] in
-            guard isAlive else { return }
-            stopWalkSteps()
-            gimmick = .none
-            spinAngle = 0
-            scheduleNextGimmick()
-        }
-    }
-
-    private func startWalkSteps(interval: TimeInterval = 0.18) {
-        walkTimer?.invalidate()
-        walkTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { _ in
-            guard isAlive else { return }
-            walkStep.toggle()
-        }
-    }
-
-    private func stopWalkSteps() {
-        walkTimer?.invalidate()
-        walkTimer = nil
-        walkStep = false
-    }
-}
-
-// MARK: - Horizontal-only clip (preserves vertical overflow for hop)
-
-private struct HorizontalOnlyClip: Shape {
-    func path(in rect: CGRect) -> Path {
-        // Match the view's width but extend far vertically
-        Path(CGRect(x: rect.minX, y: rect.minY - 200, width: rect.width, height: rect.height + 400))
+            .scaleEffect(configuration.isPressed ? 0.98 : 1)
+            .animation(Island.press, value: configuration.isPressed)
+            .onHover { h in withAnimation(.hover) { hovered = h } }
     }
 }
 
@@ -1786,42 +440,3 @@ struct SessionGroup: Identifiable {
         }
     }
 }
-
-// MARK: - Agent source badge (tiny pill showing Claude/Codex)
-
-struct AgentBadge: View {
-    let source: AgentSource
-
-    var body: some View {
-        Text(source.displayName)
-            .font(.system(size: 8, weight: .semibold, design: .rounded))
-            .foregroundColor(source.accentColor.opacity(0.9))
-            .padding(.horizontal, 4)
-            .padding(.vertical, 1)
-            .background(
-                Capsule().fill(source.accentColor.opacity(0.12))
-            )
-            .accessibilityHidden(true)
-    }
-}
-
-// MARK: - Permission mode badge
-
-/// Shown when a session runs in a non-default permission mode, so the notch is
-/// never ambiguous about whether it's gating anything.
-struct ModeBadge: View {
-    let label: String
-
-    var body: some View {
-        Text(label)
-            .font(.system(size: 8, weight: .semibold, design: .rounded))
-            .foregroundColor(.white.opacity(0.45))
-            .padding(.horizontal, 4)
-            .padding(.vertical, 1)
-            .background(
-                Capsule().fill(.white.opacity(0.08))
-            )
-            .accessibilityHidden(true)
-    }
-}
-

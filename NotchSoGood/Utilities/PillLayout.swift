@@ -3,27 +3,29 @@ import Foundation
 /// Row metrics for the expanded session pill.
 ///
 /// The window controller must size its panel *before* SwiftUI lays anything out,
-/// so it and `SessionPillView` both derive the drop-down height from here. They
-/// used to carry separate copies of the same arithmetic, which is exactly the
-/// kind of duplication that drifts the first time a row gains a badge.
+/// so it and `SessionPillView` both derive the drop-down height from here.
 enum PillLayout {
     static let dropTopPad: CGFloat = 4
     static let dropBottomPad: CGFloat = 10
-    static let sessionRow: CGFloat = 36
-    static let groupHeader: CGFloat = 22
-    static let subSessionRow: CGFloat = 32
-    static let subagentRow: CGFloat = 24
+    static let sessionRow: CGFloat = 46
+    static let groupHeader: CGFloat = 26
+    static let subSessionRow: CGFloat = 36
+    static let subagentRow: CGFloat = 26
+    /// "5-hour window · 62% left · resets in 2h 14m" with its bar.
+    static let runwayFooter: CGFloat = 46
 
-    /// Ceiling for the drop-down. Past this the list scrolls rather than being
-    /// silently clipped by the panel, which is what happened with 7+ sessions.
-    static let maxContentHeight: CGFloat = 300
+    /// Ceiling for the session list. Past this it scrolls rather than being
+    /// silently clipped by the panel.
+    static let maxListHeight: CGFloat = 300
+    /// Ceiling for the whole drop-down, footer included (the panel's size).
+    static let maxContentHeight: CGFloat = dropTopPad + maxListHeight + runwayFooter + dropBottomPad
 
     static let wingCollapsed: CGFloat = 56
     static let wingExpanded: CGFloat = 110
 
     /// Height the session list wants, before clamping.
-    static func naturalContentHeight(for sessions: [NotificationManager.SessionInfo]) -> CGFloat {
-        var height = dropTopPad + dropBottomPad
+    static func naturalListHeight(for sessions: [NotificationManager.SessionInfo]) -> CGFloat {
+        var height: CGFloat = 0
         for group in SessionGroup.from(sessions) {
             if group.sessions.count == 1 {
                 height += sessionRow
@@ -39,15 +41,19 @@ enum PillLayout {
         return height
     }
 
-    static func contentHeight(for sessions: [NotificationManager.SessionInfo]) -> CGFloat {
-        min(naturalContentHeight(for: sessions), maxContentHeight)
+    static func listHeight(for sessions: [NotificationManager.SessionInfo]) -> CGFloat {
+        min(naturalListHeight(for: sessions), maxListHeight)
     }
 
     static func needsScrolling(_ sessions: [NotificationManager.SessionInfo]) -> Bool {
-        naturalContentHeight(for: sessions) > maxContentHeight
+        naturalListHeight(for: sessions) > maxListHeight
     }
 
-    static func expandedHeight(for sessions: [NotificationManager.SessionInfo], notchHeight: CGFloat) -> CGFloat {
-        notchHeight + contentHeight(for: sessions)
+    static func contentHeight(for sessions: [NotificationManager.SessionInfo], runway: Bool) -> CGFloat {
+        dropTopPad + listHeight(for: sessions) + (runway ? runwayFooter : 0) + dropBottomPad
+    }
+
+    static func expandedHeight(for sessions: [NotificationManager.SessionInfo], notchHeight: CGFloat, runway: Bool) -> CGFloat {
+        notchHeight + contentHeight(for: sessions, runway: runway)
     }
 }

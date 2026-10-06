@@ -91,6 +91,8 @@ final class UsageLimitsStore: ObservableObject {
                 self.lastUpdated = Date()
                 self.status = .ready
                 self.checkLowSessionLimit()
+                // The pill's drop-down grows a runway footer once usage is known.
+                NotificationManager.shared.limitsDidChange()
                 return
             }
 
@@ -114,9 +116,14 @@ final class UsageLimitsStore: ObservableObject {
         let countdown = session.resetsAt.map { Self.resetCountdown($0) } ?? "soon"
         NotificationManager.shared.handleNotification(NotchNotification(
             type: .general,
-            message: "Session limit almost used — resets in \(countdown)",
-            title: "Limits"
+            message: "Under 10% of the 5-hour window left. Resets in \(countdown).",
+            title: NotchNotification.limitsTitle
         ))
+    }
+
+    /// The 5-hour window for an agent: the one number worth glancing at mid-task.
+    func sessionWindow(for source: AgentSource) -> LimitWindow? {
+        windows.first { $0.source == source && $0.label == "Session" }
     }
 
     // MARK: - Formatting

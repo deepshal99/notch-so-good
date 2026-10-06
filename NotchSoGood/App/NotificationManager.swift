@@ -46,10 +46,6 @@ class NotificationManager: ObservableObject {
         }
     }
 
-    /// Recent notifications, newest first (for menu bar history).
-    @Published var history: [NotchNotification] = []
-    private static let historyLimit = 20
-
     /// True when any session is waiting on the user (drives menu bar attention state).
     var needsAttention: Bool {
         activeSessions.contains { $0.status == .needsInput || $0.status == .needsPermission }
@@ -293,7 +289,6 @@ class NotificationManager: ObservableObject {
         )
         if let permissionMode { session.permissionMode = permissionMode }
         activeSessions.append(session)
-        StatsStore.shared.recordSessionStarted()
 
         // Start watching JSONL file for interrupts
         SessionFileWatcher.shared.startWatching(sessionId: sid, cwd: resolvedCwd)
@@ -340,9 +335,6 @@ class NotificationManager: ObservableObject {
     func endSession(sessionId: String?) {
         guard let sid = NotchNotification.nonEmpty(sessionId) else { return }
 
-        if let session = activeSessions.first(where: { $0.id == sid }) {
-            StatsStore.shared.recordActiveSeconds(Date().timeIntervalSince(session.startTime))
-        }
         activeSessions.removeAll { $0.id == sid }
         endSessionWorkItems.removeValue(forKey: sid)
         sessionTimeoutTimers[sid]?.invalidate()
@@ -358,6 +350,10 @@ class NotificationManager: ObservableObject {
         } else {
             refreshPill()
         }
+    }
+
+    func limitsDidChange() {
+        if hasActiveSession { refreshPill() }
     }
 
     private func refreshPill() {
@@ -393,7 +389,6 @@ class NotificationManager: ObservableObject {
             clearPopupState(sessionId: sid)
         }
         if status == .completed && !wasCompleted {
-            StatsStore.shared.recordTaskCompleted()
             Telemetry.shared.trackEvent("session_completed")
         }
         if let msg = message {
@@ -475,8 +470,8 @@ class NotificationManager: ObservableObject {
                       session.status == .needsInput || session.status == .needsPermission else { return }
                 let notification = NotchNotification(
                     type: .general,
-                    message: "Still waiting on you — \(session.projectName)",
-                    title: "Psst",
+                    message: "\(session.projectName) can't continue until you answer.",
+                    title: NotchNotification.nudgeTitle,
                     sessionId: sid
                 )
                 self.windowController.showNotification(
@@ -501,9 +496,6 @@ class NotificationManager: ObservableObject {
         }
 
         let isRepeat = isRepeatPopup(notification)
-        if !isRepeat {
-            recordHistory(notification)
-        }
 
         // Track the session even if we missed its SessionStart
         if notification.sessionId != nil {
@@ -598,14 +590,6 @@ class NotificationManager: ObservableObject {
     }
 
     // MARK: - New event handlers (from socket server)
-
-    /// Append to menu bar history, newest first.
-    private func recordHistory(_ notification: NotchNotification) {
-        history.insert(notification, at: 0)
-        if history.count > Self.historyLimit {
-            history.removeLast(history.count - Self.historyLimit)
-        }
-    }
 
     /// PreToolUse: tool about to run — track active tool name for phase label
     func handlePreToolUse(
@@ -772,8 +756,6 @@ class NotificationManager: ObservableObject {
             permissionRequestId: requestId,
             toolName: toolName
         )
-        recordHistory(notification)
-
         let session = activeSessions.first(where: { $0.id == sessionId })
         Telemetry.shared.trackEvent("notification_shown", props: ["type": notification.type.rawValue])
         windowController.showNotification(

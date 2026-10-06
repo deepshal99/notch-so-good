@@ -7,27 +7,53 @@ enum SessionStatus: String {
     case compacting
     case completed
 
+    /// The same colour language as the character: blue works, violet thinks,
+    /// orange needs you, green is done.
     var dotColor: Color {
         switch self {
-        case .running:         return Color(hex: "4ADE80") // green
-        case .needsInput:      return Color(hex: "60A5FA") // blue
-        case .needsPermission: return Color(hex: "FBBF24") // amber
-        case .compacting:      return Color(hex: "A78BFA") // violet
-        case .completed:       return Color(hex: "4ADE80").opacity(0.5)
+        case .running:         return Color(hex: "6FB6FF")
+        case .needsInput:      return Color(hex: "FFA54D")
+        case .needsPermission: return Color(hex: "FFA54D")
+        case .compacting:      return Color(hex: "B79CFF")
+        case .completed:       return Color(hex: "5BE49B")
         }
     }
 
-    var shouldPulse: Bool {
-        switch self {
-        case .running, .compacting: return true
-        case .needsInput, .needsPermission: return true
-        case .completed: return false
+    /// One line for the session list: "Running · npm test", "Editing · store.ts",
+    /// "Thinking", "Needs approval".
+    func activityLine(toolName: String?, toolDetail: String?) -> String {
+        guard self == .running else { return phaseLabel() }
+        guard let tool = toolName else { return "Thinking" }
+        let verb: String
+        switch tool {
+        case "Read", "Glob", "Grep": verb = "Reading"
+        case "Bash":                 verb = "Running"
+        case "Edit", "MultiEdit":    verb = "Editing"
+        case "Write":                verb = "Writing"
+        case "Agent", "Task":        verb = "Delegating"
+        case "WebSearch":            verb = "Searching"
+        case "WebFetch":             verb = "Fetching"
+        default:                     verb = Self.mcpServer(tool).map { "Using \($0)" } ?? "Working"
         }
+        guard var detail = toolDetail?.trimmingCharacters(in: .whitespacesAndNewlines), !detail.isEmpty else { return verb }
+        // File tools carry a path: the file name is the part worth reading.
+        if ["Read", "Edit", "MultiEdit", "Write", "NotebookEdit"].contains(tool) {
+            detail = (detail as NSString).lastPathComponent
+        }
+        detail = detail.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        return "\(verb) · \(detail)"
     }
 
     /// How loudly this state wants the user. The collapsed pill has room for
     /// exactly one status, so with several sessions running it must show the
     /// one that's blocked on the user — not whichever happened to start first.
+    /// "mcp__my_server__create_issue" → "my_server".
+    static func mcpServer(_ toolName: String) -> String? {
+        let parts = toolName.components(separatedBy: "__")
+        guard parts.count >= 2, parts[0] == "mcp", !parts[1].isEmpty else { return nil }
+        return parts[1]
+    }
+
     var attentionPriority: Int {
         switch self {
         case .needsPermission: return 4
@@ -45,35 +71,6 @@ enum SessionStatus: String {
         case .needsPermission: return "Permission"
         case .compacting: return "Compacting"
         case .completed: return "Done"
-        }
-    }
-
-    // MARK: - Phase icon (SF Symbol)
-
-    var phaseIcon: String {
-        switch self {
-        case .running:         return "bolt.fill"
-        case .needsInput:      return "bubble.left.fill"
-        case .needsPermission: return "lock.shield.fill"
-        case .compacting:      return "arrow.triangle.2.circlepath"
-        case .completed:       return "checkmark.circle.fill"
-        }
-    }
-
-    /// Icon for a specific tool name (overrides the generic phase icon)
-    static func toolIcon(_ toolName: String) -> String {
-        switch toolName {
-        case "Read", "Glob", "Grep":      return "doc.text.magnifyingglass"
-        case "Bash":                       return "terminal.fill"
-        case "Edit":                       return "pencil.line"
-        case "Write":                      return "doc.badge.plus"
-        case "Agent":                      return "person.2.fill"
-        case "WebSearch", "WebFetch":      return "globe"
-        case "Skill":                      return "star.fill"
-        case "NotebookEdit":              return "doc.text.fill"
-        default:
-            if toolName.hasPrefix("mcp__") { return "puzzlepiece.fill" }
-            return "bolt.fill"
         }
     }
 

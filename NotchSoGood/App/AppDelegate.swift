@@ -4,12 +4,14 @@ import Sparkle
 @MainActor
 class AppDelegate: NSObject, NSApplicationDelegate {
     let updaterController: SPUStandardUpdaterController
-    private let demoController = DemoWindowController()
     /// Track the last known frontmost app so we can yield focus back after URL scheme activates us.
     private var lastFrontmostApp: NSRunningApplication?
     private var frontmostObserver: NSObjectProtocol?
 
     override init() {
+        #if DEBUG
+        DebugSnapshots.runIfRequested()
+        #endif
         updaterController = SPUStandardUpdaterController(
             startingUpdater: true,
             updaterDelegate: nil,
@@ -30,6 +32,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Poll Claude Code rate-limit windows for the menu bar LIMITS section
         UsageLimitsStore.shared.start()
+        // Compile the character shader now so the first notification shows it instantly.
+        CharacterRenderer.shared.prepare(warm: [(CharacterSettings.shared.kind, CharacterSettings.shared.finish)])
 
         Telemetry.shared.trackEvent("app_launched")
 
@@ -129,10 +133,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         case "session_end":
             // endSession ignores a missing id, so this can't wipe every session
             NotificationManager.shared.endSession(sessionId: sessionId)
-
-        case "demo":
-            let animation = params["animation"]
-            demoController.open(animation: animation)
 
         default:
             break

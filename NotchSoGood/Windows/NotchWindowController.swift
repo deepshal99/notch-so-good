@@ -5,6 +5,9 @@ import SwiftUI
 class PillDataSource: ObservableObject {
     @Published var sessions: [NotificationManager.SessionInfo] = []
     @Published var primaryStartTime: Date = Date()
+    /// Whether the drop-down shows the runway footer. Decided by the controller
+    /// in the same place it sizes the hover rect, so the two can't disagree.
+    @Published var showsRunway = false
 }
 
 class NotchWindowController {
@@ -24,6 +27,8 @@ class NotchWindowController {
 
     // Track current permission notification so we can dismiss it programmatically
     private var activePermissionRequestId: String?
+    /// The notification currently on screen, for re-laying out on display changes.
+    private var activeNotification: NotchNotification?
     /// Exit-animation signal for the currently visible notification
     private var notificationPhase: NotificationPhase?
 
@@ -72,7 +77,11 @@ class NotchWindowController {
         let expandedW = maxWidth
         let centerX = panelFrame.origin.x + maxWidth / 2
 
-        let expandedH = PillLayout.expandedHeight(for: sessions, notchHeight: notchH)
+        // Always called on the main thread (UI entry points only).
+        let showsRunway = MainActor.assumeIsolated {
+            UsageLimitsStore.shared.sessionWindow(for: sessions.first?.agentSource ?? .claude) != nil
+        }
+        let expandedH = PillLayout.expandedHeight(for: sessions, notchHeight: notchH, runway: showsRunway)
         pillScreen = geo.screenFrame
 
         pillHoverMonitor.collapsedScreenRect = NSRect(
@@ -90,6 +99,7 @@ class NotchWindowController {
 
         pillDataSource.sessions = sessions
         pillDataSource.primaryStartTime = primaryStartTime
+        if pillDataSource.showsRunway != showsRunway { pillDataSource.showsRunway = showsRunway }
 
         if pillPanel == nil {
             pillPanel = NotchPanel(contentRect: panelFrame)
@@ -199,20 +209,17 @@ class NotchWindowController {
         manager.invalidateDisplayCache()
 
         // Reposition an on-screen notification (permission dialogs persist indefinitely)
-        if isNotificationActive, let panel {
+        if isNotificationActive, let panel, let activeNotification {
             let stillAttached = notificationScreen.flatMap { screen in
                 NSScreen.screens.first { $0.displayID == screen.displayID }
             }
             if let geo = resolveGeometry(stillAttached) {
-                let contentHeight: CGFloat = activePermissionRequestId != nil ? 148 : 76
-                let panelWidth: CGFloat = geo.hasNotch ? geo.notchWidth + 200 : 380
-                let panelHeight: CGFloat = geo.hasNotch ? (geo.barHeight + contentHeight) : contentHeight
+                let panelWidth = NotchNotificationView.Metrics.panelWidth(notchWidth: geo.notchWidth, hasNotch: geo.hasNotch)
+                let contentHeight = NotchNotificationView.Metrics.contentHeight(for: activeNotification, panelWidth: panelWidth)
+                let panelHeight = NotchNotificationView.Metrics.headerHeight(notchHeight: geo.barHeight, hasNotch: geo.hasNotch) + contentHeight
                 let frame = calculateFrame(panelWidth: panelWidth, panelHeight: panelHeight, geo: geo)
                 panel.setFrame(frame, display: true)
-                notifHoverMonitor.contentScreenRect = NSRect(
-                    x: frame.origin.x, y: frame.origin.y,
-                    width: frame.width, height: contentHeight
-                )
+                notifHoverMonitor.contentScreenRect = frame
             }
         }
 
@@ -240,6 +247,13 @@ class NotchWindowController {
         sessionSourcePid: pid_t? = nil,
         screen: NSScreen? = nil
     ) {
+        // A waiting permission owns the island until it's answered: a nudge, a
+        // "finished" from another session or a usage heads-up must never replace
+        // it (that used to strand the request with no buttons and no hotkeys).
+        if activePermissionRequestId != nil && !notification.isInteractivePermission {
+            return
+        }
+
         // Queue concurrent permission requests instead of replacing
         if notification.isInteractivePermission && activePermissionRequestId != nil {
             permissionQueue.append(notification)
@@ -270,18 +284,19 @@ class NotchWindowController {
         let notchH = geo.barHeight
         let notchW = geo.notchWidth
 
-        // Permission notifications are taller to fit buttons
+        // The card is sized to its content: a one-line command gets a shorter
+        // card than a three-line one.
         let isPermission = notification.isInteractivePermission
-        let contentHeight: CGFloat = isPermission ? 148 : 76
-        let panelWidth: CGFloat = hasNotch ? notchW + 200 : 380
-        let panelHeight: CGFloat = hasNotch ? (notchH + contentHeight) : contentHeight
+        let panelWidth = NotchNotificationView.Metrics.panelWidth(notchWidth: notchW, hasNotch: hasNotch)
+        let contentHeight = NotchNotificationView.Metrics.contentHeight(for: notification, panelWidth: panelWidth)
+        let panelHeight = NotchNotificationView.Metrics.headerHeight(notchHeight: notchH, hasNotch: hasNotch) + contentHeight
 
         let frame = calculateFrame(panelWidth: panelWidth, panelHeight: panelHeight, geo: geo)
 
         if panel == nil {
             panel = NotchPanel(contentRect: frame)
             panel?.level = .popUpMenu + 1
-            panel?.onCancel = { [weak self] in self?.dismiss() }
+            panel?.onCancel = { [weak self] in self?.cancelActive() }
         } else {
             panel?.setFrame(frame, display: true)
         }
@@ -290,6 +305,7 @@ class NotchWindowController {
         let resolvedCwd = sessionCwd
 
         activePermissionRequestId = notification.permissionRequestId
+        activeNotification = notification
 
         let phase = NotificationPhase()
         notificationPhase = phase
@@ -335,7 +351,11 @@ class NotchWindowController {
                 self?.activePermissionRequestId = nil
                 self?.dismiss()
             } : nil,
-            phase: phase
+            phase: phase,
+            // Always called on the main thread (UI entry points only).
+            session: MainActor.assumeIsolated {
+                NotificationManager.shared.activeSessions.first { $0.id == notification.sessionId }
+            }
         )
 
         let hostingView = TransparentHostingView(rootView: AnyView(view))
@@ -343,13 +363,8 @@ class NotchWindowController {
         panel?.alphaValue = 1.0
         panel?.orderFrontRegardless()
 
-        // Hover monitor — content area below the notch
-        notifHoverMonitor.contentScreenRect = NSRect(
-            x: frame.origin.x,
-            y: frame.origin.y,
-            width: frame.width,
-            height: contentHeight
-        )
+        // Hover monitor — the whole island (its top strip sits beside the notch)
+        notifHoverMonitor.contentScreenRect = frame
         if let panel {
             notifHoverMonitor.start(panel: panel)
         }
@@ -385,8 +400,20 @@ class NotchWindowController {
             permissionQueueMeta.remove(at: idx)
             return
         }
-        // If it's the active one, dismiss the notification
+        // If it's the active one, dismiss it and move on to the next in line
         if activePermissionRequestId == requestId {
+            dismiss()
+            DispatchQueue.main.async { [weak self] in self?.showNextQueuedPermission() }
+        }
+    }
+
+    /// Esc: a permission card hands the decision back to the terminal (Claude
+    /// Code's own prompt) instead of leaving the request hanging; anything else
+    /// just closes.
+    private func cancelActive() {
+        if let reqId = activePermissionRequestId {
+            PermissionServer.shared.handOffToTerminal(requestId: reqId)
+        } else {
             dismiss()
         }
     }
@@ -414,6 +441,7 @@ class NotchWindowController {
         guard !isDismissing else { return }
         isDismissing = true
         activePermissionRequestId = nil
+        activeNotification = nil
 
         dismissTimer?.invalidate()
         dismissTimer = nil

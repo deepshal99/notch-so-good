@@ -565,10 +565,8 @@ class PermissionServer {
         Task { @MainActor in
             switch response {
             case .allow, .allowAlways:
-                StatsStore.shared.recordPermissionApproved()
                 Telemetry.shared.trackEvent("permission_responded", props: ["decision": "approve"])
             case .deny:
-                StatsStore.shared.recordPermissionDenied()
                 Telemetry.shared.trackEvent("permission_responded", props: ["decision": "deny"])
             }
             // The session isn't blocked on us any more. PostToolUse would normally
@@ -647,6 +645,12 @@ class PermissionServer {
     }
 
     // MARK: - Timeout & socket I/O
+
+    /// Give up on answering from the notch: the hook gets no decision, so
+    /// Claude Code falls back to its normal prompt in the terminal.
+    func handOffToTerminal(requestId: String) {
+        timeoutRequest(requestId: requestId)
+    }
 
     private func timeoutRequest(requestId: String) {
         lock.lock()

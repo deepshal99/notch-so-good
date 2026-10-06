@@ -1,10 +1,17 @@
 import SwiftUI
+import AppKit
 
 /// Controller→view signal so the exit can mirror the entrance (see PillDataSource pattern).
 final class NotificationPhase: ObservableObject {
     @Published var dismissing = false
 }
 
+/// A card that drops out of the notch. It is the open pill's exact shape and
+/// top strip (character on the left, runway on the right), so a card reads as
+/// the pill opening rather than something new arriving.
+///
+/// Permission requests get an inner card: what's being asked, by whom, the
+/// exact command, and three equal buttons. Everything else is a calm summary.
 struct NotchNotificationView: View {
     let notification: NotchNotification
     let hasNotch: Bool
@@ -18,16 +25,13 @@ struct NotchNotificationView: View {
     @ObservedObject var phase: NotificationPhase
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @ObservedObject private var limits = UsageLimitsStore.shared
     @State private var expanded = false
     @State private var contentAppeared = false
-    @State private var textRevealed = false
-    @State private var glowVisible = false
-    @State private var glowRotation: Double = 0
-    @State private var buttonsRevealed = false
+    @State private var hovered = false
 
-    private let bottomRadius: CGFloat = 26
-
-    private var isPermission: Bool { notification.isInteractivePermission }
+    private let session: NotificationManager.SessionInfo?
+    private let branch: String?
 
     init(
         notification: NotchNotification,
@@ -39,7 +43,9 @@ struct NotchNotificationView: View {
         onApprove: (() -> Void)? = nil,
         onAlwaysAllow: (() -> Void)? = nil,
         onDeny: (() -> Void)? = nil,
-        phase: NotificationPhase = NotificationPhase()
+        phase: NotificationPhase = NotificationPhase(),
+        session: NotificationManager.SessionInfo? = nil,
+        appearImmediately: Bool = false
     ) {
         self.notification = notification
         self.hasNotch = hasNotch
@@ -51,346 +57,429 @@ struct NotchNotificationView: View {
         self.onAlwaysAllow = onAlwaysAllow
         self.onDeny = onDeny
         self.phase = phase
+        self.session = session
+        self.branch = GitBranch.current(in: session?.cwd)
+        if appearImmediately {
+            _expanded = State(initialValue: true)
+            _contentAppeared = State(initialValue: true)
+        }
     }
+
+    // MARK: - Layout (shared with the window controller)
+
+    /// The window controller sizes the panel before SwiftUI lays anything out,
+    /// so both read the card's geometry from here.
+    enum Metrics {
+        /// The notch shape's concave top fillets put its side walls this far
+        /// inside the panel. All content is laid out from the wall, not the panel.
+        /// Same as the open pill's, so a card and the hovered pill are one shape.
+        static let wall: CGFloat = 9
+
+        /// Exactly the open pill's width on notched displays, so the character
+        /// and runway sit where they do when you hover the pill.
+        static func panelWidth(notchWidth: CGFloat, hasNotch: Bool) -> CGFloat {
+            hasNotch ? notchWidth + 2*PillLayout.wingExpanded : 420
+        }
+
+        static func islandWidth(_ panelWidth: CGFloat) -> CGFloat { panelWidth - 2*wall }
+
+        /// The strip level with the notch. Displays without one get a strip of
+        /// the same proportions so the card looks identical.
+        static func headerHeight(notchHeight: CGFloat, hasNotch: Bool) -> CGFloat {
+            hasNotch ? notchHeight : 34
+        }
+
+        static let headerGap: CGFloat = 4
+
+        /// Where the character sits in the header strip, from the island wall.
+        static let characterSlot = CGRect(x: Island.contentInset - 17, y: 0, width: PillLayout.wingCollapsed, height: 37)
+        static let titleRow: CGFloat = 20
+        static let metaRow: CGFloat = 20
+        static let rowGap: CGFloat = 8
+        static let wellPadding: CGFloat = 10
+        static let buttonHeight: CGFloat = 32
+        static let maxCommandLines = 3
+        static let maxMessageLines = 3
+
+        static var monoLine: CGFloat { lineHeight(NSFont.monospacedSystemFont(ofSize: Island.monoSize, weight: .regular)) }
+        static var bodyLine: CGFloat { lineHeight(NSFont.systemFont(ofSize: Island.bodySize)) + 2 }
+
+        /// Height of everything below the header strip.
+        static func contentHeight(for notification: NotchNotification, panelWidth: CGFloat) -> CGFloat {
+            if notification.isInteractivePermission {
+                let lines = commandLines(notification, panelWidth: panelWidth)
+                let well = 2*wellPadding + CGFloat(lines)*monoLine
+                let card = Island.cardPadding + titleRow + rowGap + metaRow + 10 + well + 12 + buttonHeight + Island.cardPadding
+                return headerGap + card + Island.inset
+            }
+            let lines = messageLines(notification, panelWidth: panelWidth)
+            return headerGap + 4 + titleRow + 6 + metaRow + 8 + CGFloat(lines)*bodyLine + 16
+        }
+
+        static func commandLines(_ notification: NotchNotification, panelWidth: CGFloat) -> Int {
+            let wellWidth = islandWidth(panelWidth) - 2*(Island.inset + Island.cardPadding) - 2*wellPadding
+            return lineCount(notification.message, font: NSFont.monospacedSystemFont(ofSize: Island.monoSize, weight: .regular),
+                             width: wellWidth, max: maxCommandLines)
+        }
+
+        static func messageLines(_ notification: NotchNotification, panelWidth: CGFloat) -> Int {
+            lineCount(notification.message, font: NSFont.systemFont(ofSize: Island.bodySize),
+                      width: islandWidth(panelWidth) - 2*Island.contentInset, max: maxMessageLines)
+        }
+
+        private static func lineHeight(_ font: NSFont) -> CGFloat {
+            ceil(NSLayoutManager().defaultLineHeight(for: font))
+        }
+
+        /// Lines the text wraps to at this width, measured with the same font
+        /// SwiftUI will draw it in (a couple of points narrower, to be safe).
+        static func lineCount(_ text: String, font: NSFont, width: CGFloat, max maxLines: Int) -> Int {
+            let storage = NSTextStorage(string: text, attributes: [.font: font])
+            let container = NSTextContainer(size: CGSize(width: Swift.max(40, width - 2), height: .greatestFiniteMagnitude))
+            container.lineFragmentPadding = 0
+            let manager = NSLayoutManager()
+            manager.addTextContainer(container)
+            storage.addLayoutManager(manager)
+            manager.ensureLayout(for: container)
+            var lines = 0
+            var index = 0
+            while index < manager.numberOfGlyphs, lines < maxLines {
+                var range = NSRange()
+                manager.lineFragmentRect(forGlyphAt: index, effectiveRange: &range)
+                index = NSMaxRange(range)
+                lines += 1
+            }
+            return Swift.min(maxLines, Swift.max(1, lines))
+        }
+    }
+
+    // MARK: - Derived content
+
+    private var isPermission: Bool { notification.isInteractivePermission }
+    private var characterState: CharacterState { CharacterState(notification: notification) }
+    private var isDestructive: Bool { isPermission && CommandRisk.looksDestructive(notification.message) }
+    private var accent: Color { isDestructive ? CharacterState.error.color : characterState.color }
+    private var headerHeight: CGFloat { Metrics.headerHeight(notchHeight: notchHeight, hasNotch: hasNotch) }
+
+    private var title: String {
+        switch notification.type {
+        case .complete: return notification.title ?? "Finished"
+        case .question: return notification.title ?? "Needs your input"
+        case .permission: return notification.title ?? "Needs your go-ahead"
+        case .general: return notification.displayTitle
+        }
+    }
+
+    private var projectName: String? { session?.projectName }
+
+    /// "Bash"; MCP tools show their server ("github"), not the mangled name.
+    private var toolChip: String? {
+        guard let tool = notification.toolName else { return nil }
+        return SessionStatus.mcpServer(tool) ?? tool
+    }
+
+    private var runway: UsageLimitsStore.LimitWindow? {
+        let source = session?.agentSource ?? .claude
+        return limits.windows.first { $0.source == source && $0.label == "Session" }
+    }
+
+    // MARK: - Body
 
     var body: some View {
         GeometryReader { geo in
-            let fullWidth = geo.size.width
-            let fullHeight = geo.size.height
+            let panelWidth = geo.size.width
+            let width = Metrics.islandWidth(panelWidth)
+            let height = geo.size.height
+            let startScaleX = hasNotch ? (notchWidth + 8) / panelWidth : 0.6
+            let startScaleY = hasNotch ? (notchHeight + 2) / height : 0.2
 
-            let startScaleX = hasNotch ? (notchWidth + 8) / fullWidth : 0.5
-            let startScaleY = hasNotch ? (notchHeight + 4) / fullHeight : 0.15
-
-            VStack(spacing: 0) {
-                ZStack(alignment: .top) {
-                    // === SHAPE LAYER === (only this stretches out of the notch —
-                    // scaling text/mascot non-uniformly distorts them)
-                    Group {
-                        if glowVisible {
-                            glowBorder(width: fullWidth, height: fullHeight)
-                        }
+            ZStack(alignment: .top) {
+                // Only the black shape stretches out of the notch; scaling text or
+                // the character non-uniformly would distort them.
+                islandShape
+                    .fill(Color.black)
+                    .overlay(
+                        // A faint lit edge at the bottom so the island separates from dark wallpapers.
                         islandShape
-                            .fill(Color.black)
-                            .contentShape(islandShape)
-                    }
-                    .scaleEffect(
-                        x: expanded ? 1 : startScaleX,
-                        y: expanded ? 1 : startScaleY,
-                        anchor: .top
+                            .stroke(
+                                LinearGradient(colors: [.clear, .clear, Color.white.opacity(0.07)],
+                                               startPoint: .top, endPoint: .bottom),
+                                lineWidth: 1
+                            )
                     )
+                    .frame(width: hasNotch ? panelWidth : width)
+                    .scaleEffect(x: expanded ? 1 : startScaleX, y: expanded ? 1 : startScaleY, anchor: .top)
 
-                    // === CONTENT === (uniform reveal, never squashed)
-                    VStack(spacing: 0) {
-                        // Info row (non-interactive)
-                        infoContent
-                            .allowsHitTesting(false)
-
-                        // Approve/Deny buttons (interactive, permission only)
+                VStack(spacing: 0) {
+                    header(width: width)
+                    Group {
                         if isPermission {
-                            permissionButtons
-                                .padding(.top, 10)
-                                .opacity(buttonsRevealed ? 1 : 0)
-                                .offset(y: buttonsRevealed ? 0 : 6)
-
-                            Text("⌃⌥A allow   ·   ⌃⌥D deny")
-                                .font(.system(size: 8.5, weight: .medium, design: .rounded))
-                                .foregroundColor(.white.opacity(0.28))
-                                .padding(.top, 6)
-                                .opacity(buttonsRevealed ? 1 : 0)
-                                .allowsHitTesting(false)
+                            permissionCard(panelWidth: panelWidth)
+                                .padding(.horizontal, Island.inset)
+                                .padding(.top, Metrics.headerGap)
+                        } else {
+                            summary(panelWidth: panelWidth)
+                                .padding(.horizontal, Island.contentInset)
+                                .padding(.top, Metrics.headerGap + 4)
                         }
                     }
-                    .padding(.top, hasNotch ? notchHeight + 10 : 12)
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, isPermission ? 18 : 16)
                     .opacity(contentAppeared ? 1 : 0)
-                    .scaleEffect(contentAppeared ? 1 : 0.96, anchor: .top)
-                    .offset(y: contentAppeared ? 0 : -6)
+                    .offset(y: contentAppeared || reduceMotion ? 0 : -6)
+                    Spacer(minLength: 0)
                 }
-                .frame(width: fullWidth, height: fullHeight)
-                .contentShape(islandShape)
-                .onTapGesture {
-                    if !isPermission { onTap() }
-                }
-                .accessibilityElement(children: isPermission ? .contain : .combine)
-                .accessibilityLabel("\(notification.displayTitle). \(notification.message)")
-                .accessibilityHint(isPermission
-                    ? "Control Option A to allow, Control Option D to deny"
-                    : "Opens the session in its terminal")
+                .frame(width: width, height: height)
             }
-            .frame(width: fullWidth, height: fullHeight, alignment: .top)
+            .frame(width: panelWidth, height: height, alignment: .top)
+            // Content never shows outside the island while it's still growing.
+            .mask(
+                islandShape
+                    .frame(width: hasNotch ? panelWidth : width, height: height)
+                    .scaleEffect(x: expanded ? 1 : startScaleX, y: expanded ? 1 : startScaleY, anchor: .top)
+            )
+            .contentShape(islandShape)
+            .onTapGesture { if !isPermission { onTap() } }
+            .onHover { hovered = $0 }
+            .accessibilityElement(children: isPermission ? .contain : .combine)
+            .accessibilityLabel("\(title). \(notification.message)")
+            .accessibilityHint(isPermission ? "Control Option A to allow, Control Option D to deny" : "Opens the session in its terminal")
         }
         .onAppear(perform: animateIn)
         .onChange(of: phase.dismissing) { _, dismissing in
             guard dismissing else { return }
-            withAnimation(.spring(response: 0.28, dampingFraction: 0.85)) {
-                expanded = false
-            }
-            withAnimation(.easeOut(duration: 0.15)) {
-                contentAppeared = false
-                textRevealed = false
-                buttonsRevealed = false
-            }
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.9)) { expanded = false }
+            withAnimation(.easeOut(duration: 0.12)) { contentAppeared = false }
         }
     }
 
-    // MARK: - Glow
-
-    private var glowShape: NotchShape {
-        NotchShape(topRadius: 10, bottomRadius: bottomRadius + 4)
+    private var islandShape: AnyShape {
+        hasNotch
+            ? AnyShape(NotchShape(topRadius: Metrics.wall, bottomRadius: Island.radius))
+            : AnyShape(RoundedRectangle(cornerRadius: Island.radius, style: .continuous))
     }
 
-    private func glowBorder(width: CGFloat, height: CGFloat) -> some View {
-        ZStack {
-            glowShape
-                .stroke(
-                    AngularGradient(
-                        colors: [
-                            notification.type.accentColor.opacity(0.0),
-                            notification.type.accentColor.opacity(0.15),
-                            notification.type.accentColor.opacity(0.0),
-                            notification.type.accentColor.opacity(0.08),
-                            notification.type.accentColor.opacity(0.0),
-                        ],
-                        center: .center,
-                        startAngle: .degrees(glowRotation),
-                        endAngle: .degrees(glowRotation + 360)
-                    ),
-                    lineWidth: 6
-                )
-                .blur(radius: 10)
-                .opacity(textRevealed ? 1 : 0)
+    // MARK: - Header strip (level with the notch)
 
-            glowShape
-                .stroke(
-                    AngularGradient(
-                        colors: [
-                            notification.type.accentColor.opacity(0.0),
-                            notification.type.accentColor.opacity(0.2),
-                            notification.type.accentColor.opacity(0.0),
-                            notification.type.accentColor.opacity(0.0),
-                        ],
-                        center: .center,
-                        startAngle: .degrees(glowRotation + 180),
-                        endAngle: .degrees(glowRotation + 540)
-                    ),
-                    lineWidth: 2
-                )
-                .blur(radius: 4)
-                .opacity(textRevealed ? 1 : 0)
-        }
-        .animation(reduceMotion ? nil : .linear(duration: 6).repeatForever(autoreverses: false), value: glowRotation)
-        .onAppear {
-            if !reduceMotion { glowRotation = 360 }
-        }
-    }
-
-    private var islandShape: NotchShape {
-        NotchShape(topRadius: 9, bottomRadius: bottomRadius)
-    }
-
-    // MARK: - Info content
-
-    private var infoContent: some View {
-        HStack(spacing: 16) {
-            ZStack {
-                Circle()
-                    .fill(notification.type.accentColor.opacity(0.08))
-                    .frame(width: 52, height: 52)
-
-                MascotView(expression: notification.type.mascotExpression)
-                    .frame(width: 50, height: 46)
-            }
-            .opacity(contentAppeared ? 1 : 0)
-            .scaleEffect(contentAppeared ? 1 : 0.85)
-
-            VStack(alignment: .leading, spacing: 5) {
-                if isPermission, let tool = notification.toolName {
-                    // Permission: show action title + tool icon badge
-                    HStack(spacing: 5) {
-                        Image(systemName: toolIcon(for: tool))
-                            .foregroundColor(notification.type.accentColor)
-                            .font(.system(size: 9, weight: .bold))
-
-                        Text(notification.displayTitle.uppercased())
-                            .font(.system(size: 9, weight: .bold, design: .rounded))
-                            .foregroundColor(notification.type.accentColor.opacity(0.8))
-                            .tracking(0.8)
-                    }
-                    .opacity(textRevealed ? 1 : 0)
-                } else {
-                    // Non-permission: standard title
-                    HStack(spacing: 5) {
-                        Image(systemName: notification.type.sfSymbol)
-                            .foregroundColor(notification.type.accentColor)
-                            .font(.system(size: 9, weight: .bold))
-
-                        Text(notification.displayTitle.uppercased())
-                            .font(.system(size: 9, weight: .bold, design: .rounded))
-                            .foregroundColor(notification.type.accentColor.opacity(0.8))
-                            .tracking(0.8)
-                    }
-                    .opacity(textRevealed ? 1 : 0)
-                }
-
-                Text(notification.message)
-                    .font(.system(size: isPermission ? 12 : 13, weight: isPermission ? .semibold : .medium, design: isPermission ? .monospaced : .rounded))
-                    .foregroundColor(.white.opacity(0.88))
-                    .lineLimit(2)
-                    .lineSpacing(2)
-                    .opacity(textRevealed ? 1 : 0)
-            }
-
+    private func header(width: CGFloat) -> some View {
+        HStack(spacing: 0) {
+            CharacterView(state: characterState, framing: .pill)
+                .frame(width: Metrics.characterSlot.width, height: headerHeight)
+                .padding(.leading, Metrics.characterSlot.minX)
             Spacer(minLength: 0)
+            if let runway {
+                RunwayIndicator(percentLeft: runway.percentLeft)
+                    .padding(.trailing, Island.contentInset)
+            }
+        }
+        .frame(width: width, height: headerHeight)
+        .opacity(contentAppeared ? 1 : 0)
+    }
+
+    // MARK: - Permission card
+
+    private func permissionCard(panelWidth: CGFloat) -> some View {
+        let lines = Metrics.commandLines(notification, panelWidth: panelWidth)
+        return VStack(alignment: .leading, spacing: 0) {
+            // Title row: what's being asked, and how long it's been waiting.
+            HStack(spacing: 8) {
+                StatusDot(color: accent)
+                Text(title)
+                    .font(Island.title)
+                    .foregroundColor(Island.primary)
+                    .lineLimit(1)
+                if isDestructive {
+                    Text("Destructive")
+                        .font(.system(size: 10.5, weight: .semibold))
+                        .foregroundColor(Color(hex: "FF8A80"))
+                        .padding(.horizontal, 7)
+                        .frame(height: 18)
+                        .background(Capsule().fill(CharacterState.error.color.opacity(0.16)))
+                }
+                Spacer(minLength: 8)
+                TimelineView(.periodic(from: .now, by: 1)) { ctx in
+                    Text(Self.waitLabel(ctx.date.timeIntervalSince(notification.timestamp)))
+                        .font(Island.numeric)
+                        .foregroundColor(Island.tertiary)
+                }
+                .accessibilityLabel("waiting")
+            }
+            .frame(height: Metrics.titleRow)
+
+            // Who's asking.
+            HStack(spacing: 8) {
+                if let toolChip { Chip(text: toolChip) }
+                if let projectName {
+                    Text(projectName)
+                        .font(Island.meta)
+                        .foregroundColor(Island.secondary)
+                        .lineLimit(1)
+                }
+                if let branch { BranchLabel(branch: branch).layoutPriority(-1) }
+                Spacer(minLength: 0)
+            }
+            .frame(height: Metrics.metaRow)
+            .padding(.top, Metrics.rowGap)
+
+            // The exact command, in a recessed well.
+            Text(notification.message)
+                .font(Island.mono)
+                .foregroundColor(Color.white.opacity(0.9))
+                .lineLimit(lines)
+                .truncationMode(.tail)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+                .frame(height: CGFloat(lines)*Metrics.monoLine, alignment: .topLeading)
+                .padding(Metrics.wellPadding)
+                .background(
+                    RoundedRectangle(cornerRadius: Island.wellRadius, style: .continuous)
+                        .fill(Island.well)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: Island.wellRadius, style: .continuous)
+                                .strokeBorder(isDestructive ? CharacterState.error.color.opacity(0.35) : Island.hairline, lineWidth: 1)
+                        )
+                )
+                .padding(.top, 10)
+
+            HStack(spacing: 8) {
+                IslandButton(label: "Deny", shortcut: "⌃⌥D", style: .secondary, hint: "Blocks this tool call") { onDeny?() }
+                IslandButton(label: "Always allow", shortcut: nil, style: .secondary, hint: "Adds a permanent allow rule to your settings") { onAlwaysAllow?() }
+                IslandButton(label: "Allow", shortcut: "⌃⌥A", style: .primary, hint: "Allows this tool call once") { onApprove?() }
+            }
+            .padding(.top, 12)
+        }
+        .padding(Island.cardPadding)
+        .background(
+            RoundedRectangle(cornerRadius: Island.cardRadius, style: .continuous)
+                .fill(Island.card)
+                .overlay(
+                    RoundedRectangle(cornerRadius: Island.cardRadius, style: .continuous)
+                        .strokeBorder(Island.hairline, lineWidth: 1)
+                )
+        )
+    }
+
+    // MARK: - Summary (done, questions, heads-ups)
+
+    private func summary(panelWidth: CGFloat) -> some View {
+        let lines = Metrics.messageLines(notification, panelWidth: panelWidth)
+        return VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 8) {
+                if characterState == .done {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 14, weight: .semibold))
+                        .symbolRenderingMode(.palette)
+                        .foregroundStyle(Color.black, accent)
+                        .frame(width: 14, height: 14)
+                } else {
+                    StatusDot(color: accent)
+                }
+                Text(title)
+                    .font(Island.title)
+                    .foregroundColor(Island.primary)
+                    .lineLimit(1)
+                Spacer(minLength: 8)
+                Text("just now")
+                    .font(Island.numeric)
+                    .foregroundColor(Island.tertiary)
+            }
+            .frame(height: Metrics.titleRow)
+
+            HStack(spacing: 8) {
+                Text(projectName ?? "Claude Code")
+                    .font(Island.meta)
+                    .foregroundColor(Island.secondary)
+                    .lineLimit(1)
+                if let session, session.agentSource != .claude {
+                    Chip(text: session.agentSource.displayName, mono: false)
+                }
+                if let branch { BranchLabel(branch: branch).layoutPriority(-1) }
+                Spacer(minLength: 0)
+                if session != nil {
+                    Image(systemName: "arrow.up.right")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(hovered ? Island.primary : Island.tertiary)
+                        .frame(width: 20, height: 20)
+                        .background(Circle().fill(Color.white.opacity(hovered ? 0.14 : 0.07)))
+                        .animation(Island.press, value: hovered)
+                        .help("Open in terminal")
+                }
+            }
+            .frame(height: Metrics.metaRow)
+            .padding(.top, 6)
+
+            Text(notification.message)
+                .font(Island.body)
+                .foregroundColor(Color.white.opacity(0.74))
+                .lineSpacing(2)
+                .lineLimit(lines)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+                .frame(height: CGFloat(lines)*Metrics.bodyLine, alignment: .topLeading)
+                .padding(.top, 8)
         }
     }
 
-    // MARK: - Permission buttons
-
-    private var permissionButtons: some View {
-        HStack(spacing: 6) {
-            PermissionButton(
-                label: "Deny",
-                icon: "xmark",
-                style: .deny,
-                hint: "Blocks this tool call"
-            ) {
-                onDeny?()
-            }
-
-            PermissionButton(
-                label: "Allow",
-                icon: "checkmark",
-                style: .approve,
-                hint: "Allows this tool call once"
-            ) {
-                onApprove?()
-            }
-
-            PermissionButton(
-                label: "Always",
-                icon: "checkmark.circle.fill",
-                style: .alwaysAllow,
-                hint: "Adds a permanent allow rule to your settings"
-            ) {
-                onAlwaysAllow?()
-            }
-        }
-    }
-
-    // MARK: - Helpers
-
-    private func toolIcon(for tool: String) -> String {
-        switch tool {
-        case "Bash": return "terminal"
-        case "Edit": return "pencil"
-        case "Write": return "doc.badge.plus"
-        case "NotebookEdit": return "doc.text"
-        case "TaskCreate", "TaskUpdate", "TaskStop": return "checklist"
-        case "WebFetch", "WebSearch": return "globe"
-        case "SendMessage": return "paperplane"
-        default: return "wrench"
-        }
+    /// "0:12" — how long the agent has been waiting on you.
+    static func waitLabel(_ seconds: TimeInterval) -> String {
+        let s = max(0, Int(seconds))
+        return s >= 3600 ? "\(s/3600)h \((s%3600)/60)m" : "\(s/60):\(String(format: "%02d", s%60))"
     }
 
     // MARK: - Animation
 
     private func animateIn() {
-        withAnimation(.smooth) {
-            expanded = true
+        guard !expanded else { return }
+        if reduceMotion {
+            withAnimation(.easeOut(duration: 0.2)) { expanded = true; contentAppeared = true }
+            return
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-            withAnimation(.smooth) {
-                contentAppeared = true
-            }
-            glowVisible = true
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-            withAnimation(.smooth) {
-                textRevealed = true
-            }
-        }
-        // Staggered button reveal (permission only)
-        if isPermission {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                withAnimation(.smooth) {
-                    buttonsRevealed = true
-                }
-            }
-        }
+        withAnimation(Island.spring) { expanded = true }
+        withAnimation(.easeOut(duration: 0.22).delay(0.12)) { contentAppeared = true }
     }
 }
 
-// MARK: - Permission Button
+// MARK: - Buttons
 
-private struct PermissionButton: View {
-    enum Style { case approve, alwaysAllow, deny }
+/// Equal-width pill button. Primary is white on black, like the system's own
+/// notch controls; secondary sits quietly on the card.
+struct IslandButton: View {
+    enum Style { case primary, secondary }
 
     let label: String
-    let icon: String
+    let shortcut: String?
     let style: Style
     var hint: String? = nil
     let action: () -> Void
 
-    @State private var isHovered = false
-    @State private var isPressed = false
-
-    private var bgColor: Color {
-        switch style {
-        case .approve: return Color(hex: "34D399") // emerald
-        case .alwaysAllow: return Color(hex: "60A5FA") // blue
-        case .deny: return Color.white
-        }
-    }
-
-    private var bgOpacity: Double {
-        switch style {
-        case .approve: return isHovered ? 0.3 : 0.2
-        case .alwaysAllow: return isHovered ? 0.3 : 0.2
-        case .deny: return isHovered ? 0.1 : 0.06
-        }
-    }
-
-    private var textColor: Color {
-        switch style {
-        case .approve: return .white
-        case .alwaysAllow: return .white
-        case .deny: return .white.opacity(0.6)
-        }
-    }
+    @State private var hovered = false
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 5) {
-                Image(systemName: icon)
-                    .font(.system(size: 10, weight: .bold))
+            HStack(spacing: 6) {
                 Text(label)
-                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .font(Island.button)
+                    .lineLimit(1)
+                if let shortcut {
+                    Text(shortcut)
+                        .font(.system(size: 10.5, weight: .medium))
+                        .opacity(0.45)
+                        .lineLimit(1)
+                }
             }
-            .foregroundColor(textColor)
+            .foregroundColor(style == .primary ? Color.black : Island.primary)
             .frame(maxWidth: .infinity)
-            .frame(height: 32)
+            .frame(height: NotchNotificationView.Metrics.buttonHeight)
             .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(bgColor.opacity(bgOpacity))
+                Capsule(style: .continuous)
+                    .fill(style == .primary
+                          ? Color.white.opacity(hovered ? 1 : 0.94)
+                          : (hovered ? Island.controlHover : Island.control))
             )
-            .overlay(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .strokeBorder(bgColor.opacity(style == .deny ? 0.08 : 0.3), lineWidth: 0.5)
-            )
-            .contentShape(RoundedRectangle(cornerRadius: 8))
+            .contentShape(Capsule())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(IslandPressStyle())
+        .onHover { hovered = $0 }
+        .animation(Island.press, value: hovered)
+        .help(shortcut.map { "\(label) (\($0))" } ?? label)
         .accessibilityLabel(label)
         .accessibilityHint(hint ?? "")
-        .scaleEffect(isPressed ? 0.95 : (isHovered ? 1.02 : 1.0))
-        .animation(.snappy, value: isHovered)
-        .animation(.snappy, value: isPressed)
-        .onHover { h in isHovered = h }
-        .simultaneousGesture(
-            DragGesture(minimumDistance: 0)
-                .onChanged { _ in isPressed = true }
-                .onEnded { _ in isPressed = false }
-        )
     }
 }
