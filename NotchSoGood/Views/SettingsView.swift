@@ -2,156 +2,226 @@ import SwiftUI
 import Sparkle
 import ServiceManagement
 
-/// The Settings window: native tabs and grouped forms, like System Settings.
+/// Settings, in the island's language: an identity header with Done, icon
+/// tabs, and grouped rows of icon, explanation and control.
 struct SettingsView: View {
     @ObservedObject var notificationManager: NotificationManager
-    let updater: SPUUpdater
+    let updater: SPUUpdater?
+    var onDone: () -> Void = {}
 
-    enum Tab: Hashable { case general, notifications, character }
+    enum Tab: String, CaseIterable, Identifiable {
+        case general, alerts, character, about
+        var id: String { rawValue }
+        var title: String {
+            switch self {
+            case .general: return "General"
+            case .alerts: return "Alerts"
+            case .character: return "Character"
+            case .about: return "About"
+            }
+        }
+        var icon: String {
+            switch self {
+            case .general: return "gearshape.fill"
+            case .alerts: return "bell.fill"
+            case .character: return "face.smiling.inverse"
+            case .about: return "info.circle.fill"
+            }
+        }
+    }
+
     @State private var tab: Tab
 
-    init(notificationManager: NotificationManager, updater: SPUUpdater, tab: Tab = .general) {
+    init(notificationManager: NotificationManager, updater: SPUUpdater?, tab: Tab = .general, onDone: @escaping () -> Void = {}) {
         self.notificationManager = notificationManager
         self.updater = updater
+        self.onDone = onDone
         _tab = State(initialValue: tab)
     }
 
+    static let width: CGFloat = 460
+    static let height: CGFloat = 640
+
     var body: some View {
-        TabView(selection: $tab) {
-            GeneralSettings(notificationManager: notificationManager, updater: updater)
-                .tabItem { Label("General", systemImage: "gearshape") }
-                .tag(Tab.general)
-            NotificationSettings(notificationManager: notificationManager)
-                .tabItem { Label("Notifications", systemImage: "bell.badge") }
-                .tag(Tab.notifications)
-            CharacterSettingsPane()
-                .tabItem { Label("Character", systemImage: "face.smiling") }
-                .tag(Tab.character)
+        VStack(spacing: 0) {
+            header
+            Rectangle().fill(Panel.separator).frame(height: 1)
+            tabBar
+            Rectangle().fill(Panel.separator).frame(height: 1)
+            // Scroll only when a pane outgrows the window; otherwise there's no
+            // scroller track to draw at all.
+            ViewThatFits(in: .vertical) {
+                pane
+                ScrollView(.vertical) { pane }.scrollIndicators(.never)
+            }
+            Spacer(minLength: 0)
         }
-        .frame(width: 460)
+        .frame(width: Self.width)
+        .background(Panel.background)
+        .environment(\.colorScheme, .dark)
+        .toggleStyle(PanelToggleStyle())
+    }
+
+    private var pane: some View {
+        Group {
+            switch tab {
+            case .general: GeneralPane(notificationManager: notificationManager)
+            case .alerts: AlertsPane(notificationManager: notificationManager)
+            case .character: CharacterPane()
+            case .about: AboutPane(notificationManager: notificationManager, updater: updater)
+            }
+        }
+        .padding(20)
+    }
+
+    private var header: some View {
+        HStack(spacing: 12) {
+            NotchTile(state: .work, size: 40, radius: 11, framing: .portrait, live: false)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Notch So Good")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(Panel.primary)
+                Text("Version \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "–")")
+                    .font(Panel.subtitle)
+                    .foregroundColor(Panel.secondary)
+            }
+            Spacer()
+            Button("Done", action: onDone)
+                .buttonStyle(PanelButtonStyle(kind: .outline))
+                .keyboardShortcut(.cancelAction)
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 20)
+        .padding(.bottom, 16)
+    }
+
+    private var tabBar: some View {
+        HStack(spacing: 4) {
+            ForEach(Tab.allCases) { item in
+                let selected = item == tab
+                Button {
+                    withAnimation(Island.press) { tab = item }
+                } label: {
+                    VStack(spacing: 5) {
+                        Image(systemName: item.icon)
+                            .font(.system(size: 16, weight: .medium))
+                        Text(item.title)
+                            .font(.system(size: 11.5, weight: .medium))
+                    }
+                    .foregroundColor(selected ? Panel.primary : Panel.secondary)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 52)
+                    .background(
+                        RoundedRectangle(cornerRadius: 11, style: .continuous)
+                            .fill(Color.white.opacity(selected ? 0.08 : 0))
+                    )
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(item.title)
+                .accessibilityAddTraits(selected ? .isSelected : [])
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
     }
 }
 
 // MARK: - General
 
-struct GeneralSettings: View {
+private struct GeneralPane: View {
     @ObservedObject var notificationManager: NotificationManager
-    let updater: SPUUpdater
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     @State private var hooksReinstalled = false
 
-    private var version: String {
-        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "–"
-    }
-
     var body: some View {
-        Form {
-            Section {
-                Toggle("Launch at login", isOn: Binding(
-                    get: { launchAtLogin },
-                    set: { enable in
-                        do {
-                            if enable { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
-                        } catch {}
-                        launchAtLogin = SMAppService.mainApp.status == .enabled
-                    }
-                ))
+        VStack(alignment: .leading, spacing: 22) {
+            PanelSection("In the notch") {
+                PanelRow(icon: "capsule.fill", title: "Session pill",
+                         subtitle: "Your character and the 5-hour ring beside the notch while agents work.") {
+                    Toggle("", isOn: $notificationManager.showSessionPill).labelsHidden()
+                }
+                PanelDivider()
+                PanelRow(icon: "display.2", title: "Follow the active display",
+                         subtitle: "Show up on the screen your terminal is on.") {
+                    Toggle("", isOn: $notificationManager.followActiveDisplay).labelsHidden()
+                }
             }
 
-            Section {
-                Toggle(isOn: $notificationManager.showSessionPill) {
-                    Text("Show the session pill")
-                    Text("Your character and the 5-hour usage ring, beside the notch while agents work.")
+            PanelSection("General") {
+                PanelRow(icon: "play.circle.fill", title: "Open at login",
+                         subtitle: "Start Notch So Good when you log in.") {
+                    Toggle("", isOn: Binding(
+                        get: { launchAtLogin },
+                        set: { enable in
+                            do {
+                                if enable { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
+                            } catch {}
+                            launchAtLogin = SMAppService.mainApp.status == .enabled
+                        }
+                    )).labelsHidden()
                 }
-                Toggle(isOn: $notificationManager.followActiveDisplay) {
-                    Text("Follow the active display")
-                    Text("Show on the screen your terminal is on, not only the built-in one.")
-                }
-            } header: {
-                Text("Notch")
-            }
-
-            Section {
-                LabeledContent {
+                PanelDivider()
+                PanelRow(icon: "link", title: "Agent hooks",
+                         subtitle: "Connects Claude Code and Codex. Reinstall if cards stop appearing.") {
                     Button(hooksReinstalled ? "Reinstalled" : "Reinstall") {
                         notificationManager.installHooks()
                         hooksReinstalled = true
                     }
+                    .buttonStyle(PanelButtonStyle(kind: hooksReinstalled ? .quiet : .outline))
                     .disabled(hooksReinstalled)
-                } label: {
-                    Text("Agent hooks")
-                    Text("Connects Claude Code and Codex. Reinstall if cards stop appearing.")
                 }
-            } header: {
-                Text("Agents")
-            }
-
-            Section {
-                LabeledContent("Version \(version)") {
-                    Button("Check for Updates…") { updater.checkForUpdates() }
-                }
-                Toggle(isOn: $notificationManager.telemetryEnabled) {
-                    Text("Share anonymous usage data")
-                    Text("Counts only, like how many cards were shown. Never your code or prompts.")
-                }
-            } header: {
-                Text("About")
-            } footer: {
-                HStack {
-                    Spacer()
-                    Link("Made by Deepak Maurya", destination: URL(string: "https://x.com/deepshal99")!)
-                        .font(.footnote)
-                        .foregroundStyle(.tertiary)
-                    Spacer()
-                }
-                .padding(.top, 4)
             }
         }
-        .formStyle(.grouped)
-        .frame(height: 560)
         .onAppear { launchAtLogin = SMAppService.mainApp.status == .enabled }
     }
 }
 
-// MARK: - Notifications
+// MARK: - Alerts
 
-struct NotificationSettings: View {
+private struct AlertsPane: View {
     @ObservedObject var notificationManager: NotificationManager
 
     var body: some View {
-        Form {
-            Section {
-                Toggle("A task finishes", isOn: $notificationManager.showOnComplete)
-                Toggle("An agent asks you something", isOn: $notificationManager.showOnQuestion)
-                Toggle(isOn: $notificationManager.showOnPermission) {
-                    Text("A tool needs permission")
-                    Text("Allow or deny from the notch. When off, requests are approved automatically.")
+        VStack(alignment: .leading, spacing: 22) {
+            PanelSection("Show a card when") {
+                PanelRow(icon: "checkmark.circle.fill", title: "A task finishes") {
+                    Toggle("", isOn: $notificationManager.showOnComplete).labelsHidden()
                 }
-            } header: {
-                Text("Show a card when")
+                PanelDivider()
+                PanelRow(icon: "questionmark.bubble.fill", title: "An agent asks you something") {
+                    Toggle("", isOn: $notificationManager.showOnQuestion).labelsHidden()
+                }
+                PanelDivider()
+                PanelRow(icon: "lock.shield.fill", title: "A tool needs permission",
+                         subtitle: "Allow or deny from the notch. When off, requests are approved automatically.") {
+                    Toggle("", isOn: $notificationManager.showOnPermission).labelsHidden()
+                }
+                HStack(spacing: 10) {
+                    KeyCaps(keys: ["⌃", "⌥", "A"])
+                    Text("allows").font(Panel.subtitle).foregroundColor(Panel.secondary)
+                    KeyCaps(keys: ["⌃", "⌥", "D"])
+                    Text("denies, from any app").font(Panel.subtitle).foregroundColor(Panel.secondary)
+                    Spacer(minLength: 0)
+                }
+                .padding(.leading, Panel.rowPadding + Panel.iconColumn + 12)
+                .padding(.trailing, Panel.rowPadding)
+                .padding(.bottom, 13)
+                .padding(.top, -4)
             }
 
-            Section {
-                Toggle(isOn: $notificationManager.nudgeEnabled) {
-                    Text("Remind me when a session is waiting")
-                    Text("One nudge if a session sits blocked on you.")
+            PanelSection("Reminders") {
+                PanelRow(icon: "bell.badge.fill", title: "Nudge when a session waits",
+                         subtitle: "One reminder if a session sits blocked on you.") {
+                    Toggle("", isOn: $notificationManager.nudgeEnabled).labelsHidden()
                 }
-                Toggle("Play sounds", isOn: $notificationManager.soundEnabled)
-            }
-
-            Section {
-                LabeledContent("Allow") { KeyCaps(keys: ["⌃", "⌥", "A"]) }
-                LabeledContent("Deny") { KeyCaps(keys: ["⌃", "⌥", "D"]) }
-            } header: {
-                Text("Keyboard shortcuts")
-            } footer: {
-                Text("Answer the permission card on screen from any app.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+                PanelDivider()
+                PanelRow(icon: "speaker.wave.2.fill", title: "Sound",
+                         subtitle: "A short cue when an agent needs you or finishes.") {
+                    Toggle("", isOn: $notificationManager.soundEnabled).labelsHidden()
+                }
             }
         }
-        .formStyle(.grouped)
-        .frame(height: 430)
     }
 }
 
@@ -159,12 +229,17 @@ private struct KeyCaps: View {
     let keys: [String]
 
     var body: some View {
-        HStack(spacing: 3) {
+        HStack(spacing: 4) {
             ForEach(keys, id: \.self) { key in
                 Text(key)
-                    .font(.system(size: 11, weight: .medium))
-                    .frame(minWidth: 20, minHeight: 20)
-                    .background(RoundedRectangle(cornerRadius: 5, style: .continuous).fill(Color.primary.opacity(0.08)))
+                    .font(.system(size: 11.5, weight: .medium))
+                    .foregroundColor(Panel.primary)
+                    .frame(minWidth: 22, minHeight: 22)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .fill(Color.white.opacity(0.08))
+                            .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).strokeBorder(Color.white.opacity(0.08), lineWidth: 1))
+                    )
             }
         }
         .accessibilityElement(children: .ignore)
@@ -174,68 +249,89 @@ private struct KeyCaps: View {
 
 // MARK: - Character
 
-struct CharacterSettingsPane: View {
+private struct CharacterPane: View {
     @ObservedObject private var settings = CharacterSettings.shared
 
     var body: some View {
-        Form {
-            Section {
-                HStack(spacing: 0) {
-                    ForEach(CharacterKind.allCases) { kind in
-                        characterChoice(kind)
-                        if kind != CharacterKind.allCases.last { Spacer(minLength: 0) }
+        VStack(alignment: .leading, spacing: 22) {
+            PanelSection {
+                VStack(alignment: .leading, spacing: 14) {
+                    HStack(spacing: 0) {
+                        ForEach(CharacterKind.allCases) { kind in
+                            choice(kind)
+                            if kind != CharacterKind.allCases.last { Spacer(minLength: 0) }
+                        }
                     }
+                    Text(settings.kind.tagline)
+                        .font(Panel.subtitle)
+                        .foregroundColor(Panel.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                .padding(.vertical, 4)
-            } footer: {
-                Text(settings.kind.tagline)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(Panel.rowPadding)
             }
 
-            Section {
-                LabeledContent("Finish") {
-                    HStack(spacing: 7) {
-                        ForEach(CharacterFinish.allCases) { finish in swatch(finish) }
+            PanelSection("Look and feel") {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "paintpalette.fill")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(Panel.icon)
+                            .frame(width: Panel.iconColumn)
+                        Text("Finish").font(Panel.title).foregroundColor(Panel.primary)
+                        Spacer()
+                        Text(settings.finish.displayName).font(Panel.subtitle).foregroundColor(Panel.secondary)
                     }
-                }
-                LabeledContent {
-                    Picker("Motion", selection: $settings.motion) {
-                        ForEach(CharacterMotion.allCases) { Text($0.displayName).tag($0) }
+                    HStack(spacing: 0) {
+                        ForEach(CharacterFinish.allCases) { finish in
+                            swatch(finish)
+                            if finish != CharacterFinish.allCases.last { Spacer(minLength: 0) }
+                        }
                     }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                    .fixedSize()
-                } label: {
-                    Text("Motion")
-                    Text(settings.motion.note)
+                    .padding(.leading, Panel.iconColumn + 12)
                 }
+                .padding(.horizontal, Panel.rowPadding)
+                .padding(.vertical, 13)
+                PanelDivider()
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(alignment: .top, spacing: 12) {
+                        Image(systemName: "wind")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(Panel.icon)
+                            .frame(width: Panel.iconColumn)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("Motion").font(Panel.title).foregroundColor(Panel.primary)
+                            Text(settings.motion.note).font(Panel.subtitle).foregroundColor(Panel.secondary)
+                        }
+                    }
+                    PanelSegmented(options: CharacterMotion.allCases.map { ($0, $0.displayName) }, selection: $settings.motion)
+                        .fixedSize()
+                        .padding(.leading, Panel.iconColumn + 12)
+                }
+                .padding(.horizontal, Panel.rowPadding)
+                .padding(.vertical, 13)
             }
         }
-        .formStyle(.grouped)
-        .frame(height: 318)
     }
 
-    private func characterChoice(_ kind: CharacterKind) -> some View {
+    private func choice(_ kind: CharacterKind) -> some View {
         let selected = settings.kind == kind
         return Button {
             withAnimation(Island.press) { settings.kind = kind }
         } label: {
-            VStack(spacing: 7) {
-                NotchTile(state: selected ? .need : .work, kind: kind, size: 76, radius: 14)
+            VStack(spacing: 8) {
+                NotchTile(state: selected ? .need : .work, kind: kind, size: 80, radius: 16)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .strokeBorder(Color.accentColor, lineWidth: selected ? 2.5 : 0)
-                            .padding(-3.5)
+                        RoundedRectangle(cornerRadius: 19, style: .continuous)
+                            .strokeBorder(Color.white.opacity(selected ? 0.9 : 0), lineWidth: 1.5)
+                            .padding(-3)
                     )
                 Text(kind.displayName)
-                    .font(.system(size: 12, weight: selected ? .semibold : .regular))
-                    .foregroundStyle(selected ? .primary : .secondary)
+                    .font(.system(size: 12, weight: selected ? .semibold : .medium))
+                    .foregroundColor(selected ? Panel.primary : Panel.secondary)
             }
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(IslandPressStyle())
         .accessibilityLabel(kind.displayName)
         .accessibilityHint(kind.tagline)
         .accessibilityAddTraits(selected ? .isSelected : [])
@@ -248,15 +344,48 @@ struct CharacterSettingsPane: View {
         } label: {
             Circle()
                 .fill(finish.swatch)
-                .overlay(Circle().strokeBorder(Color.primary.opacity(0.15), lineWidth: 0.5))
-                .frame(width: 18, height: 18)
-                .padding(2.5)
-                .overlay(Circle().strokeBorder(Color.accentColor, lineWidth: selected ? 2 : 0))
+                .overlay(Circle().strokeBorder(Color.white.opacity(0.14), lineWidth: 1))
+                .frame(width: 22, height: 22)
+                .padding(3)
+                .overlay(Circle().strokeBorder(Color.white.opacity(selected ? 0.9 : 0), lineWidth: 1.5))
                 .contentShape(Circle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(IslandPressStyle())
         .help(finish.displayName)
         .accessibilityLabel(finish.displayName)
         .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+}
+
+// MARK: - About
+
+private struct AboutPane: View {
+    @ObservedObject var notificationManager: NotificationManager
+    let updater: SPUUpdater?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 22) {
+            PanelSection {
+                PanelRow(icon: "arrow.triangle.2.circlepath", title: "Updates",
+                         subtitle: "New versions install when you say so.") {
+                    Button("Check now") { updater?.checkForUpdates() }
+                        .buttonStyle(PanelButtonStyle(kind: .outline))
+                        .disabled(updater == nil)
+                }
+                PanelDivider()
+                PanelRow(icon: "chart.bar.fill", title: "Share anonymous usage data",
+                         subtitle: "Counts only, like how many cards were shown. Never your code or prompts.") {
+                    Toggle("", isOn: $notificationManager.telemetryEnabled).labelsHidden()
+                }
+            }
+
+            HStack {
+                Spacer()
+                Link("Made by Deepak Maurya", destination: URL(string: "https://x.com/deepshal99")!)
+                    .font(Panel.subtitle)
+                    .foregroundColor(Panel.tertiary)
+                Spacer()
+            }
+        }
     }
 }

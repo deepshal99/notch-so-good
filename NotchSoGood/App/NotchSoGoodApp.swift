@@ -11,10 +11,6 @@ struct NotchSoGoodApp: App {
             MenuBarIconView()
         }
         .menuBarExtraStyle(.window)
-
-        Settings {
-            SettingsView(notificationManager: NotificationManager.shared, updater: appDelegate.updaterController.updater)
-        }
     }
 }
 

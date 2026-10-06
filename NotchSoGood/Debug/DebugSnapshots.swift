@@ -201,13 +201,11 @@ enum DebugSnapshots {
     static func settingsSheet(to url: URL) {
         let updater = SPUStandardUpdaterController(startingUpdater: false, updaterDelegate: nil, userDriverDelegate: nil).updater
         let s: CGFloat = 2, w: CGFloat = 460
-        let panes: [(AnyView, CGFloat)] = [
-            (AnyView(GeneralSettings(notificationManager: NotificationManager.shared, updater: updater)), 560),
-            (AnyView(NotificationSettings(notificationManager: NotificationManager.shared)), 430),
-            (AnyView(CharacterSettingsPane()), 318),
-        ]
+        let panes: [(AnyView, CGFloat)] = SettingsView.Tab.allCases.map { tab in
+            (AnyView(SettingsView(notificationManager: NotificationManager.shared, updater: updater, tab: tab)), SettingsView.height)
+        }
         var images: [(CGImage, CGSize)] = []
-        for dark in [true, false] {
+        for dark in [true] {
             for (view, h) in panes {
                 let host = NSHostingView(rootView: view.frame(width: w, height: h))
                 host.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
