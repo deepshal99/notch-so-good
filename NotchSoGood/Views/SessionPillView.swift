@@ -228,7 +228,7 @@ struct SessionPillView: View {
     private func sessionRow(_ session: NotificationManager.SessionInfo, now: Date) -> some View {
         Button { onTap(session.id) } label: {
             HStack(spacing: 8) {
-                StatusDot(color: session.status.dotColor)
+                StatusDot(color: session.color)
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 6) {
                         Text(session.taskTitle ?? session.projectName)
@@ -239,14 +239,16 @@ struct SessionPillView: View {
                     }
                     HStack(spacing: 0) {
                         if session.taskTitle != nil {
-                            Text("\(session.projectName) · ")
-                                .font(.system(size: 11.5))
-                                .foregroundColor(Island.tertiary)
+                            Text(session.projectName)
                                 .lineLimit(1)
+                                .truncationMode(.middle)
                                 .layoutPriority(-1)
+                            Text(" · ").fixedSize()
                         }
                         activityText(session)
                     }
+                    .font(.system(size: 11.5))
+                    .foregroundColor(Island.tertiary)
                 }
                 Spacer(minLength: 8)
                 trailing(session: session, now: now)
@@ -281,7 +283,7 @@ struct SessionPillView: View {
     private func subSessionRow(_ session: NotificationManager.SessionInfo, now: Date) -> some View {
         Button { onTap(session.id) } label: {
             HStack(spacing: 8) {
-                StatusDot(color: session.status.dotColor, size: 6)
+                StatusDot(color: session.color, size: 6)
                 if let title = session.taskTitle {
                     // The activity rides along only when it fits whole.
                     ViewThatFits(in: .horizontal) {

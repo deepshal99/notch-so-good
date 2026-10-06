@@ -296,7 +296,7 @@ private struct SessionMenuRow: View {
         } label: {
             HStack(spacing: 10) {
                 Circle()
-                    .fill(session.status.dotColor)
+                    .fill(session.color)
                     .frame(width: 8, height: 8)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(session.taskTitle ?? session.projectName)
@@ -306,10 +306,12 @@ private struct SessionMenuRow: View {
                         .truncationMode(session.taskTitle == nil ? .middle : .tail)
                     HStack(spacing: 0) {
                         if session.taskTitle != nil {
-                            Text("\(session.projectName) · ")
+                            Text(session.projectName)
                                 .foregroundColor(Panel.tertiary)
                                 .lineLimit(1)
+                                .truncationMode(.middle)
                                 .layoutPriority(-1)
+                            Text(" · ").foregroundColor(Panel.tertiary).fixedSize()
                         }
                         Text(session.status.activityLine(toolName: session.activeToolName, toolDetail: nil))
                             .foregroundColor(waiting ? CharacterState.need.color : Panel.secondary)

@@ -418,6 +418,10 @@ struct NotchNotificationView: View {
 
     private func summaryMeta(project: Bool, agent: Bool, branch showBranch: Bool) -> some View {
         HStack(spacing: 8) {
+            if let session {
+                Circle().fill(session.color).frame(width: 7, height: 7)
+                    .padding(.trailing, -2)
+            }
             Text(session?.taskTitle ?? projectName ?? "Claude Code")
                 .font(Island.meta)
                 .foregroundColor(Island.secondary)

@@ -1,5 +1,6 @@
 import Foundation
 import AppKit
+import SwiftUI
 
 @MainActor
 class NotificationManager: ObservableObject {
@@ -76,6 +77,17 @@ class NotificationManager: ObservableObject {
         var permissionMode: PermissionMode = .standard
         /// What it's working on, from the user's prompts (see TaskTitle).
         var taskTitle: String?
+        /// Which of `Island.sessionColors` marks this session. Unique among
+        /// live sessions while a free colour exists.
+        var colorIndex = 0
+
+        var color: Color { Island.sessionColors[colorIndex % Island.sessionColors.count] }
+    }
+
+    /// The first colour no live session wears; past eight sessions, they repeat.
+    private func freeColorIndex() -> Int {
+        let used = Set(activeSessions.map(\.colorIndex))
+        return (0..<Island.sessionColors.count).first { !used.contains($0) } ?? activeSessions.count % Island.sessionColors.count
     }
     @Published var activeSessions: [SessionInfo] = []
 
@@ -290,6 +302,7 @@ class NotificationManager: ObservableObject {
             agentSource: AgentSource.detect(sourceApp: sourceApp, model: model)
         )
         if let permissionMode { session.permissionMode = permissionMode }
+        session.colorIndex = freeColorIndex()
         activeSessions.append(session)
 
         // Start watching JSONL file for interrupts

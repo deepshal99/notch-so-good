@@ -111,6 +111,7 @@ enum DebugSnapshots {
             session("d", "docs", .running, mode: .acceptEdits),
         ]
         sessions[0].taskTitle = "Fix the flaky websocket reconnect"
+        for i in sessions.indices { sessions[i].colorIndex = i }
         sessions[2].taskTitle = "Rewrite the getting started guide"
         UsageLimitsStore.shared.windows = [UsageLimitsStore.LimitWindow(label: "Session", percentLeft: 62, resetsAt: Date().addingTimeInterval(2*3600 + 14*60))]
         let maxW = notchW + PillLayout.wingExpanded*2
@@ -158,6 +159,7 @@ enum DebugSnapshots {
         let repo = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().path
         var session = NotificationManager.SessionInfo(id: "s", startTime: Date(), projectName: "api", status: .needsPermission, cwd: repo)
         session.taskTitle = "Fix the flaky websocket reconnect"
+        session.colorIndex = 1
         let cards: [(NotchNotification, Double)] = [
             (NotchNotification(type: .permission, message: "git push origin fix/ws-reconnect", title: "Run command", permissionRequestId: "x", toolName: "Bash"), 1.6),
             (NotchNotification(type: .permission, message: "rm -rf build/ dist/ && npm run build -- --mode production --sourcemap && npm run test:e2e -- --reporter=dot --bail", title: "Run command", permissionRequestId: "z", toolName: "Bash"), 1.6),
@@ -240,8 +242,10 @@ enum DebugSnapshots {
         ]
         var a = NotificationManager.SessionInfo(id: "p1", startTime: now.addingTimeInterval(-29), projectName: "notch-so-good / dar-es-salaam", status: .running)
         a.taskTitle = "Polish the menu bar menu"
+        a.colorIndex = 0
         a.activeToolName = nil
-        let b = NotificationManager.SessionInfo(id: "p2", startTime: now.addingTimeInterval(-312), projectName: "api", status: .needsPermission)
+        var b = NotificationManager.SessionInfo(id: "p2", startTime: now.addingTimeInterval(-312), projectName: "api", status: .needsPermission)
+        b.colorIndex = 3
         NotificationManager.shared.activeSessions = [a, b]
         defer { NotificationManager.shared.activeSessions = [] }
         var images: [(CGImage, CGFloat)] = []

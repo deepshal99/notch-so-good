@@ -55,6 +55,16 @@ enum Island {
     static let button = Font.system(size: 12.5, weight: .semibold)
     static let numeric = Font.system(size: 11.5, weight: .medium).monospacedDigit()
 
+    // MARK: Sessions
+
+    /// One colour per session, so several running at once stay tellable apart
+    /// at a glance. Soft on black, and none of them the orange that means
+    /// "needs you".
+    static let sessionColors: [Color] = [
+        Color(hex: "7DB8FF"), Color(hex: "5FD4C4"), Color(hex: "B79CFF"), Color(hex: "FF8FB8"),
+        Color(hex: "FFD166"), Color(hex: "A3E36F"), Color(hex: "E59CFF"), Color(hex: "D9C3A0"),
+    ]
+
     // MARK: Motion
 
     /// One clean overshoot: the island's only spring.
