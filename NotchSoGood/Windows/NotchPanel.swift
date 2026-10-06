@@ -130,6 +130,9 @@ class NotificationHoverMonitor {
 
     /// The visible notification rect in screen coordinates.
     var contentScreenRect: NSRect = .zero
+    /// Called when the pointer enters or leaves the card.
+    var onHoverChange: ((Bool) -> Void)?
+    private(set) var inside = false
 
     func start(panel: NotchPanel) {
         stop()
@@ -152,13 +155,18 @@ class NotificationHoverMonitor {
         globalMonitor = nil
         localMonitor = nil
         panel?.ignoresMouseEvents = true
+        inside = false
     }
 
     private func update() {
         guard let panel else { return }
         let mouse = NSEvent.mouseLocation
-        let inside = contentScreenRect.insetBy(dx: -4, dy: -4).contains(mouse)
-        panel.ignoresMouseEvents = !inside
+        let now = contentScreenRect.insetBy(dx: -4, dy: -4).contains(mouse)
+        panel.ignoresMouseEvents = !now
+        if now != inside {
+            inside = now
+            onHoverChange?(now)
+        }
     }
 
     deinit { stop() }

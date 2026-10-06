@@ -371,11 +371,36 @@ class NotchWindowController {
 
         SoundManager.shared.play(for: notification.type)
 
-        // Auto-dismiss after 5s for regular notifications, NO auto-dismiss for permission
+        // Regular cards leave on their own; a card you're reading stays until
+        // you move away (then it gives you a moment). Permissions never time out here.
         if !isPermission {
-            dismissTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: false) { [weak self] _ in
-                self?.dismiss()
+            scheduleAutoDismiss(after: Self.cardLifetime)
+            notifHoverMonitor.onHoverChange = { [weak self] hovering in
+                guard let self, !self.isDismissing, self.activePermissionRequestId == nil else { return }
+                if hovering {
+                    self.dismissTimer?.invalidate()
+                    self.dismissTimer = nil
+                } else {
+                    self.scheduleAutoDismiss(after: Self.lingerAfterHover)
+                }
             }
+            // Already under the pointer when it appeared: hold it from the start.
+            if notifHoverMonitor.inside {
+                dismissTimer?.invalidate()
+                dismissTimer = nil
+            }
+        } else {
+            notifHoverMonitor.onHoverChange = nil
+        }
+    }
+
+    private static let cardLifetime: TimeInterval = 6
+    private static let lingerAfterHover: TimeInterval = 2.5
+
+    private func scheduleAutoDismiss(after interval: TimeInterval) {
+        dismissTimer?.invalidate()
+        dismissTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: false) { [weak self] _ in
+            self?.dismiss()
         }
     }
 
