@@ -145,7 +145,7 @@ final class CharacterMTKView: MTKView, MTKViewDelegate {
     /// so changing finish never blanks the view.
     private var lastPipeline: (kind: CharacterKind, state: MTLRenderPipelineState)?
     private let start = CACurrentMediaTime()
-    private var occlusionObserver: NSObjectProtocol?
+    private var windowObservers: [NSObjectProtocol] = []
 
     private var now: Double { CACurrentMediaTime() - start }
 
@@ -170,7 +170,7 @@ final class CharacterMTKView: MTKView, MTKViewDelegate {
     required init(coder: NSCoder) { fatalError("init(coder:) is not used") }
 
     deinit {
-        if let occlusionObserver { NotificationCenter.default.removeObserver(occlusionObserver) }
+        windowObservers.forEach(NotificationCenter.default.removeObserver)
     }
 
     override var isOpaque: Bool { false }
@@ -195,19 +195,33 @@ final class CharacterMTKView: MTKView, MTKViewDelegate {
     // Pause when hidden: the pill and cards are ordered out far more than they're shown.
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        if let occlusionObserver { NotificationCenter.default.removeObserver(occlusionObserver); self.occlusionObserver = nil }
+        windowObservers.forEach(NotificationCenter.default.removeObserver)
+        windowObservers = []
         guard let window else { isPaused = true; return }
         updatePause(window)
-        occlusionObserver = NotificationCenter.default.addObserver(
-            forName: NSWindow.didChangeOcclusionStateNotification, object: window, queue: .main
-        ) { [weak self] note in
-            guard let self, let w = note.object as? NSWindow else { return }
-            self.updatePause(w)
+        // Occlusion alone isn't enough: menu bar and settings windows are often
+        // still offscreen when the view arrives and can become visible without
+        // an occlusion change reaching us, which left the character never drawn.
+        for name in [NSWindow.didChangeOcclusionStateNotification, NSWindow.didBecomeKeyNotification,
+                     NSWindow.didExposeNotification, NSWindow.didResizeNotification] {
+            windowObservers.append(NotificationCenter.default.addObserver(forName: name, object: window, queue: .main) { [weak self] note in
+                guard let self, let w = note.object as? NSWindow else { return }
+                self.updatePause(w)
+            })
+        }
+        for delay in [0.05, 0.25, 0.6] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                guard let self, let w = self.window else { return }
+                self.updatePause(w)
+            }
         }
     }
 
     private func updatePause(_ window: NSWindow) {
-        isPaused = !window.occlusionState.contains(.visible)
+        let visible = window.isVisible && window.occlusionState.contains(.visible)
+        isPaused = !visible
+        // Never leave a blank view: draw one frame whenever we resume.
+        if visible { draw() }
     }
 
     func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {}
