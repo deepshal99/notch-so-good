@@ -384,14 +384,13 @@ struct NotchNotificationView: View {
             .frame(height: Metrics.titleRow)
 
             HStack(spacing: 8) {
-                Text(projectName ?? "Claude Code")
-                    .font(Island.meta)
-                    .foregroundColor(Island.secondary)
-                    .lineLimit(1)
-                if let session, session.agentSource != .claude {
-                    Chip(text: session.agentSource.displayName, mono: false)
+                // Title first; the project, agent and branch join only when they
+                // fit whole, so nothing is ever cut to a stub.
+                ViewThatFits(in: .horizontal) {
+                    summaryMeta(project: true, agent: true, branch: true)
+                    summaryMeta(project: true, agent: true, branch: false)
+                    summaryMeta(project: false, agent: false, branch: false)
                 }
-                if let branch { BranchLabel(branch: branch).layoutPriority(-1) }
                 Spacer(minLength: 0)
                 if session != nil {
                     Image(systemName: "arrow.up.right")
@@ -414,6 +413,28 @@ struct NotchNotificationView: View {
                 .frame(maxWidth: .infinity, alignment: .topLeading)
                 .frame(height: CGFloat(lines)*Metrics.bodyLine, alignment: .topLeading)
                 .padding(.top, 8)
+        }
+    }
+
+    private func summaryMeta(project: Bool, agent: Bool, branch showBranch: Bool) -> some View {
+        HStack(spacing: 8) {
+            Text(session?.taskTitle ?? projectName ?? "Claude Code")
+                .font(Island.meta)
+                .foregroundColor(Island.secondary)
+                .lineLimit(1)
+            if project, session?.taskTitle != nil, let projectName {
+                Text(projectName)
+                    .font(Island.meta)
+                    .foregroundColor(Island.tertiary)
+                    .lineLimit(1)
+                    .fixedSize()
+            }
+            if agent, let session, session.agentSource != .claude {
+                Chip(text: session.agentSource.displayName, mono: false)
+            }
+            if showBranch, let branch {
+                BranchLabel(branch: branch).fixedSize()
+            }
         }
     }
 

@@ -104,12 +104,14 @@ enum DebugSnapshots {
                                                                                    status: .running, startTime: Date().addingTimeInterval(-95)) }
             return info
         }
-        let sessions = [
+        var sessions = [
             session("a", "api", .needsPermission, tool: "Bash"),
             session("b", "web", .running, tool: "Edit", detail: "/Users/me/code/web/src/components/Header.tsx", subs: ["Audit the bundle size", "Write tests for Header"]),
             session("c", "docs", .running, tool: "Bash", detail: "npm run build", agent: .codex),
             session("d", "docs", .running, mode: .acceptEdits),
         ]
+        sessions[0].taskTitle = "Fix the flaky websocket reconnect"
+        sessions[2].taskTitle = "Rewrite the getting started guide"
         UsageLimitsStore.shared.windows = [UsageLimitsStore.LimitWindow(label: "Session", percentLeft: 62, resetsAt: Date().addingTimeInterval(2*3600 + 14*60))]
         let maxW = notchW + PillLayout.wingExpanded*2
         var images: [(CGImage, CGSize)] = []
@@ -154,7 +156,8 @@ enum DebugSnapshots {
         let notchW: CGFloat = 185, notchH: CGFloat = 37
         let panelW = NotchNotificationView.Metrics.panelWidth(notchWidth: notchW, hasNotch: true)
         let repo = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().path
-        let session = NotificationManager.SessionInfo(id: "s", startTime: Date(), projectName: "api", status: .needsPermission, cwd: repo)
+        var session = NotificationManager.SessionInfo(id: "s", startTime: Date(), projectName: "api", status: .needsPermission, cwd: repo)
+        session.taskTitle = "Fix the flaky websocket reconnect"
         let cards: [(NotchNotification, Double)] = [
             (NotchNotification(type: .permission, message: "git push origin fix/ws-reconnect", title: "Run command", permissionRequestId: "x", toolName: "Bash"), 1.6),
             (NotchNotification(type: .permission, message: "rm -rf build/ dist/ && npm run build -- --mode production --sourcemap && npm run test:e2e -- --reporter=dot --bail", title: "Run command", permissionRequestId: "z", toolName: "Bash"), 1.6),
@@ -238,6 +241,7 @@ enum DebugSnapshots {
             .init(label: "Weekly", percentLeft: 100, resetsAt: now.addingTimeInterval(108*3600), source: .codex),
         ]
         var a = NotificationManager.SessionInfo(id: "p1", startTime: now.addingTimeInterval(-29), projectName: "notch-so-good / dar-es-salaam", status: .running)
+        a.taskTitle = "Polish the menu bar menu"
         a.activeToolName = nil
         let b = NotificationManager.SessionInfo(id: "p2", startTime: now.addingTimeInterval(-312), projectName: "api", status: .needsPermission)
         NotificationManager.shared.activeSessions = [a, b]

@@ -426,7 +426,8 @@ class PermissionServer {
                     sessionId: sessionId,
                     cwd: cwd,
                     sourcePid: hookPid,
-                    permissionMode: mode
+                    permissionMode: mode,
+                    promptTitle: NotchNotification.clean(json["prompt_title"] as? String, limit: 80)
                 )
             }
 

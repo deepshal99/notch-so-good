@@ -391,6 +391,19 @@ class PayloadShaping(unittest.TestCase):
         self.assertEqual(hook.subagent_description({"agent_type": "Explore"}), "Explore")
         self.assertEqual(hook.subagent_description({}), "Agent task")
 
+    def test_prompt_title_is_one_tidy_line(self):
+        self.assertEqual(hook.prompt_title("Fix the flaky\nwebsocket test"), "Fix the flaky")
+        self.assertEqual(hook.prompt_title("  Fix   the   reconnect race  "), "Fix the reconnect race")
+        self.assertEqual(hook.prompt_title("\n\n  \nRefactor the store"), "Refactor the store")
+        long = "Refactor the session store so that reconnects back off exponentially and the tests stop flaking on CI"
+        title = hook.prompt_title(long)
+        self.assertTrue(title.endswith("…"))
+        self.assertLessEqual(len(title), hook.MAX_TITLE + 1)
+        self.assertFalse(title[:-1].endswith(" "))
+        self.assertEqual(hook.prompt_title(None), "")
+        self.assertEqual(hook.prompt_title({"text": "x"}), "")
+        self.assertEqual(hook.prompt_title("   "), "")
+
     def test_garbage_stdin_does_not_crash(self):
         proc = subprocess.run(
             [sys.executable, HOOK, "Stop"],

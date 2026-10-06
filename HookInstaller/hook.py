@@ -394,6 +394,25 @@ def subagent_id(payload):
     return ""
 
 
+MAX_TITLE = 72
+
+
+def prompt_title(prompt):
+    """A one-line task title from a user prompt: its first line, whitespace
+    collapsed, cut at a word boundary. The app decides whether it's worth
+    showing (a bare "yes" or "continue" isn't)."""
+    if not isinstance(prompt, str):
+        return ""
+    lines = [l.strip() for l in prompt.strip().splitlines() if l.strip()]
+    if not lines:
+        return ""
+    title = " ".join(lines[0].split())
+    if len(title) > MAX_TITLE:
+        cut = title[:MAX_TITLE].rsplit(" ", 1)[0]
+        title = (cut if len(cut) > MAX_TITLE // 2 else title[:MAX_TITLE]).rstrip(" ,.;:") + "…"
+    return title
+
+
 def subagent_description(payload):
     for key in ("description", "agent_type", "prompt", "subject"):
         value = payload.get(key)
@@ -414,6 +433,8 @@ def handle_simple(event_name, payload, agent):
         event["notification_type"] = classify_notification(payload)
         event["message"] = str(payload.get("message") or "Claude needs attention")[:MAX_MESSAGE]
         event["title"] = str(payload.get("title") or "")
+    elif event_name == "UserPromptSubmit":
+        event["prompt_title"] = prompt_title(payload.get("prompt"))
     elif event_name == "PostToolUse":
         event["tool_name"] = str(payload.get("tool_name") or "")
     elif event_name in ("SubagentStart", "SubagentStop"):

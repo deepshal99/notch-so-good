@@ -223,20 +223,30 @@ struct SessionPillView: View {
     /// Row content inset from the list edge so text lands on the column.
     private var rowInset: CGFloat { column - Island.inset }
 
-    /// One session: dot, project, what it's doing; elapsed on the right.
+    /// One session: dot, what it's working on (or the project), and underneath
+    /// where and what it's doing right now; elapsed on the right.
     private func sessionRow(_ session: NotificationManager.SessionInfo, now: Date) -> some View {
         Button { onTap(session.id) } label: {
             HStack(spacing: 8) {
                 StatusDot(color: session.status.dotColor)
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 6) {
-                        Text(session.projectName)
+                        Text(session.taskTitle ?? session.projectName)
                             .font(.system(size: 13, weight: .semibold))
                             .foregroundColor(Island.primary)
                             .lineLimit(1)
                         badges(for: session)
                     }
-                    activityText(session)
+                    HStack(spacing: 0) {
+                        if session.taskTitle != nil {
+                            Text("\(session.projectName) · ")
+                                .font(.system(size: 11.5))
+                                .foregroundColor(Island.tertiary)
+                                .lineLimit(1)
+                                .layoutPriority(-1)
+                        }
+                        activityText(session)
+                    }
                 }
                 Spacer(minLength: 8)
                 trailing(session: session, now: now)
@@ -272,7 +282,18 @@ struct SessionPillView: View {
         Button { onTap(session.id) } label: {
             HStack(spacing: 8) {
                 StatusDot(color: session.status.dotColor, size: 6)
-                activityText(session, emphasised: true)
+                if let title = session.taskTitle {
+                    // The activity rides along only when it fits whole.
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 8) {
+                            subTitle(title)
+                            activityText(session).fixedSize()
+                        }
+                        subTitle(title)
+                    }
+                } else {
+                    activityText(session, emphasised: true)
+                }
                 badges(for: session)
                 Spacer(minLength: 8)
                 trailing(session: session, now: now)
@@ -285,6 +306,13 @@ struct SessionPillView: View {
         .buttonStyle(SessionRowStyle())
         .accessibilityLabel(rowAccessibilityLabel(session, now: now))
         .accessibilityHint("Opens this session in its terminal")
+    }
+
+    private func subTitle(_ title: String) -> some View {
+        Text(title)
+            .font(.system(size: 12.5, weight: .medium))
+            .foregroundColor(Color.white.opacity(0.82))
+            .lineLimit(1)
     }
 
     /// A subagent, hung off its parent with a hairline.

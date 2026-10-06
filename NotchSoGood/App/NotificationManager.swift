@@ -74,6 +74,8 @@ class NotificationManager: ObservableObject {
         var subagents: [SubagentInfo] = []
         var agentSource: AgentSource = .claude
         var permissionMode: PermissionMode = .standard
+        /// What it's working on, from the user's prompts (see TaskTitle).
+        var taskTitle: String?
     }
     @Published var activeSessions: [SessionInfo] = []
 
@@ -669,7 +671,8 @@ class NotificationManager: ObservableObject {
         sessionId: String?,
         cwd: String? = nil,
         sourcePid: pid_t? = nil,
-        permissionMode: PermissionMode? = nil
+        permissionMode: PermissionMode? = nil,
+        promptTitle: String? = nil
     ) {
         guard let sid = NotchNotification.nonEmpty(sessionId),
               let idx = adoptSession(
@@ -678,6 +681,8 @@ class NotificationManager: ObservableObject {
                 sourcePid: sourcePid,
                 permissionMode: permissionMode
               ) else { return }
+
+        activeSessions[idx].taskTitle = TaskTitle.update(current: activeSessions[idx].taskTitle, prompt: promptTitle)
 
         // New user turn — clear previous tool state and any popup mutes
         activeSessions[idx].activeToolName = nil
@@ -691,7 +696,7 @@ class NotificationManager: ObservableObject {
 
     /// Bump when the hook bridge's wire format or command line changes, so an
     /// upgrade reinstalls hooks even if the app version didn't move.
-    private static let hooksSchemaVersion = 2
+    private static let hooksSchemaVersion = 3
 
     /// Install hooks on first launch, on version updates, and whenever the hook
     /// bridge itself changes shape.
