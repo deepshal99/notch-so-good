@@ -71,7 +71,7 @@ struct MenuBarContentView: View {
 
     private var header: some View {
         HStack(spacing: 10) {
-            NotchTile(state: headerState, size: 32, radius: 8, framing: .portrait)
+            NotchTile(state: headerState, size: 32, radius: 8, framing: .portrait, live: false)
             VStack(alignment: .leading, spacing: 1) {
                 Text("Notch So Good")
                     .font(.system(size: 13, weight: .semibold))

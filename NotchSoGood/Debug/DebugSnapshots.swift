@@ -31,36 +31,8 @@ enum DebugSnapshots {
 
     static func render(kind: CharacterKind, state: CharacterState, finish: CharacterFinish = .obsidian, motion: CharacterMotion = .gooey,
                        framing: CharacterFraming, sizePt: CGSize, scale: CGFloat = 2, t: Double, gaze: SIMD2<Float>? = nil) -> CGImage? {
-        let r = CharacterRenderer.shared
-        guard let device = r.device, let queue = r.queue,
-              let pipeline = r.pipelineBlocking(kind: kind, finish: finish) else { return nil }
-        let w = Int(sizePt.width*scale), h = Int(sizePt.height*scale)
-        let td = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm, width: w, height: h, mipmapped: false)
-        td.usage = [.renderTarget, .shaderRead]; td.storageMode = .shared
-        guard let tex = device.makeTexture(descriptor: td) else { return nil }
-        let puppet = CharacterPuppet(kind: kind, state: state, now: 0)
-        var pose = puppet.pose(now: 0, motion: motion.params)
-        for f in 1...max(1, Int(t*60)) { pose = puppet.pose(now: Double(f)/60, motion: motion.params) }
-        let vp = framing.viewport(sizePt: sizePt, pixelsPerPoint: scale, kind: kind)
-        var (u, pts) = puppet.uniforms(pose, viewport: vp, finish: finish, time: t, gazeOverride: gaze)
-        if !framing.allowsAura { u.c.w = 0 }
-        let pass = MTLRenderPassDescriptor()
-        pass.colorAttachments[0].texture = tex
-        pass.colorAttachments[0].loadAction = .clear
-        pass.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 0)
-        pass.colorAttachments[0].storeAction = .store
-        guard let cb = queue.makeCommandBuffer(), let enc = cb.makeRenderCommandEncoder(descriptor: pass) else { return nil }
-        enc.setRenderPipelineState(pipeline)
-        enc.setFragmentBytes(&u, length: MemoryLayout<CharacterUniforms>.stride, index: 0)
-        pts.withUnsafeBytes { enc.setFragmentBytes($0.baseAddress!, length: $0.count, index: 1) }
-        enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
-        enc.endEncoding(); cb.commit(); cb.waitUntilCompleted()
-        var bytes = [UInt8](repeating: 0, count: w*h*4)
-        tex.getBytes(&bytes, bytesPerRow: w*4, from: MTLRegionMake2D(0, 0, w, h), mipmapLevel: 0)
-        let info = CGBitmapInfo.byteOrder32Little.rawValue | CGImageAlphaInfo.premultipliedFirst.rawValue
-        guard let ctx = CGContext(data: &bytes, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w*4,
-                                  space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: info) else { return nil }
-        return ctx.makeImage()
+        CharacterRenderer.shared.snapshot(kind: kind, state: state, finish: finish, motion: motion, framing: framing,
+                                          sizePt: sizePt, scale: scale, t: t, gaze: gaze)
     }
 
     // MARK: Sheets
@@ -274,7 +246,7 @@ enum DebugSnapshots {
         for dark in [true, false] {
             let appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
             let host = NSHostingView(rootView: MenuBarContentView(notificationManager: NotificationManager.shared)
-                .background(dark ? Color(white: 0.17) : Color(white: 0.93)))
+                .background(dark ? Color(white: 0.17) : Color(white: 0.6)))
             host.appearance = appearance
             let h = host.fittingSize.height
             guard let img = bitmap(host, size: CGSize(width: w, height: h), scale: s, settle: 0.5, appearance: appearance) else { continue }
