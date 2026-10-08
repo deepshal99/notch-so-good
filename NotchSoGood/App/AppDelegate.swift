@@ -39,6 +39,20 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         Telemetry.shared.trackEvent("app_launched")
 
+        // First run: say hello from the notch, so a new install shows where it
+        // lives and what it does instead of sitting silent until a session starts.
+        if !UserDefaults.standard.bool(forKey: "welcomed") {
+            UserDefaults.standard.set(true, forKey: "welcomed")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                let name = CharacterSettings.shared.kind.displayName
+                NotificationManager.shared.handleNotification(NotchNotification(
+                    type: .general,
+                    message: "I'll watch your Claude Code and Codex sessions and tap you when one needs you. Your usage lives in the menu bar.",
+                    title: "Hi, I'm \(name)"
+                ))
+            }
+        }
+
         // Hide/restore the pill when spaces change (fullscreen apps hide the menu bar)
         NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.activeSpaceDidChangeNotification,
