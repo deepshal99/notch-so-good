@@ -163,8 +163,15 @@ class NotchWindowController {
             context.timingFunction = CAMediaTimingFunction(name: .easeOut)
             pillPanel?.animator().alphaValue = 0
         }, completionHandler: { [weak self] in
-            self?.pillPanel?.orderOut(nil)
-            self?.pillPanel?.alphaValue = 1.0
+            guard let self else { return }
+            // A session can start during the fade (`/clear` ends one and starts
+            // the next): then the pill has been shown again and must stay.
+            guard !self.hasPillSession else {
+                self.pillPanel?.alphaValue = 1.0
+                return
+            }
+            self.pillPanel?.orderOut(nil)
+            self.pillPanel?.alphaValue = 1.0
         })
     }
 
