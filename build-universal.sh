@@ -23,7 +23,9 @@ echo ""
 # Build for Apple Silicon
 echo -e "  ${CYAN}Building arm64...${RESET}"
 swift build -c release --arch arm64 2>&1 | grep -E "Build complete|error:" || true
-ARM64_BIN=".build/arm64-apple-macosx/release/$APP_NAME"
+ARM64_BIN="$(swift build -c release --arch arm64 --show-bin-path 2>/dev/null | tail -1)/$APP_NAME"
+SLICES=$(mktemp -d)
+if [ -f "$ARM64_BIN" ]; then cp "$ARM64_BIN" "$SLICES/arm64"; ARM64_BIN="$SLICES/arm64"; fi
 if [ ! -f "$ARM64_BIN" ]; then
     echo "Error: arm64 build failed"
     exit 1
@@ -33,7 +35,8 @@ echo -e "  ${GREEN}✓${RESET} arm64"
 # Build for Intel
 echo -e "  ${CYAN}Building x86_64...${RESET}"
 swift build -c release --arch x86_64 2>&1 | grep -E "Build complete|error:" || true
-X86_BIN=".build/x86_64-apple-macosx/release/$APP_NAME"
+X86_BIN="$(swift build -c release --arch x86_64 --show-bin-path 2>/dev/null | tail -1)/$APP_NAME"
+if [ -f "$X86_BIN" ]; then cp "$X86_BIN" "$SLICES/x86_64"; X86_BIN="$SLICES/x86_64"; fi
 if [ ! -f "$X86_BIN" ]; then
     echo "Error: x86_64 build failed"
     exit 1

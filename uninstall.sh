@@ -116,6 +116,6 @@ defaults delete com.notchsogood.app 2>/dev/null && echo -e "  ${GREEN}✓${RESET
 rm -f /tmp/notchsogood.sock /tmp/notchsogood.port
 
 echo ""
-echo -e "  ${DIM}Chawd waves goodbye 👋🦀${RESET}"
+echo -e "  ${DIM}Peek waves goodbye 👋${RESET}"
 echo -e "  ${DIM}(installed via Homebrew? also run: brew uninstall --cask notch-so-good)${RESET}"
 echo ""

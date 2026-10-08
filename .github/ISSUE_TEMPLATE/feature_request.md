@@ -1,10 +1,10 @@
 ---
 name: Feature Request
-about: Chawd wants to learn new tricks.
+about: Peek wants to learn new tricks.
 title: "[Feature] "
 labels: enhancement
 ---
 
-**What should Chawd do?**
+**What should Peek do?**
 
 **Why would this be cool?**

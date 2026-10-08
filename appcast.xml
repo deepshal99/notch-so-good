@@ -3,25 +3,24 @@
     <channel>
         <title>Notch So Good Updates</title>
         <link>https://github.com/deepshal99/notch-so-good</link>
-        <description>Automatic updates for Notch So Good</description>
+        <description>Updates for Notch So Good</description>
         <language>en</language>
         <item>
-            <title>Version 4.5.0</title>
-            <pubDate>Thu, 13 Aug 2026 18:08:37 +0530</pubDate>
-            <sparkle:version>20</sparkle:version>
-            <sparkle:shortVersionString>4.5.0</sparkle:shortVersionString>
+            <title>Version 4.6.0</title>
+            <pubDate>Fri, 09 Oct 2026 02:00:00 +0530</pubDate>
+            <sparkle:version>22</sparkle:version>
+            <sparkle:shortVersionString>4.6.0</sparkle:shortVersionString>
             <description><![CDATA[
-                <h2>What's New in 4.5.0</h2>
-                <p>Chawd's choreography pass — the exaggerated squash-and-stretch moves (stretch, sneeze, hiccup) are gone; every animation now moves through translation and rotation only, so the pixel art never warps. New: a full moonwalk. Walk now leaves in a random direction each time.</p>
-                <p>Since 4.4.0: respects your permission mode (no more double prompts in bypass/auto/plan), accurate session status, lands on the right window and the right display, project-local permission rules, and a rewritten hook bridge.</p>
-                <p><b>This update can't be verified automatically</b> — click below to open the release page and download it directly, or run <code>brew upgrade notch-so-good</code>.</p>
+                <h2>What's new in 4.6.0</h2>
+                <p><b>Meet Peek.</b> The pixel crab has retired. Peek is a tiny 3D character, rendered live in Metal, who breathes, blinks, glances at you and climbs out of the notch the more a session needs you. Eight finishes: Obsidian, Chrome, Gold, Holo, Neon, Porcelain, Gummy and Frosted.</p>
+                <p><b>A new island.</b> Cards, the pill and the menu now share one design. Usage at a glance (5-hour ring, resets, pace forecast, heads-ups at 80% and 95%), each session with its own colour and task name, and a menu that opens like the notch does.</p>
+                <p><b>Safer approvals.</b> Notch So Good only ever approves a tool call when you click Allow. Chained shell commands never ride on an allow rule.</p>
+                <p><b>This update can't be installed automatically.</b> Download it from the release page below, or run <code>brew upgrade notch-so-good</code>.</p>
             ]]></description>
-            <!-- No <enclosure>: this is a Sparkle information-only update. We can't
-                 sign this build on this machine, and Sparkle refuses to auto-install
-                 anything it can't verify — by design, to protect you from installing
-                 a tampered update. This still surfaces "an update is available" and
-                 links you to the real release instead of silently doing nothing. -->
-            <link>https://github.com/deepshal99/notch-so-good/releases/tag/v4.5.0</link>
+            <!-- No <enclosure>: the Sparkle signing key isn't available to this release, and
+                 Sparkle refuses to auto-install anything it can't verify. Information-only
+                 update: it surfaces the notice and links to the release. -->
+            <link>https://github.com/deepshal99/notch-so-good/releases/tag/v4.6.0</link>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
         </item>
     </channel>

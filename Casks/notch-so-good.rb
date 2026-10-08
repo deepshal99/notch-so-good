@@ -1,10 +1,10 @@
 cask "notch-so-good" do
-  version "4.5.0"
-  sha256 "863dc97840ecc7592b17ffd498b0471c72b0116064dd9f4e2a7398d89ffe7a60"
+  version "4.6.0"
+  sha256 "ff01048e7b7412310408c64e88da0d3752942bd89611bc7db8a48916629c8342"
 
   url "https://github.com/deepshal99/notch-so-good/releases/download/v#{version}/NotchSoGood-#{version}.zip"
   name "Notch So Good"
-  desc "Pixel-art crab in your notch that watches Claude Code and Codex CLI sessions"
+  desc "Tiny 3D coworker in your notch that watches Claude Code and Codex CLI sessions"
   homepage "https://github.com/deepshal99/notch-so-good"
 
   livecheck do
@@ -30,8 +30,7 @@ cask "notch-so-good" do
 
   caveats <<~EOS
     Launch the app once and it installs the Claude Code / Codex CLI hooks for
-    you. To reinstall them later: menu bar Chawd icon -> Settings -> Reinstall
-    hooks.
+    you. To reinstall them later: menu bar icon -> Settings -> Reinstall hooks.
 
     For notifications to land on the display you're working on, and to focus the
     exact terminal window, grant Accessibility access when prompted.

@@ -1,6 +1,6 @@
 ---
 name: Bug Report
-about: Something broke? Chawd is sorry.
+about: Something broke? Peek is sorry.
 title: "[Bug] "
 labels: bug
 ---
