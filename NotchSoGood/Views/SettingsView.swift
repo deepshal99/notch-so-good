@@ -76,7 +76,7 @@ struct SettingsView: View {
 
     private var header: some View {
         HStack(spacing: 12) {
-            NotchTile(state: .work, size: 40, radius: 11, framing: .portrait, live: false)
+            NotchTile(state: .work, size: 40, radius: 11, framing: .badge, live: false)
             VStack(alignment: .leading, spacing: 2) {
                 Text("Notch So Good")
                     .font(.system(size: 15, weight: .semibold))

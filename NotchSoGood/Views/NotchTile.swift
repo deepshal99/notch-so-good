@@ -12,6 +12,13 @@ struct NotchTile: View {
     /// Metal layer (the character stayed blank there), so the menu uses a still.
     var live = true
 
+    /// A badge's notch covers the character's grip; elsewhere it's a sliver.
+    private var notch: CGSize {
+        framing == .badge
+            ? CGSize(width: size*CharacterFraming.badgeNotch.width, height: size*CharacterFraming.badgeNotch.height)
+            : CGSize(width: size*0.46, height: size*0.08)
+    }
+
     var body: some View {
         Group {
             if live {
@@ -25,9 +32,9 @@ struct NotchTile: View {
                 LinearGradient(colors: [Color(hex: "16161A"), Color(hex: "0B0B0D")], startPoint: .top, endPoint: .bottom)
             )
             .overlay(alignment: .top) {
-                UnevenRoundedRectangle(bottomLeadingRadius: size*0.07, bottomTrailingRadius: size*0.07, style: .continuous)
+                UnevenRoundedRectangle(bottomLeadingRadius: notch.height*0.75, bottomTrailingRadius: notch.height*0.75, style: .continuous)
                     .fill(Color.black)
-                    .frame(width: size*0.46, height: size*0.08)
+                    .frame(width: notch.width, height: notch.height)
             }
             .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
             .overlay(
@@ -44,6 +51,8 @@ struct CharacterStill: View {
     var kind: CharacterKind? = nil
     let framing: CharacterFraming
     let size: CGFloat
+    /// Wider than tall leaves room either side for edge light and glow.
+    var width: CGFloat? = nil
 
     @ObservedObject private var settings = CharacterSettings.shared
     @Environment(\.displayScale) private var displayScale
@@ -69,9 +78,9 @@ struct CharacterStill: View {
                     .transition(.opacity)
             }
         }
-        .task(id: "\(resolvedKind.rawValue)-\(settings.finish(for: resolvedKind).rawValue)-\(state.rawValue)-\(size)-\(displayScale)") {
+        .task(id: "\(resolvedKind.rawValue)-\(settings.finish(for: resolvedKind).rawValue)-\(state.rawValue)-\(size)-\(width ?? size)-\(displayScale)") {
             let kind = resolvedKind, finish = settings.finish(for: resolvedKind), state = state, framing = framing
-            let size = CGSize(width: size, height: size), scale = max(displayScale, 1), t = moment
+            let size = CGSize(width: width ?? size, height: size), scale = max(displayScale, 1), t = moment
             let rendered = await Task.detached(priority: .userInitiated) {
                 // No glow: on black it reads as a grey box around the character.
                 CharacterRenderer.shared.snapshot(kind: kind, state: state, finish: finish, framing: framing,

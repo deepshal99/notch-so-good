@@ -416,12 +416,14 @@ struct CharacterUniforms {
 }
 
 /// Where the character sits in the drawable: pixels per unit, and the pixel the
-/// origin maps to (top-left origin). The drawable's top edge is the notch line.
+/// origin maps to (top-left origin). The notch line is `notchY` pixels below
+/// the drawable's top edge (usually the edge itself).
 struct CharacterViewport {
     var size: SIMD2<Float>
     var center: SIMD2<Float>
     var scale: Float
-    var topY: Float { center.y/scale }
+    var notchY: Float = 0
+    var topY: Float { (center.y - notchY)/scale }
 }
 
 private func R2(_ a: Float, _ x: Float, _ y: Float) -> (Float, Float) { let c = cos(a), s = sin(a); return (c*x + s*y, -s*x + c*y) }

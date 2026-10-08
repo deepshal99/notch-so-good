@@ -85,7 +85,7 @@ final class CharacterRenderer {
         let puppet = CharacterPuppet(kind: kind, state: state, now: 0)
         var pose = puppet.pose(now: 0, motion: motion.params)
         for f in 1...max(1, Int(t*60)) { pose = puppet.pose(now: Double(f)/60, motion: motion.params) }
-        let vp = framing.viewport(sizePt: sizePt, pixelsPerPoint: scale, kind: kind)
+        let vp = framing.viewport(sizePt: sizePt, pixelsPerPoint: scale, kind: kind, state: state)
         var (u, pts) = puppet.uniforms(pose, viewport: vp, finish: finish, time: t, gazeOverride: gaze)
         if !framing.allowsAura || !aura { u.c.w = 0 }
         let pass = MTLRenderPassDescriptor()
@@ -145,8 +145,11 @@ enum CharacterFraming: Equatable {
     case tile
     /// An icon-sized tile: closer in, so the character fills it.
     case portrait
+    /// An avatar in a box: the whole character with air on every side, hanging
+    /// from a notch drawn just inside the box's top edge (see `NotchTile`).
+    case badge
 
-    func viewport(sizePt: CGSize, pixelsPerPoint s: CGFloat, kind: CharacterKind) -> CharacterViewport {
+    func viewport(sizePt: CGSize, pixelsPerPoint s: CGFloat, kind: CharacterKind, state: CharacterState) -> CharacterViewport {
         let w = Float(sizePt.width*s), h = Float(sizePt.height*s)
         switch self {
         case .pill:
@@ -161,11 +164,20 @@ enum CharacterFraming: Equatable {
             return CharacterViewport(size: [w, h], center: [w/2, h/2], scale: h/(kind.notchUnits*1.12))
         case .portrait:
             return CharacterViewport(size: [w, h], center: [w/2, h/2], scale: h/(kind.notchUnits*0.86))
+        case .badge:
+            return CharacterViewport(size: [w, h], center: [w/2, h/2], scale: h/(kind.notchUnits*Self.badgeUnits(for: state)),
+                                     notchY: h*Float(Self.badgeNotch.height))
         }
     }
 
+    /// How much taller than the character a badge is, and its notch as a
+    /// fraction of the box: deep enough to hold the grip, wide enough to cover it.
+    /// Reaching out for you, Peek hangs at arm's length, so it comes in smaller.
+    static func badgeUnits(for state: CharacterState) -> Float { state == .need ? 1.42 : 1.12 }
+    static let badgeNotch = CGSize(width: 0.8, height: 0.11)
+
     /// The glow around the character only works where nothing clips it.
-    var allowsAura: Bool { self == .tile || self == .portrait }
+    var allowsAura: Bool { self == .tile || self == .portrait || self == .badge }
 }
 
 /// A transparent Metal view that draws one animated character. It owns its puppet
@@ -300,7 +312,7 @@ final class CharacterMTKView: MTKView, MTKViewDelegate {
         let t = now
         let pose = puppet.pose(now: t, motion: effectiveMotion)
         let pixelsPerPoint = bounds.width > 0 ? drawableSize.width/bounds.width : (window?.backingScaleFactor ?? 2)
-        let vp = framing.viewport(sizePt: bounds.size, pixelsPerPoint: pixelsPerPoint, kind: kind)
+        let vp = framing.viewport(sizePt: bounds.size, pixelsPerPoint: pixelsPerPoint, kind: kind, state: state)
         var (uniforms, points) = puppet.uniforms(pose, viewport: vp, finish: finish, time: t, gazeOverride: gazeOverride)
         if !framing.allowsAura { uniforms.c.w = 0 }
 

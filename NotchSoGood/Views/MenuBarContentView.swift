@@ -98,18 +98,9 @@ struct MenuBarContentView: View {
     }
 
     private var header: some View {
-        HStack(spacing: 10) {
-            // Peek hangs from a little notch of its own: its arms reach the top
-            // of the render, which read as clipped with nothing to hold on to.
-            ZStack(alignment: .top) {
-                CharacterStill(state: characterState, framing: .portrait, size: 38)
-                    .frame(width: 38, height: 38)
-                    .padding(.top, 3.5)
-                Capsule()
-                    .fill(Color.white.opacity(0.22))
-                    .frame(width: 24, height: 3.5)
-            }
-            .frame(width: 40, height: 42, alignment: .top)
+        HStack(alignment: .center, spacing: 12) {
+            // Peek in its own little box, hanging from a notch of its own.
+            NotchTile(state: characterState, size: 44, radius: Island.radius - Island.inset - 6, framing: .badge, live: false)
             VStack(alignment: .leading, spacing: 2) {
                 Text("Notch So Good")
                     .font(Island.title)
@@ -124,10 +115,10 @@ struct MenuBarContentView: View {
                 RunwayIndicator(percentLeft: runway.percentLeft)
             }
         }
-        .padding(.leading, column - 10)
+        .padding(.top, Island.inset + 6)
+        .padding(.leading, Island.inset + 6)
         .padding(.trailing, column)
-        .padding(.top, 14)
-        .padding(.bottom, 8)
+        .padding(.bottom, 6)
     }
 
     // MARK: - Sessions (the notch's own rows)

@@ -26,11 +26,37 @@ enum DebugSnapshots {
             ctx.draw(img, in: CGRect(x: 0, y: 0, width: img.width, height: img.height))
             write(ctx.makeImage(), dir.appendingPathComponent("portrait.png"))
         }
+        badgeSheet(to: dir.appendingPathComponent("badge.png"))
         cardSheet(to: dir.appendingPathComponent("cards.png"))
         settingsSheet(to: dir.appendingPathComponent("settings.png"))
         popoverSheet(to: dir.appendingPathComponent("popover.png"))
         menuBarSheet(to: dir.appendingPathComponent("menubar.png"))
         exit(0)
+    }
+
+    /// The menu's avatar box in the poses the menu uses, in every finish.
+    static func badgeSheet(to url: URL) {
+        let pt: CGFloat = 44, s: CGFloat = 4, px = Int(pt*s), gap = 12*Int(s)
+        let finishes = CharacterKind.peek.finishes, states: [CharacterState] = [.work, .need, .done]
+        let ctx = canvas(gap + finishes.count*(px + gap), gap + states.count*(px + gap))
+        ctx.setFillColor(CGColor(gray: 0, alpha: 1)); ctx.fill(CGRect(x: 0, y: 0, width: ctx.width, height: ctx.height))
+        for (r, state) in states.enumerated() {
+            for (c, finish) in finishes.enumerated() {
+                let box = CGRect(x: gap + c*(px + gap), y: ctx.height - (gap + r*(px + gap)) - px, width: px, height: px)
+                let shape = CGPath(roundedRect: box, cornerWidth: 14*s, cornerHeight: 14*s, transform: nil)
+                ctx.saveGState(); ctx.addPath(shape); ctx.clip()
+                ctx.setFillColor(CGColor(red: 0x13/255, green: 0x13/255, blue: 0x16/255, alpha: 1)); ctx.fill(box)
+                let n = CharacterFraming.badgeNotch
+                let notch = CGRect(x: box.midX - box.width*n.width/2, y: box.maxY - box.height*n.height, width: box.width*n.width, height: box.height*n.height)
+                ctx.setFillColor(CGColor(gray: 0, alpha: 1))
+                ctx.addPath(CGPath(roundedRect: notch.insetBy(dx: 0, dy: -notch.height), cornerWidth: notch.height*0.75, cornerHeight: notch.height*0.75, transform: nil)); ctx.fillPath()
+                if let img = render(kind: .peek, state: state, finish: finish, framing: .badge, sizePt: CGSize(width: pt, height: pt), scale: s, t: 1.4) {
+                    ctx.draw(img, in: box)
+                }
+                ctx.restoreGState()
+            }
+        }
+        write(ctx.makeImage(), url)
     }
 
     // MARK: Offscreen Metal
