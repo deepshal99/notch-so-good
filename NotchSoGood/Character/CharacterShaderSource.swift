@@ -261,11 +261,9 @@ vertex VOut characterVertex(uint vid [[vertex_id]]) {
     VOut o; o.position = float4(p*2.0 - 1.0, 0.0, 1.0); return o;
 }
 
-fragment float4 characterFragment(VOut in [[stage_in]],
-                                  constant Uniforms& uniforms [[buffer(0)]],
-                                  constant float4* points [[buffer(1)]]) {
-    Ctx c; c.u = &uniforms; c.T = points; c.mat = 0.0; c.rim = 1e9;
-    float2 xy = (in.position.xy - U.resCenter.zw)/uScale*float2(1.0, -1.0);
+// One sample of the character at a point on the image plane (character units).
+static float4 shade(thread Ctx& c, float2 xy) {
+    c.mat = 0.0; c.rim = 1e9;
     float D = 9.0;
     float3 ro = float3(0.0, 0.0, D), rd = normalize(float3(xy, -D));
     float3 oc = ro - uBound.xyz; float bb = dot(oc, rd), disc = bb*bb - (dot(oc, oc) - uBound.w*uBound.w);
@@ -277,8 +275,9 @@ fragment float4 characterFragment(VOut in [[stage_in]],
         t += d; if (t > tEnd) break;
     }
     float4 bgl = bgLayer(c, xy, minD);
+    // Supersampling handles the silhouette; this only softens the last half pixel.
     float pix = 1.0/uScale;
-    float cov = hit ? 1.0 : 1.0 - smoothstep(0.0, pix*1.4, minD);
+    float cov = hit ? 1.0 : 1.0 - smoothstep(0.0, pix*0.6, minD);
     if (cov < 0.01) return bgl;
     float3 p = ro + rd*t, n = nrm(c, p), V = -rd;
     if (p.y > uTopY) return bgl;                                 // tucked behind the notch
@@ -292,8 +291,9 @@ fragment float4 characterFragment(VOut in [[stage_in]],
     float occ = KIND <= 2 ? ao(c, p, n) : 1.0;
     float3 base = uBase*(1.0 - 0.6*uDark);
     float3 col;
-    if (FINISH == 0) {          // obsidian: black glass
-        col = base*(0.2 + 0.8*dif) + envMap(c, R, 0.0)*(mix(0.05, 0.9, fres) + 0.16) + pow(nh, 160.0)*0.9;
+    if (FINISH == 0) {          // obsidian: black glass, with a cool edge light so it reads on a black notch
+        col = base*(0.2 + 0.8*dif) + envMap(c, R, 0.0)*(mix(0.1, 1.0, fres) + 0.26) + pow(nh, 160.0)*1.0;
+        col += float3(0.62, 0.66, 0.74)*pow(f1, 3.2)*0.6;
     } else if (FINISH == 1) {   // soft-touch rubber
         col = base*(0.16 + 0.95*wrap)*occ + float3(pow(nh, 10.0)*0.10) + envMap(c, R, 0.35)*fres*0.25;
     } else if (FINISH == 2) {   // porcelain
@@ -360,7 +360,7 @@ fragment float4 characterFragment(VOut in [[stage_in]],
         float fr = smoothstep(0.12, 0.42, nO.z)*step(0.0, q.z);
         float2 fc = q.xy - (uFace + uGaze);
         if (KIND == 2) fc = -fc;
-        float e = eyes(c, fc), aa = pix*1.1;
+        float e = eyes(c, fc), aa = pix*0.7;
         float eye = smoothstep(aa, -aa, e)*fr, halo = smoothstep(0.09, 0.0, e)*fr;
         float3 ec = uEyeCol;
         float bright = step(0.5, dot(ec, float3(0.33)));
@@ -374,6 +374,26 @@ fragment float4 characterFragment(VOut in [[stage_in]],
     col = pow(max(col, float3(0.0)), float3(0.94));
     float a = cov*alpha;
     return float4(col*cov, a) + bgl*(1.0 - a);
+}
+
+// Adaptive anti-aliasing: one ray per pixel, and three more on a rotated grid
+// wherever the result changes across the pixel quad (the silhouette, the eyes,
+// a specular edge). Interior and empty pixels stay at one ray, so the notch
+// pill, which is on screen all day, pays for edges only.
+fragment float4 characterFragment(VOut in [[stage_in]],
+                                  constant Uniforms& uniforms [[buffer(0)]],
+                                  constant float4* points [[buffer(1)]]) {
+    Ctx c; c.u = &uniforms; c.T = points; c.mat = 0.0; c.rim = 1e9;
+    float2 px = in.position.xy;
+    float2 toUnits = float2(1.0, -1.0)/uScale;
+    float4 s0 = shade(c, (px + float2(-0.125, -0.375) - U.resCenter.zw)*toUnits);
+    float edge = fwidth(s0.a) + fwidth(dot(s0.rgb, float3(0.33)));
+    if (edge < 0.04) return s0;
+    float4 acc = s0;
+    acc += shade(c, (px + float2( 0.375, -0.125) - U.resCenter.zw)*toUnits);
+    acc += shade(c, (px + float2( 0.125,  0.375) - U.resCenter.zw)*toUnits);
+    acc += shade(c, (px + float2(-0.375,  0.125) - U.resCenter.zw)*toUnits);
+    return acc*0.25;
 }
 """#
 }

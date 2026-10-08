@@ -48,7 +48,7 @@ enum CharacterKind: String, CaseIterable, Identifiable {
     /// as big as its tallest pose allows: Peek is compact, Roost hangs long.
     var notchUnits: Float {
         switch self {
-        case .peek: return 2.3
+        case .peek: return 2.1
         case .tail: return 2.85
         case .roost: return 3.05
         case .bubble: return 2.7
