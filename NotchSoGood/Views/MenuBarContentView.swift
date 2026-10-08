@@ -30,6 +30,7 @@ struct MenuBarContentView: View {
             header
             sessions
             VStack(spacing: Island.inset) {
+                if notificationManager.hooksInstallFailed { hooksCard }
                 if !axTrusted { accessibilityCard }
                 usageCard
                 footer
@@ -56,7 +57,9 @@ struct MenuBarContentView: View {
         .environment(\.colorScheme, .dark)
         .onAppear {
             axTrusted = AXIsProcessTrusted()
-            limits.refresh(force: true)
+            // Not forced: at most every few minutes, so opening the menu never
+            // means a Keychain read and two requests each time.
+            limits.refresh()
         }
         .onReceive(axRecheck) { _ in axTrusted = AXIsProcessTrusted() }
     }
@@ -282,6 +285,39 @@ struct MenuBarContentView: View {
         let time = date.formatted(.dateTime.hour().minute())
         if Calendar.current.isDate(date, inSameDayAs: now) { return "at \(time)" }
         return "on \(date.formatted(.dateTime.weekday(.abbreviated))) at \(time)"
+    }
+
+    // MARK: - Hooks
+
+    /// Shown only if connecting to the agents failed (no python3, unreadable
+    /// settings): without hooks nothing else in the app can work.
+    private var hooksCard: some View {
+        HStack(spacing: 10) {
+            StatusDot(color: CharacterState.error.color)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Couldn't connect to Claude Code")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(Island.primary)
+                Text("Hooks didn't install, so sessions won't show up.")
+                    .font(.system(size: 11.5))
+                    .foregroundColor(Island.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 8)
+            Button("Retry") { notificationManager.installHooks() }
+                .buttonStyle(.plain)
+                .font(Island.button)
+                .foregroundColor(.black)
+                .padding(.horizontal, 14)
+                .frame(height: 28)
+                .background(Capsule().fill(Color.white.opacity(0.94)))
+        }
+        .padding(Island.cardPadding)
+        .background(
+            RoundedRectangle(cornerRadius: Island.cardRadius, style: .continuous)
+                .fill(Island.card)
+                .overlay(RoundedRectangle(cornerRadius: Island.cardRadius, style: .continuous).strokeBorder(Island.hairline, lineWidth: 1))
+        )
     }
 
     // MARK: - Accessibility

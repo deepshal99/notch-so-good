@@ -732,26 +732,43 @@ class NotificationManager: ObservableObject {
         let installed = UserDefaults.standard.string(forKey: "hooksInstalledVersion") ?? ""
 
         if installed != stamp {
-            installHooks()
-            UserDefaults.standard.set(stamp, forKey: "hooksInstalledVersion")
+            // Recorded only once the install actually succeeded, so a failure
+            // (no python3, unreadable settings) is retried on the next launch.
+            installHooks { ok in
+                if ok { UserDefaults.standard.set(stamp, forKey: "hooksInstalledVersion") }
+            }
         }
     }
 
-    func installHooks() {
-        let bundle = Bundle.main
-        // Install Claude Code hooks
-        if let script = bundle.path(forResource: "install-hooks", ofType: "sh") {
-            let task = Process()
-            task.executableURL = URL(fileURLWithPath: "/bin/bash")
-            task.arguments = [script]
-            try? task.run()
+    /// Whether the last hook install worked; the menu shows a note if not.
+    @Published var hooksInstallFailed = false
+
+    /// Runs both installers off the main thread and reports whether they
+    /// succeeded. The Codex one skips itself when Codex isn't installed.
+    func installHooks(completion: ((Bool) -> Void)? = nil) {
+        let scripts = ["install-hooks", "install-codex-hooks"].compactMap {
+            Bundle.main.path(forResource: $0, ofType: "sh")
         }
-        // Install Codex CLI hooks
-        if let script = bundle.path(forResource: "install-codex-hooks", ofType: "sh") {
-            let task = Process()
-            task.executableURL = URL(fileURLWithPath: "/bin/bash")
-            task.arguments = [script]
-            try? task.run()
+        DispatchQueue.global(qos: .utility).async {
+            var ok = !scripts.isEmpty
+            for script in scripts {
+                let task = Process()
+                task.executableURL = URL(fileURLWithPath: "/bin/bash")
+                task.arguments = [script]
+                task.standardOutput = FileHandle.nullDevice
+                task.standardError = FileHandle.nullDevice
+                do {
+                    try task.run()
+                    task.waitUntilExit()
+                    if task.terminationStatus != 0 { ok = false }
+                } catch {
+                    ok = false
+                }
+            }
+            DispatchQueue.main.async {
+                self.hooksInstallFailed = !ok
+                completion?(ok)
+            }
         }
     }
 

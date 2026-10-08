@@ -132,7 +132,17 @@ struct SettingsView: View {
 private struct GeneralPane: View {
     @ObservedObject var notificationManager: NotificationManager
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
-    @State private var hooksReinstalled = false
+    private enum HookState { case idle, working, done, failed
+        var label: String {
+            switch self {
+            case .idle: return "Reinstall"
+            case .working: return "Installing…"
+            case .done: return "Reinstalled"
+            case .failed: return "Failed, retry"
+            }
+        }
+    }
+    @State private var hookState = HookState.idle
 
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
@@ -164,12 +174,12 @@ private struct GeneralPane: View {
                 PanelDivider()
                 PanelRow(icon: "link", title: "Agent hooks",
                          subtitle: "Connects Claude Code and Codex. Reinstall if cards stop appearing.") {
-                    Button(hooksReinstalled ? "Reinstalled" : "Reinstall") {
-                        notificationManager.installHooks()
-                        hooksReinstalled = true
+                    Button(hookState.label) {
+                        hookState = .working
+                        notificationManager.installHooks { ok in hookState = ok ? .done : .failed }
                     }
-                    .buttonStyle(PanelButtonStyle(kind: hooksReinstalled ? .quiet : .outline))
-                    .disabled(hooksReinstalled)
+                    .buttonStyle(PanelButtonStyle(kind: hookState == .done ? .quiet : .outline))
+                    .disabled(hookState == .working || hookState == .done)
                 }
             }
         }

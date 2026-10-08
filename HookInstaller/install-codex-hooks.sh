@@ -21,6 +21,12 @@ if [ ! -f "$SCRIPT_DIR/hook.py" ]; then
     exit 1
 fi
 
+# Nothing to do for people who don't use Codex: don't create ~/.codex for them.
+if [ ! -d "$CODEX_DIR" ] && ! command -v codex &> /dev/null; then
+    echo "Codex CLI not found — skipping its hooks."
+    exit 0
+fi
+
 mkdir -p "$CODEX_DIR"
 mkdir -p "$BRIDGE_DIR"
 cp "$SCRIPT_DIR/hook.py" "$BRIDGE"
