@@ -72,8 +72,9 @@ final class MenuBarController: NSObject, NSWindowDelegate {
         layout(anchor: buttonWindow.frame)
 
         statusItem?.button?.highlight(true)
+        // A non-activating panel takes keys without bringing the app forward,
+        // so when it closes, focus is simply where it was.
         panel.makeKeyAndOrderFront(nil)
-        NSApp.activate()
         installDismissTriggers()
     }
 
@@ -94,6 +95,9 @@ final class MenuBarController: NSObject, NSWindowDelegate {
             return event
         }
         let center = NSWorkspace.shared.notificationCenter
+        workspaceObservers.append(NotificationCenter.default.addObserver(
+            forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main
+        ) { [weak self] _ in Task { @MainActor in self?.close() } })
         for name in [NSWorkspace.didActivateApplicationNotification, NSWorkspace.activeSpaceDidChangeNotification] {
             workspaceObservers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] note in
                 if let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
@@ -108,7 +112,10 @@ final class MenuBarController: NSObject, NSWindowDelegate {
         if let localClickMonitor { NSEvent.removeMonitor(localClickMonitor) }
         outsideClickMonitor = nil
         localClickMonitor = nil
-        workspaceObservers.forEach(NSWorkspace.shared.notificationCenter.removeObserver)
+        workspaceObservers.forEach {
+            NSWorkspace.shared.notificationCenter.removeObserver($0)
+            NotificationCenter.default.removeObserver($0)
+        }
         workspaceObservers = []
     }
 
