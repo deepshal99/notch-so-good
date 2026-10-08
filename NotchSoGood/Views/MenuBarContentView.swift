@@ -35,11 +35,12 @@ struct MenuBarContentView: View {
             .padding(.bottom, Island.inset)
         }
         .frame(width: Self.width)
-        // Fill the whole window, top-aligned: the window can be taller than the
-        // content for a moment while it resizes, and its own background must
-        // never show (it was white in Light mode).
-        .frame(maxHeight: .infinity, alignment: .top)
-        .background(Color.black.ignoresSafeArea())
+        // Hug the content exactly: the window sizes itself from this, so it
+        // grows and shrinks with what's shown (a flexible height left empty
+        // space when, say, the Accessibility card went away).
+        .fixedSize(horizontal: false, vertical: true)
+        .background(Color.black)
+        .ignoresSafeArea()
         .background(WindowReader { window in
             self.window = window
             window?.appearance = NSAppearance(named: .darkAqua)
@@ -61,9 +62,11 @@ struct MenuBarContentView: View {
         sessionsList.filter { $0.status == .needsInput || $0.status == .needsPermission }.count
     }
 
+    /// The portrait's pose. Idle tucks the character up into the notch, which
+    /// crops badly as a still, so the portrait stays awake; the status line
+    /// says it's off duty.
     private var characterState: CharacterState {
-        if waitingCount > 0 { return .need }
-        return sessionsList.isEmpty ? .idle : .work
+        waitingCount > 0 ? .need : .work
     }
 
     private var statusLine: String {
@@ -178,48 +181,52 @@ struct MenuBarContentView: View {
         }
     }
 
+    /// One agent: a header that labels the columns once, then a line per
+    /// limit (ring, name, reset, what's left), and one warning if the pace
+    /// won't last.
     private func agentUsage(_ agent: AgentSource, windows: [UsageLimitsStore.LimitWindow], now: Date) -> some View {
         let runout = Self.firstRunout(windows, now: now)
-        return VStack(alignment: .leading, spacing: 11) {
-            Text(agent == .claude ? "Claude Code" : agent.displayName)
-                .font(.system(size: 11.5, weight: .semibold))
-                .foregroundColor(Island.tertiary)
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                Text(agent == .claude ? "Claude Code" : agent.displayName)
+                Spacer(minLength: 8)
+                Text("resets").frame(minWidth: Self.resetColumn, alignment: .trailing)
+                Text("left").frame(minWidth: Self.percentColumn, alignment: .trailing)
+            }
+            .font(.system(size: 11, weight: .medium))
+            .foregroundColor(Island.tertiary)
+
             ForEach(windows) { window in
                 let low = window.percentLeft < 25
-                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                let warned = runout?.id == window.id
+                HStack(spacing: 10) {
                     UsageRing(percentLeft: window.percentLeft, diameter: 13, lineWidth: 2.6,
                               tint: UsageTint.notch(window.percentLeft), track: Color.white.opacity(0.16))
-                        .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 4.5 }
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(Self.name(window))
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundColor(Island.primary)
-                            .lineLimit(1)
-                        if let resetsAt = window.resetsAt {
-                            Text("resets in \(UsageLimitsStore.resetCountdown(resetsAt))")
-                                .font(.system(size: 11).monospacedDigit())
-                                .foregroundColor(runout?.id == window.id ? CharacterState.need.color : Island.tertiary)
-                        }
-                    }
+                    Text(Self.name(window))
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(Island.primary)
+                        .lineLimit(1)
                     Spacer(minLength: 8)
-                    HStack(alignment: .firstTextBaseline, spacing: 3) {
-                        Text("\(window.percentLeft)%")
-                            .font(.system(size: 15, weight: .semibold).monospacedDigit())
-                            .foregroundColor(low ? UsageTint.notch(window.percentLeft) : Island.primary)
-                        Text("left")
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(Island.tertiary)
-                    }
+                    Text(window.resetsAt.map { UsageLimitsStore.resetCountdown($0) } ?? "–")
+                        .font(.system(size: 12, weight: .medium).monospacedDigit())
+                        .foregroundColor(warned ? CharacterState.need.color : Island.secondary)
+                        .frame(minWidth: Self.resetColumn, alignment: .trailing)
+                    Text("\(window.percentLeft)%")
+                        .font(.system(size: 13.5, weight: .semibold).monospacedDigit())
+                        .foregroundColor(low ? UsageTint.notch(window.percentLeft) : Island.primary)
+                        .frame(minWidth: Self.percentColumn, alignment: .trailing)
                 }
+                .frame(height: 22)
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel("\(Self.name(window)), \(window.percentLeft) percent left"
                                     + (window.resetsAt.map { ", resets in \(UsageLimitsStore.resetCountdown($0))" } ?? ""))
             }
+
             if let runout, let date = runout.runsOut {
                 HStack(spacing: 8) {
                     StatusDot(color: CharacterState.need.color, size: 6)
-                    Text("At this pace, \(Self.name(runout).lowercased()) runs out \(Self.when(date, now: now))")
-                        .font(Island.meta)
+                    Text("\(Self.name(runout)) runs out \(Self.when(date, now: now)) at this pace")
+                        .font(.system(size: 11.5, weight: .medium))
                         .foregroundColor(CharacterState.need.color)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -227,6 +234,9 @@ struct MenuBarContentView: View {
             }
         }
     }
+
+    private static let resetColumn: CGFloat = 52
+    private static let percentColumn: CGFloat = 40
 
     private var placeholderText: String {
         switch limits.status {
