@@ -481,17 +481,10 @@ struct IslandButton: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 6) {
-                Text(label)
-                    .font(Island.button)
-                    .lineLimit(1)
-                if let shortcut {
-                    Text(shortcut)
-                        .font(.system(size: 10.5, weight: .medium))
-                        .opacity(0.45)
-                        .lineLimit(1)
-                }
-            }
+            // Just the word: the shortcut lives in the tooltip, not the label.
+            Text(label)
+                .font(Island.button)
+                .lineLimit(1)
             .foregroundColor(style == .primary ? Color.black : Island.primary)
             .frame(maxWidth: .infinity)
             .frame(height: NotchNotificationView.Metrics.buttonHeight)

@@ -99,8 +99,17 @@ struct MenuBarContentView: View {
 
     private var header: some View {
         HStack(spacing: 10) {
-            CharacterStill(state: characterState, framing: .portrait, size: 40)
-                .frame(width: 40, height: 40)
+            // Peek hangs from a little notch of its own: its arms reach the top
+            // of the render, which read as clipped with nothing to hold on to.
+            ZStack(alignment: .top) {
+                CharacterStill(state: characterState, framing: .portrait, size: 38)
+                    .frame(width: 38, height: 38)
+                    .padding(.top, 3.5)
+                Capsule()
+                    .fill(Color.white.opacity(0.22))
+                    .frame(width: 24, height: 3.5)
+            }
+            .frame(width: 40, height: 42, alignment: .top)
             VStack(alignment: .leading, spacing: 2) {
                 Text("Notch So Good")
                     .font(Island.title)

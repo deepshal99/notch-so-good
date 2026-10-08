@@ -52,7 +52,7 @@ enum CharacterKind: String, CaseIterable, Identifiable {
 
     var finishes: [CharacterFinish] {
         switch self {
-        case .peek: return [.obsidian, .chrome, .gold, .holo, .neon, .porcelain, .gummy, .frosted]
+        case .peek: return [.neon, .obsidian, .chrome, .gold, .holo, .porcelain, .gummy, .frosted]
         case .tail: return [.obsidian, .glass, .chrome, .pearl]
         case .roost: return [.obsidian, .velvet, .anodised, .porcelain]
         case .bubble: return [.glass, .pearl, .obsidian, .chrome]
