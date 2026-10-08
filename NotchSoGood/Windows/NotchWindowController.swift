@@ -26,7 +26,10 @@ class NotchWindowController {
     private let pillDataSource = PillDataSource()
 
     // Track current permission notification so we can dismiss it programmatically
-    private var activePermissionRequestId: String?
+    private var activePermissionRequestId: String? {
+        // The approve/deny shortcuts exist only while there's something to answer.
+        didSet { HotkeyManager.shared.setArmed(activePermissionRequestId != nil) }
+    }
     /// The notification currently on screen, for re-laying out on display changes.
     private var activeNotification: NotchNotification?
     /// Exit-animation signal for the currently visible notification
