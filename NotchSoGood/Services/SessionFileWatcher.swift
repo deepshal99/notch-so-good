@@ -192,13 +192,12 @@ class SessionFileWatcher {
     private func handleInterrupt(sessionId: String) {
         DispatchQueue.main.async {
             // Cancel any pending permission requests for this session
+            // Only this session's requests: another session's card stays up.
             let pendingIds = PermissionServer.shared.pendingRequestIds(for: sessionId)
             for reqId in pendingIds {
                 PermissionServer.shared.respond(requestId: reqId, response: .deny)
+                NotificationManager.shared.windowController.dismissPermission(requestId: reqId)
             }
-
-            // Dismiss the permission notification if it's for this session
-            NotificationManager.shared.windowController.dismiss()
 
             // Update session status
             NotificationManager.shared.updateSessionStatus(sessionId: sessionId, status: .needsInput)
