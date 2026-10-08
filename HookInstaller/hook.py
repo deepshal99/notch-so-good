@@ -83,6 +83,9 @@ def send(event, wait=False):
 
     sock = None
     try:
+        # /tmp is shared: only talk to a socket our own user created.
+        if os.stat(SOCKET_PATH).st_uid != os.getuid():
+            return None
         sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         sock.settimeout(DECISION_TIMEOUT if wait else SEND_TIMEOUT)
         sock.connect(SOCKET_PATH)
