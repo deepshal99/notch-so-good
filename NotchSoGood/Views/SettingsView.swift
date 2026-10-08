@@ -255,19 +255,37 @@ private struct CharacterPane: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
             PanelSection {
-                VStack(alignment: .leading, spacing: 14) {
-                    HStack(spacing: 0) {
-                        ForEach(CharacterKind.allCases) { kind in
-                            choice(kind)
-                            if kind != CharacterKind.allCases.last { Spacer(minLength: 0) }
+                if CharacterKind.available.count > 1 {
+                    VStack(alignment: .leading, spacing: 14) {
+                        HStack(spacing: 0) {
+                            ForEach(CharacterKind.available) { kind in
+                                choice(kind)
+                                if kind != CharacterKind.available.last { Spacer(minLength: 0) }
+                            }
                         }
+                        Text(settings.kind.tagline)
+                            .font(Panel.subtitle)
+                            .foregroundColor(Panel.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
-                    Text(settings.kind.tagline)
-                        .font(Panel.subtitle)
-                        .foregroundColor(Panel.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+                    .padding(Panel.rowPadding)
+                } else {
+                    // One character: a portrait, not a picker with one option.
+                    HStack(spacing: 16) {
+                        NotchTile(state: .need, size: 96, radius: 20)
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text(settings.kind.displayName)
+                                .font(.system(size: 17, weight: .semibold))
+                                .foregroundColor(Panel.primary)
+                            Text(settings.kind.tagline)
+                                .font(Panel.subtitle)
+                                .foregroundColor(Panel.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .padding(Panel.rowPadding)
                 }
-                .padding(Panel.rowPadding)
             }
 
             PanelSection("Look and feel") {
@@ -280,11 +298,10 @@ private struct CharacterPane: View {
                         Text("Finish").font(Panel.title).foregroundColor(Panel.primary)
                         Spacer()
                     }
-                    HStack(spacing: 18) {
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), spacing: 14) {
                         ForEach(settings.kind.finishes) { finish in
                             swatch(finish)
                         }
-                        Spacer(minLength: 0)
                     }
                     .padding(.leading, Panel.iconColumn + 12)
                 }

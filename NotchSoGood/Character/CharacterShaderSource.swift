@@ -314,9 +314,30 @@ static float4 shade(thread Ctx& c, float2 xy) {
     } else if (FINISH == 7) {   // pearl
         float3 tf = film(ndv*1.35 + q.y*0.15 + 0.1);
         col = mix3(float3(0.92), tf, 0.28)*(0.25 + 0.75*wrap)*occ + envMap(c, R, 0.0)*(0.05 + 0.8*fres5)*tf + pow(nh, 180.0)*0.9;
-    } else {                    // velvet
+    } else if (FINISH == 8) {   // velvet
         float sheen = pow(1.0 - ndv, 2.4);
         col = base*(0.10 + 0.55*wrap)*occ + mix3(base, float3(1.0), 0.35)*sheen*0.9*(0.4 + 0.6*wrap);
+    } else if (FINISH == 9) {   // gold: polished, warm reflections
+        float sk = smoothstep(-0.05, 0.9, R.y);
+        float3 e = envMap(c, R, 0.04)*1.05 + float3(0.10 + sk*0.42);
+        col = e*base*mix(0.85, 1.15, fres) + base*(0.06 + 0.22*wrap)*occ + pow(nh, 220.0)*float3(1.0, 0.95, 0.8)*1.3;
+    } else if (FINISH == 10) {  // holo: chrome with a thin film that shifts colour with angle
+        float sk = smoothstep(-0.05, 0.9, R.y);
+        // pastel, like a holographic sticker: bright silver under a soft rainbow
+        float3 tf = mix3(film(ndv*1.5 + q.y*0.35 + q.x*0.2 + uTime*0.04), float3(1.0), 0.3);
+        float3 e = envMap(c, R, 0.0)*0.85 + float3(0.32 + sk*0.38);
+        col = e*mix3(float3(0.92), tf, 0.62)*(0.9 + 0.25*fres) + pow(nh, 260.0)*1.2;
+        col *= mix(0.8, 1.0, occ);
+    } else if (FINISH == 11) {  // neon: dark body, its edge glowing in the state colour
+        col = base*(0.2 + 0.6*wrap)*occ + uAccent*(pow(f1, 2.4)*1.7 + 0.05) + float3(pow(nh, 140.0)*0.35);
+        col += uAccent*uGlow*pow(f1, 6.0)*0.6;
+    } else if (FINISH == 12) {  // gummy: translucent candy, lit from within
+        float inner = pow(ndv, 1.6);
+        col = base*(0.28 + 0.55*wrap)*occ*0.9 + mix3(base, float3(1.0), 0.25)*inner*0.4
+            + envMap(c, R, 0.08)*(0.05 + 0.7*fres5) + float3(pow(nh, 90.0)*0.9);
+    } else {                    // frosted: milky glass with a soft inner glow
+        col = base*(0.16 + 0.42*wrap)*occ + envMap(c, R, 0.45)*(0.12 + 0.55*fres)
+            + uAccent*uGlow*pow(ndv, 2.0)*0.22 + float3(pow(nh, 30.0)*0.12);
     }
     // Every solid finish gets a crisp, cool edge light in proportion to how dark
     // it is, so the silhouette reads on a black notch without lifting the body.
@@ -325,6 +346,8 @@ static float4 shade(thread Ctx& c, float2 xy) {
         col += float3(0.62, 0.66, 0.74)*pow(f1, 6.0)*0.75*(1.0 - lum);
     }
     float alpha = 1.0;
+    if (KIND != 3 && FINISH == 12) alpha = 0.86 + 0.14*fres;          // gummy lets a little through
+    if (KIND != 3 && FINISH == 13) alpha = 0.72 + 0.26*fres;          // frosted, more so
     if (KIND == 3 && FINISH == 5 && mat < 0.5) {
         // Mercury: a liquid-metal bubble. Keeps the chrome shading, solid.
         alpha = 1.0;

@@ -61,12 +61,12 @@ enum DebugSnapshots {
 
     static func finishSheet(to url: URL) {
         let tile: CGFloat = 150, gap: CGFloat = 8
-        let kinds = CharacterKind.allCases
-        sheet(cols: 8, rows: kinds.count, tile: tile, gap: gap, url: url) { ctx, cell in
-            // Each character's four finishes, at rest (work) and wanting you (need).
-            let kind = kinds[cell.row], finish = kind.finishes[cell.col % 4]
-            let state: CharacterState = cell.col < 4 ? .work : .need
-            if let img = render(kind: kind, state: state, finish: finish, framing: .tile, sizePt: CGSize(width: tile/2, height: tile/2), t: 1.6) {
+        // Peek's finishes, at rest (work) and wanting you (need).
+        let fins = CharacterKind.peek.finishes
+        sheet(cols: fins.count, rows: 2, tile: tile, gap: gap, url: url) { ctx, cell in
+            let finish = fins[cell.col]
+            let state: CharacterState = cell.row == 0 ? .work : .need
+            if let img = render(kind: .peek, state: state, finish: finish, framing: .tile, sizePt: CGSize(width: tile/2, height: tile/2), t: 1.6) {
                 ctx.draw(img, in: cell.rect)
             }
         }

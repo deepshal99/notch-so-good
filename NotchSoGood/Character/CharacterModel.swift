@@ -46,9 +46,13 @@ enum CharacterKind: String, CaseIterable, Identifiable {
 
     /// The finishes that suit this character, best first. Each character has
     /// its own: a soap bubble has films, not ceramics.
+    /// The characters offered to people. The others stay in the engine for
+    /// later; for now it's Peek.
+    static let available: [CharacterKind] = [.peek]
+
     var finishes: [CharacterFinish] {
         switch self {
-        case .peek: return [.obsidian, .porcelain, .chrome, .clay]
+        case .peek: return [.obsidian, .chrome, .gold, .holo, .neon, .porcelain, .gummy, .frosted]
         case .tail: return [.obsidian, .glass, .chrome, .pearl]
         case .roost: return [.obsidian, .velvet, .anodised, .porcelain]
         case .bubble: return [.glass, .pearl, .obsidian, .chrome]
@@ -110,7 +114,9 @@ enum CharacterState: String, CaseIterable {
 
 /// Surface materials. A personal setting; the state colour always shows through as rim light.
 enum CharacterFinish: String, CaseIterable, Identifiable {
+    // Order is the shader's FINISH index: append new finishes at the end.
     case obsidian, soft, porcelain, clay, glass, chrome, anodised, pearl, velvet
+    case gold, holo, neon, gummy, frosted
 
     var id: String { rawValue }
 
@@ -154,6 +160,11 @@ enum CharacterFinish: String, CaseIterable, Identifiable {
         case .anodised: return "Anodised"
         case .pearl: return "Pearl"
         case .velvet: return "Velvet"
+        case .gold: return "Gold"
+        case .holo: return "Holo"
+        case .neon: return "Neon"
+        case .gummy: return "Gummy"
+        case .frosted: return "Frosted"
         }
     }
 
@@ -168,6 +179,11 @@ enum CharacterFinish: String, CaseIterable, Identifiable {
         case .anodised: return [0.24, 0.27, 0.34]
         case .pearl: return [0.92, 0.92, 0.92]
         case .velvet: return [0.42, 0.29, 0.60]
+        case .gold: return [1.0, 0.77, 0.34]
+        case .holo: return [0.55, 0.56, 0.62]
+        case .neon: return [0.03, 0.03, 0.04]
+        case .gummy: return [1.0, 0.36, 0.48]
+        case .frosted: return [0.86, 0.9, 0.97]
         }
     }
 
@@ -195,6 +211,11 @@ enum CharacterFinish: String, CaseIterable, Identifiable {
         case .anodised: return AnyShapeStyle(LinearGradient(colors: [Color(hex: "566074"), Color(hex: "2B313D")], startPoint: .topLeading, endPoint: .bottomTrailing))
         case .pearl: return AnyShapeStyle(AngularGradient(colors: [Color(hex: "F6E7F2"), Color(hex: "E2F1F6"), Color(hex: "EEF6E2"), Color(hex: "F6EFE2"), Color(hex: "F6E7F2")], center: .center))
         case .velvet: return AnyShapeStyle(RadialGradient(colors: [Color(hex: "9A78C4"), Color(hex: "4E3570")], center: .init(x: 0.35, y: 0.3), startRadius: 0, endRadius: 14))
+        case .gold: return AnyShapeStyle(LinearGradient(colors: [Color(hex: "FFF1C4"), Color(hex: "E7B04A"), Color(hex: "FFE08A"), Color(hex: "9A6A1C")], startPoint: .topLeading, endPoint: .bottomTrailing))
+        case .holo: return AnyShapeStyle(AngularGradient(colors: [Color(hex: "9FE7FF"), Color(hex: "C7A6FF"), Color(hex: "FFB3E0"), Color(hex: "FFE3A3"), Color(hex: "A6FFD4"), Color(hex: "9FE7FF")], center: .center))
+        case .neon: return AnyShapeStyle(RadialGradient(colors: [Color(hex: "101014"), Color(hex: "101014"), Color(hex: "6FB6FF")], center: .center, startRadius: 0, endRadius: 13))
+        case .gummy: return AnyShapeStyle(RadialGradient(colors: [Color(hex: "FFB3C0"), Color(hex: "FF5C7A"), Color(hex: "B8233F")], center: .init(x: 0.4, y: 0.35), startRadius: 0, endRadius: 14))
+        case .frosted: return AnyShapeStyle(LinearGradient(colors: [Color.white.opacity(0.9), Color(hex: "C9D6EC").opacity(0.75)], startPoint: .topLeading, endPoint: .bottomTrailing))
         }
     }
 }

@@ -21,10 +21,14 @@ struct IslandSessionRow: View {
                 }
                 HStack(spacing: 0) {
                     if session.taskTitle != nil {
+                        // The project keeps a readable share of the line; the
+                        // activity truncates instead of squeezing it to nothing.
                         Text(session.projectName)
                             .lineLimit(1)
                             .truncationMode(.middle)
-                            .layoutPriority(-1)
+                            .frame(maxWidth: 130, alignment: .leading)
+                            .fixedSize(horizontal: true, vertical: false)
+                            .layoutPriority(1)
                         Text(" · ").fixedSize()
                     }
                     SessionRowParts.activity(session)

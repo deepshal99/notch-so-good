@@ -38,7 +38,9 @@ final class CharacterSettings: ObservableObject {
 
     private init() {
         let d = UserDefaults.standard
-        let kind = d.string(forKey: "character.kind").flatMap(CharacterKind.init) ?? .peek
+        // Only offer characters that are available; anyone on a retired one moves to Peek.
+        let stored = d.string(forKey: "character.kind").flatMap(CharacterKind.init) ?? .peek
+        let kind = CharacterKind.available.contains(stored) ? stored : .peek
         self.kind = kind
         finish = Self.storedFinish(for: kind)
         motion = d.string(forKey: "character.motion").flatMap(CharacterMotion.init) ?? .gooey
