@@ -293,11 +293,19 @@ struct TerminalLauncher {
     }
 
     /// Runs an AppleScript and returns true if the script returned `true`.
+    /// Through `osascript`, because NSAppleScript isn't safe off the main
+    /// thread and these run on the targeting queue.
     private static func runAppleScript(_ source: String) -> Bool {
-        guard let script = NSAppleScript(source: source) else { return false }
-        var error: NSDictionary?
-        let result = script.executeAndReturnError(&error)
-        if error != nil { return false }
-        return result.booleanValue
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        task.arguments = ["-e", source]
+        let out = Pipe()
+        task.standardOutput = out
+        task.standardError = FileHandle.nullDevice
+        do { try task.run() } catch { return false }
+        task.waitUntilExit()
+        guard task.terminationStatus == 0 else { return false }
+        let text = String(decoding: out.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        return text.trimmingCharacters(in: .whitespacesAndNewlines) == "true"
     }
 }
