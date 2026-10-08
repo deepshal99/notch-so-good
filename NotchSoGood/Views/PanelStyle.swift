@@ -5,11 +5,12 @@ import SwiftUI
 /// edge, an icon column, white-pill controls and a soft-blue switch. Always
 /// dark, whatever the system appearance, so it never reads as a different app.
 enum Panel {
-    static let background = Color(red: 0.075, green: 0.075, blue: 0.082)
-    static let card = Color.white.opacity(0.05)
-    static let cardEdge = Color.white.opacity(0.075)
+    // The island's own materials: pure black, and its inner-card surface.
+    static let background = Color.black
+    static let card = Island.card
+    static let cardEdge = Island.hairline
     static let separator = Color.white.opacity(0.07)
-    static let cardRadius: CGFloat = 14
+    static let cardRadius: CGFloat = Island.cardRadius
     static let rowPadding: CGFloat = 14
     static let iconColumn: CGFloat = 22
 

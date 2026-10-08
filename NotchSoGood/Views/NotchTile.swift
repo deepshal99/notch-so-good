@@ -73,8 +73,9 @@ struct CharacterStill: View {
             let kind = resolvedKind, finish = settings.finish, state = state, framing = framing
             let size = CGSize(width: size, height: size), scale = max(displayScale, 1), t = moment
             let rendered = await Task.detached(priority: .userInitiated) {
+                // No glow: on black it reads as a grey box around the character.
                 CharacterRenderer.shared.snapshot(kind: kind, state: state, finish: finish, framing: framing,
-                                                  sizePt: size, scale: scale, t: t)
+                                                  sizePt: size, scale: scale, t: t, aura: false)
             }.value
             withAnimation(.easeOut(duration: 0.15)) { image = rendered }
         }

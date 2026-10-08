@@ -227,39 +227,14 @@ struct SessionPillView: View {
     /// where and what it's doing right now; elapsed on the right.
     private func sessionRow(_ session: NotificationManager.SessionInfo, now: Date) -> some View {
         Button { onTap(session.id) } label: {
-            HStack(spacing: 8) {
-                StatusDot(color: session.color)
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 6) {
-                        Text(session.taskTitle ?? session.projectName)
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundColor(Island.primary)
-                            .lineLimit(1)
-                        badges(for: session)
-                    }
-                    HStack(spacing: 0) {
-                        if session.taskTitle != nil {
-                            Text(session.projectName)
-                                .lineLimit(1)
-                                .truncationMode(.middle)
-                                .layoutPriority(-1)
-                            Text(" · ").fixedSize()
-                        }
-                        activityText(session)
-                    }
-                    .font(.system(size: 11.5))
-                    .foregroundColor(Island.tertiary)
-                }
-                Spacer(minLength: 8)
-                trailing(session: session, now: now)
-            }
-            .padding(.leading, rowInset - 3.5)
-            .padding(.trailing, rowInset)
-            .frame(height: PillLayout.sessionRow)
-            .contentShape(Rectangle())
+            IslandSessionRow(session: session, now: now)
+                .padding(.leading, rowInset - 3.5)
+                .padding(.trailing, rowInset)
+                .frame(height: PillLayout.sessionRow)
+                .contentShape(Rectangle())
         }
-        .buttonStyle(SessionRowStyle())
-        .accessibilityLabel(rowAccessibilityLabel(session, now: now))
+        .buttonStyle(IslandRowStyle())
+        .accessibilityLabel(SessionRowParts.accessibilityLabel(session, now: now))
         .accessibilityHint("Opens this session in its terminal")
     }
 
@@ -289,24 +264,24 @@ struct SessionPillView: View {
                     ViewThatFits(in: .horizontal) {
                         HStack(spacing: 8) {
                             subTitle(title)
-                            activityText(session).fixedSize()
+                            SessionRowParts.activity(session).fixedSize()
                         }
                         subTitle(title)
                     }
                 } else {
-                    activityText(session, emphasised: true)
+                    SessionRowParts.activity(session, emphasised: true)
                 }
-                badges(for: session)
+                SessionRowParts.badges(for: session)
                 Spacer(minLength: 8)
-                trailing(session: session, now: now)
+                SessionRowParts.trailing(session: session, now: now)
             }
             .padding(.leading, rowInset - 3)
             .padding(.trailing, rowInset)
             .frame(height: PillLayout.subSessionRow)
             .contentShape(Rectangle())
         }
-        .buttonStyle(SessionRowStyle())
-        .accessibilityLabel(rowAccessibilityLabel(session, now: now))
+        .buttonStyle(IslandRowStyle())
+        .accessibilityLabel(SessionRowParts.accessibilityLabel(session, now: now))
         .accessibilityHint("Opens this session in its terminal")
     }
 
@@ -346,50 +321,6 @@ struct SessionPillView: View {
         .accessibilityElement(children: .combine)
     }
 
-    private func activityText(_ session: NotificationManager.SessionInfo, emphasised: Bool = false) -> some View {
-        let waiting = session.status == .needsInput || session.status == .needsPermission
-        return Text(session.status.activityLine(toolName: session.activeToolName, toolDetail: session.activeToolDetail))
-            .font(.system(size: emphasised ? 12.5 : 11.5, weight: emphasised ? .medium : .regular))
-            .foregroundColor(waiting ? session.status.dotColor : (emphasised ? Color.white.opacity(0.82) : Island.secondary))
-            .lineLimit(1)
-            .truncationMode(.tail)
-    }
-
-    @ViewBuilder
-    private func badges(for session: NotificationManager.SessionInfo) -> some View {
-        if session.agentSource != .claude {
-            Chip(text: session.agentSource.displayName, mono: false, tint: session.agentSource.accentColor, height: 17)
-        }
-        if let mode = session.permissionMode.badgeLabel {
-            Chip(text: mode, mono: false, height: 17)
-        }
-    }
-
-    private func trailing(session: NotificationManager.SessionInfo, now: Date) -> some View {
-        HStack(spacing: 8) {
-            let running = session.subagents.filter { $0.status == .running }.count
-            if running > 0 {
-                HStack(spacing: 3) {
-                    Image(systemName: "person.2.fill").font(.system(size: 9, weight: .semibold))
-                    Text("\(running)").font(Island.numeric)
-                }
-                .foregroundColor(Island.tertiary)
-                .accessibilityLabel("\(running) subagent\(running == 1 ? "" : "s") running")
-            }
-            Text(ElapsedFormatter.precise(Int(now.timeIntervalSince(session.startTime))))
-                .font(Island.numeric)
-                .foregroundColor(Island.tertiary)
-        }
-    }
-
-    private func rowAccessibilityLabel(_ session: NotificationManager.SessionInfo, now: Date) -> String {
-        let phase = session.status.activityLine(toolName: session.activeToolName, toolDetail: session.activeToolDetail)
-        let elapsed = ElapsedFormatter.precise(Int(now.timeIntervalSince(session.startTime)))
-        var label = "\(session.projectName), \(session.agentSource.displayName), \(phase), \(elapsed)"
-        if let mode = session.permissionMode.badgeLabel { label += ", \(mode) mode" }
-        return label
-    }
-
     // MARK: - Runway footer
 
     private var runwayFooter: some View {
@@ -427,24 +358,6 @@ struct SessionPillView: View {
         }
         .opacity(hovered ? 1 : 0)
         .accessibilityElement(children: .combine)
-    }
-}
-
-// MARK: - Row style
-
-/// A soft highlight on hover, concentric with the island's bottom corners.
-private struct SessionRowStyle: ButtonStyle {
-    @State private var hovered = false
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(Color.white.opacity(configuration.isPressed ? 0.1 : (hovered ? 0.06 : 0)))
-            )
-            .scaleEffect(configuration.isPressed ? 0.98 : 1)
-            .animation(Island.press, value: configuration.isPressed)
-            .onHover { h in withAnimation(.hover) { hovered = h } }
     }
 }
 

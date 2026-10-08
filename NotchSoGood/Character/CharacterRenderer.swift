@@ -72,7 +72,8 @@ final class CharacterRenderer {
     /// off the main thread. Used where a live Metal layer can't be composited
     /// (menu bar windows) and by the debug snapshot harness.
     func snapshot(kind: CharacterKind, state: CharacterState, finish: CharacterFinish, motion: CharacterMotion = .gooey,
-                  framing: CharacterFraming, sizePt: CGSize, scale: CGFloat, t: Double, gaze: SIMD2<Float>? = nil) -> CGImage? {
+                  framing: CharacterFraming, sizePt: CGSize, scale: CGFloat, t: Double, gaze: SIMD2<Float>? = nil,
+                  aura: Bool = true) -> CGImage? {
         guard let device, let queue, let pipeline = pipelineBlocking(kind: kind, finish: finish) else { return nil }
         let w = Int(sizePt.width*scale), h = Int(sizePt.height*scale)
         guard w > 0, h > 0 else { return nil }
@@ -85,7 +86,7 @@ final class CharacterRenderer {
         for f in 1...max(1, Int(t*60)) { pose = puppet.pose(now: Double(f)/60, motion: motion.params) }
         let vp = framing.viewport(sizePt: sizePt, pixelsPerPoint: scale, kind: kind)
         var (u, pts) = puppet.uniforms(pose, viewport: vp, finish: finish, time: t, gazeOverride: gaze)
-        if !framing.allowsAura { u.c.w = 0 }
+        if !framing.allowsAura || !aura { u.c.w = 0 }
         let pass = MTLRenderPassDescriptor()
         pass.colorAttachments[0].texture = tex
         pass.colorAttachments[0].loadAction = .clear
