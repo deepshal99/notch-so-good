@@ -180,28 +180,36 @@ struct MenuBarContentView: View {
 
     private func agentUsage(_ agent: AgentSource, windows: [UsageLimitsStore.LimitWindow], now: Date) -> some View {
         let runout = Self.firstRunout(windows, now: now)
-        return VStack(alignment: .leading, spacing: 9) {
+        return VStack(alignment: .leading, spacing: 11) {
             Text(agent == .claude ? "Claude Code" : agent.displayName)
                 .font(.system(size: 11.5, weight: .semibold))
                 .foregroundColor(Island.tertiary)
             ForEach(windows) { window in
-                HStack(spacing: 10) {
-                    UsageRing(percentLeft: window.percentLeft, diameter: 12, lineWidth: 2.5,
+                let low = window.percentLeft < 25
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    UsageRing(percentLeft: window.percentLeft, diameter: 13, lineWidth: 2.6,
                               tint: UsageTint.notch(window.percentLeft), track: Color.white.opacity(0.16))
-                    Text(Self.name(window))
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundColor(Island.primary)
-                        .lineLimit(1)
-                    Spacer(minLength: 8)
-                    if let resetsAt = window.resetsAt {
-                        Text(UsageLimitsStore.resetCountdown(resetsAt))
-                            .font(Island.numeric)
-                            .foregroundColor(runout?.id == window.id ? CharacterState.need.color : Island.tertiary)
+                        .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 4.5 }
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(Self.name(window))
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundColor(Island.primary)
+                            .lineLimit(1)
+                        if let resetsAt = window.resetsAt {
+                            Text("resets in \(UsageLimitsStore.resetCountdown(resetsAt))")
+                                .font(.system(size: 11).monospacedDigit())
+                                .foregroundColor(runout?.id == window.id ? CharacterState.need.color : Island.tertiary)
+                        }
                     }
-                    Text("\(window.percentLeft)%")
-                        .font(.system(size: 13, weight: .semibold).monospacedDigit())
-                        .foregroundColor(Island.primary)
-                        .frame(minWidth: 38, alignment: .trailing)
+                    Spacer(minLength: 8)
+                    HStack(alignment: .firstTextBaseline, spacing: 3) {
+                        Text("\(window.percentLeft)%")
+                            .font(.system(size: 15, weight: .semibold).monospacedDigit())
+                            .foregroundColor(low ? UsageTint.notch(window.percentLeft) : Island.primary)
+                        Text("left")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(Island.tertiary)
+                    }
                 }
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel("\(Self.name(window)), \(window.percentLeft) percent left"
@@ -275,7 +283,11 @@ struct MenuBarContentView: View {
             }
             Spacer(minLength: 8)
             Button("Open") {
-                if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
+                // Registers the app in the Accessibility list and shows the
+                // system prompt, so it's there to switch on.
+                let prompt = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
+                if !AXIsProcessTrustedWithOptions([prompt: true] as CFDictionary),
+                   let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
                     NSWorkspace.shared.open(url)
                 }
             }

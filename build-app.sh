@@ -64,9 +64,17 @@ else
     echo "⚠️  Sparkle.framework not found in build artifacts — auto-update won't work"
 fi
 
-# Code-sign the app bundle (ad-hoc) so Sparkle can validate updates
-codesign --force --deep --sign - "$APP_BUNDLE"
-echo "Code-signed app bundle (ad-hoc)"
+# Code-sign the app bundle so Sparkle can validate updates. Ad-hoc by default.
+# Set CODESIGN_IDENTITY (e.g. an "Apple Development" identity) for local builds:
+# an ad-hoc signature changes with every build, and macOS ties the
+# Accessibility grant to it, so each rebuild silently loses the permission.
+IDENTITY="${CODESIGN_IDENTITY:--}"
+codesign --force --deep --sign "$IDENTITY" "$APP_BUNDLE"
+if [ "$IDENTITY" = "-" ]; then
+    echo "Code-signed app bundle (ad-hoc)"
+else
+    echo "Code-signed app bundle ($IDENTITY)"
+fi
 
 # Register URL scheme by touching the app
 /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$APP_BUNDLE" 2>/dev/null || true
