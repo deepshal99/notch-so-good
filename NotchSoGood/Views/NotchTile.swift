@@ -69,8 +69,8 @@ struct CharacterStill: View {
                     .transition(.opacity)
             }
         }
-        .task(id: "\(resolvedKind.rawValue)-\(settings.finish.rawValue)-\(state.rawValue)-\(size)-\(displayScale)") {
-            let kind = resolvedKind, finish = settings.finish, state = state, framing = framing
+        .task(id: "\(resolvedKind.rawValue)-\(settings.finish(for: resolvedKind).rawValue)-\(state.rawValue)-\(size)-\(displayScale)") {
+            let kind = resolvedKind, finish = settings.finish(for: resolvedKind), state = state, framing = framing
             let size = CGSize(width: size, height: size), scale = max(displayScale, 1), t = moment
             let rendered = await Task.detached(priority: .userInitiated) {
                 // No glow: on black it reads as a grey box around the character.

@@ -153,10 +153,13 @@ enum CharacterFraming: Equatable {
             return CharacterViewport(size: [w, h], center: [w/2, h/2], scale: scale)
         case .card(let unit):
             return CharacterViewport(size: [w, h], center: [w/2, h/2], scale: Float(unit*s))
+        // Tiles and portraits hang from their top edge like the notch does, sized
+        // from each character's own proportions: a tile shows the whole
+        // character with a little air, a portrait comes in close.
         case .tile:
-            return CharacterViewport(size: [w, h], center: [w/2, h*0.28], scale: h/3.3)
+            return CharacterViewport(size: [w, h], center: [w/2, h/2], scale: h/(kind.notchUnits*1.12))
         case .portrait:
-            return CharacterViewport(size: [w, h], center: [w/2, h*0.2], scale: h/2.45)
+            return CharacterViewport(size: [w, h], center: [w/2, h/2], scale: h/(kind.notchUnits*0.86))
         }
     }
 

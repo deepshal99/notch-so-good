@@ -6,10 +6,31 @@ final class CharacterSettings: ObservableObject {
     static let shared = CharacterSettings()
 
     @Published var kind: CharacterKind {
-        didSet { UserDefaults.standard.set(kind.rawValue, forKey: "character.kind") }
+        didSet {
+            UserDefaults.standard.set(kind.rawValue, forKey: "character.kind")
+            if oldValue != kind { finish = Self.storedFinish(for: kind) }
+        }
     }
+    /// The current character's finish. Each character remembers its own.
     @Published var finish: CharacterFinish {
-        didSet { UserDefaults.standard.set(finish.rawValue, forKey: "character.finish") }
+        didSet { UserDefaults.standard.set(finish.rawValue, forKey: Self.finishKey(kind)) }
+    }
+
+    /// Any character's finish (Settings previews show all four at once).
+    func finish(for kind: CharacterKind) -> CharacterFinish {
+        kind == self.kind ? finish : Self.storedFinish(for: kind)
+    }
+
+    private static func finishKey(_ kind: CharacterKind) -> String { "character.finish.\(kind.rawValue)" }
+
+    private static func storedFinish(for kind: CharacterKind) -> CharacterFinish {
+        let d = UserDefaults.standard
+        // Older builds kept one finish for all characters: it belongs to the one
+        // that was selected, not to every character that happens to offer it.
+        let legacy = d.string(forKey: "character.kind") == kind.rawValue ? d.string(forKey: "character.finish") : nil
+        let raw = d.string(forKey: finishKey(kind)) ?? legacy
+        if let raw, let finish = CharacterFinish(rawValue: raw), kind.finishes.contains(finish) { return finish }
+        return kind.finishes[0]
     }
     @Published var motion: CharacterMotion {
         didSet { UserDefaults.standard.set(motion.rawValue, forKey: "character.motion") }
@@ -17,8 +38,9 @@ final class CharacterSettings: ObservableObject {
 
     private init() {
         let d = UserDefaults.standard
-        kind = d.string(forKey: "character.kind").flatMap(CharacterKind.init) ?? .peek
-        finish = d.string(forKey: "character.finish").flatMap(CharacterFinish.init) ?? .obsidian
+        let kind = d.string(forKey: "character.kind").flatMap(CharacterKind.init) ?? .peek
+        self.kind = kind
+        finish = Self.storedFinish(for: kind)
         motion = d.string(forKey: "character.motion").flatMap(CharacterMotion.init) ?? .gooey
     }
 }
@@ -58,7 +80,7 @@ struct CharacterView: NSViewRepresentable {
 
     private func apply(to view: CharacterMTKView) {
         view.setKind(kind ?? settings.kind)
-        view.finish = finish ?? settings.finish
+        view.finish = finish ?? settings.finish(for: kind ?? settings.kind)
         view.motion = settings.motion
         view.reduceMotion = reduceMotion
         view.framing = framing

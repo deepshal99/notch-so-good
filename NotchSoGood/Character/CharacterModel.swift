@@ -44,6 +44,17 @@ enum CharacterKind: String, CaseIterable, Identifiable {
         let aura: Float
     }
 
+    /// The finishes that suit this character, best first. Each character has
+    /// its own: a soap bubble has films, not ceramics.
+    var finishes: [CharacterFinish] {
+        switch self {
+        case .peek: return [.obsidian, .porcelain, .chrome, .clay]
+        case .tail: return [.obsidian, .glass, .chrome, .pearl]
+        case .roost: return [.obsidian, .velvet, .anodised, .porcelain]
+        case .bubble: return [.glass, .pearl, .obsidian, .chrome]
+        }
+    }
+
     /// How many character units fit in the notch's height. Each character gets
     /// as big as its tallest pose allows: Peek is compact, Roost hangs long.
     var notchUnits: Float {
@@ -58,7 +69,7 @@ enum CharacterKind: String, CaseIterable, Identifiable {
     var spec: Spec {
         switch self {
         case .peek:   return Spec(squashPivotY: 0.8, face: [0, -0.08], eyeSeparation: 0.30, eyeSize: [0.085, 0.19], aura: 0.10)
-        case .tail:   return Spec(squashPivotY: 0, face: [-0.42, -0.40], eyeSeparation: 0.27, eyeSize: [0.088, 0.19], aura: 0.10)
+        case .tail:   return Spec(squashPivotY: 0, face: [-0.42, -0.40], eyeSeparation: 0.3, eyeSize: [0.105, 0.23], aura: 0.10)
         case .roost:  return Spec(squashPivotY: 0.8, face: [0, -0.36], eyeSeparation: 0.26, eyeSize: [0.075, 0.16], aura: 0.10)
         case .bubble: return Spec(squashPivotY: 0, face: [0, -0.05], eyeSeparation: 0.24, eyeSize: [0.075, 0.165], aura: 0.03)
         }
@@ -105,6 +116,31 @@ enum CharacterFinish: String, CaseIterable, Identifiable {
 
     var shaderIndex: Int32 {
         Int32(Self.allCases.firstIndex(of: self) ?? 0)
+    }
+
+    /// What the finish is called on a given character (a bubble's are films).
+    func displayName(for kind: CharacterKind) -> String {
+        guard kind == .bubble else { return displayName }
+        switch self {
+        case .glass: return "Soap"
+        case .pearl: return "Pearl"
+        case .obsidian: return "Smoke"
+        case .chrome: return "Mercury"
+        default: return displayName
+        }
+    }
+
+    /// The swatch, as it looks on a given character.
+    func swatch(for kind: CharacterKind) -> AnyShapeStyle {
+        guard kind == .bubble else { return swatch }
+        switch self {
+        case .glass:
+            return AnyShapeStyle(AngularGradient(colors: [Color(hex: "BFE3FF").opacity(0.55), Color(hex: "F5C6FF").opacity(0.45),
+                                                          Color(hex: "C9FFE4").opacity(0.5), Color(hex: "BFE3FF").opacity(0.55)], center: .center))
+        case .obsidian:
+            return AnyShapeStyle(RadialGradient(colors: [Color(hex: "6A6E78"), Color(hex: "1C1D22")], center: .init(x: 0.35, y: 0.3), startRadius: 0, endRadius: 14))
+        default: return swatch
+        }
     }
 
     var displayName: String {

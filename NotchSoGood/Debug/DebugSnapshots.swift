@@ -52,7 +52,7 @@ enum DebugSnapshots {
         sheet(cols: 7, rows: rows.count, tile: tile, gap: gap, url: url) { ctx, cell in
             let (kind, list) = rows[cell.row]
             let (state, t) = list[cell.col]
-            let finish: CharacterFinish = .obsidian
+            let finish: CharacterFinish = kind.finishes[0]
             if let img = render(kind: kind, state: state, finish: finish, framing: .tile, sizePt: CGSize(width: tile/2, height: tile/2), t: t) {
                 ctx.draw(img, in: cell.rect)
             }
@@ -61,10 +61,12 @@ enum DebugSnapshots {
 
     static func finishSheet(to url: URL) {
         let tile: CGFloat = 150, gap: CGFloat = 8
-        let fins = CharacterFinish.allCases
-        let kinds: [CharacterKind] = [.peek, .roost]
-        sheet(cols: fins.count, rows: kinds.count, tile: tile, gap: gap, url: url) { ctx, cell in
-            if let img = render(kind: kinds[cell.row], state: .need, finish: fins[cell.col], framing: .tile, sizePt: CGSize(width: tile/2, height: tile/2), t: 1.6) {
+        let kinds = CharacterKind.allCases
+        sheet(cols: 8, rows: kinds.count, tile: tile, gap: gap, url: url) { ctx, cell in
+            // Each character's four finishes, at rest (work) and wanting you (need).
+            let kind = kinds[cell.row], finish = kind.finishes[cell.col % 4]
+            let state: CharacterState = cell.col < 4 ? .work : .need
+            if let img = render(kind: kind, state: state, finish: finish, framing: .tile, sizePt: CGSize(width: tile/2, height: tile/2), t: 1.6) {
                 ctx.draw(img, in: cell.rect)
             }
         }

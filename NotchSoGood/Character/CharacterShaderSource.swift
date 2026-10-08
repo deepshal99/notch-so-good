@@ -293,7 +293,6 @@ static float4 shade(thread Ctx& c, float2 xy) {
     float3 col;
     if (FINISH == 0) {          // obsidian: black glass, with a cool edge light so it reads on a black notch
         col = base*(0.2 + 0.8*dif) + envMap(c, R, 0.0)*(mix(0.1, 1.0, fres) + 0.26) + pow(nh, 160.0)*1.0;
-        col += float3(0.62, 0.66, 0.74)*pow(f1, 6.0)*0.75;   // a crisp rim, not a wash
     } else if (FINISH == 1) {   // soft-touch rubber
         col = base*(0.16 + 0.95*wrap)*occ + float3(pow(nh, 10.0)*0.10) + envMap(c, R, 0.35)*fres*0.25;
     } else if (FINISH == 2) {   // porcelain
@@ -307,7 +306,7 @@ static float4 shade(thread Ctx& c, float2 xy) {
         col = mix3(inside, envMap(c, R, 0.0), 0.06 + 0.9*fres5) + pow(nh, 240.0)*1.2;
     } else if (FINISH == 5) {   // chrome
         float sk = smoothstep(-0.05, 0.9, R.y), gr = smoothstep(0.0, -0.6, R.y);
-        float3 e = envMap(c, R, 0.0)*1.1 + float3(0.05 + sk*0.55 + gr*0.16) - float3(0.12)*smoothstep(0.08, 0.0, abs(R.y - 0.02));
+        float3 e = envMap(c, R, 0.0)*1.1 + float3(0.08 + sk*0.55 + gr*0.2) - float3(0.04)*smoothstep(0.1, 0.0, abs(R.y - 0.02));
         col = e*mix3(float3(0.85), float3(1.0), fres)*mix3(float3(1.0), base, 0.25) + pow(nh, 300.0)*1.2;
         col *= mix(0.7, 1.0, occ);
     } else if (FINISH == 6) {   // anodised aluminium
@@ -319,17 +318,31 @@ static float4 shade(thread Ctx& c, float2 xy) {
         float sheen = pow(1.0 - ndv, 2.4);
         col = base*(0.10 + 0.55*wrap)*occ + mix3(base, float3(1.0), 0.35)*sheen*0.9*(0.4 + 0.6*wrap);
     }
+    // Every solid finish gets a crisp, cool edge light in proportion to how dark
+    // it is, so the silhouette reads on a black notch without lifting the body.
+    if (KIND != 3) {
+        float lum = dot(uBase, float3(0.3, 0.59, 0.11));
+        col += float3(0.62, 0.66, 0.74)*pow(f1, 6.0)*0.75*(1.0 - lum);
+    }
     float alpha = 1.0;
-    if (KIND == 3) {
+    if (KIND == 3 && FINISH == 5 && mat < 0.5) {
+        // Mercury: a liquid-metal bubble. Keeps the chrome shading, solid.
+        alpha = 1.0;
+    } else if (KIND == 3) {
         if (mat < 0.5) {
             // soap film: almost clear. Reflections carry it; colour only where the film
             // is thick (drained to the bottom) and at grazing angles, and it is faint.
             float r0 = max(uP(0), 0.05), hy = clamp(q.y/r0, -1.0, 1.0);
             float th = mix(1.2, 0.55, hy*0.5 + 0.5) + 0.18*sin(q.x*4.1 + uTime*0.6 + sin(q.y*3.0 - uTime*0.4)*1.5) + 0.1*sin(q.z*5.3 - uTime*0.8);
             th *= 1.0 - 0.75*uP(6);
-            float3 irid = mix3(float3(0.8), film(th*(1.1 + 0.5*f1)), 0.35);
-            float refl = 0.035 + 0.6*fres5;
+            // Films: soap (clear), pearl (milky, stronger colour), smoke (tinted, mirror-bright).
+            float iridK = FINISH == 7 ? 0.75 : (FINISH == 0 ? 0.15 : 0.35);
+            float3 irid = mix3(float3(0.8), film(th*(1.1 + 0.5*f1)), iridK);
+            float refl = (FINISH == 0 ? 0.08 : 0.06) + (FINISH == 0 ? 0.85 : 0.75)*fres5;
             col = envMap(c, R, 0.0)*refl*1.7*irid + pow(nh, 260.0)*1.6 + irid*0.025*fres;
+            if (FINISH == 7) col += float3(0.9, 0.9, 0.95)*0.08*(0.4 + 0.6*fres);      // milky body
+            col += float3(0.75, 0.8, 0.9)*pow(f1, 5.0)*0.35;                             // the film's bright edge
+            if (FINISH == 0) col = col*float3(0.82, 0.84, 0.9) + float3(0.04, 0.045, 0.055)*(1.0 - fres);
             // the back of the film reflects too: a second, fainter set of highlights
             float3 bo = p - uPos; float chord = -2.0*dot(bo, rd);
             if (chord > 0.0) {
@@ -339,7 +352,9 @@ static float4 shade(thread Ctx& c, float2 xy) {
                 col += backC*1.2;
             }
             col *= 1.0 - 0.85*smoothstep(0.16, 0.07, th);      // black film right before it pops
-            alpha = clamp(dot(col, float3(0.4)) + 0.02 + 0.22*pow(f1, 2.5), 0.0, 1.0);
+            alpha = clamp(dot(col, float3(0.4)) + 0.03 + 0.32*pow(f1, 2.5), 0.0, 1.0);
+            if (FINISH == 0) alpha = max(alpha, 0.42);                    // smoke has body
+            if (FINISH == 7) alpha = max(alpha, 0.16 + 0.3*fres);
         } else if (mat > 3.5) {                                 // the bursting rim: a bright, wet edge
             col = envMap(c, R, 0.0)*0.8 + float3(0.55) + pow(nh, 60.0)*0.8; alpha = 0.95;
         } else if (mat > 2.5) {                                 // the soap drop

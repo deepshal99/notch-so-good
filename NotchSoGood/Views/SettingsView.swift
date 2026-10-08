@@ -279,13 +279,12 @@ private struct CharacterPane: View {
                             .frame(width: Panel.iconColumn)
                         Text("Finish").font(Panel.title).foregroundColor(Panel.primary)
                         Spacer()
-                        Text(settings.finish.displayName).font(Panel.subtitle).foregroundColor(Panel.secondary)
                     }
-                    HStack(spacing: 0) {
-                        ForEach(CharacterFinish.allCases) { finish in
+                    HStack(spacing: 18) {
+                        ForEach(settings.kind.finishes) { finish in
                             swatch(finish)
-                            if finish != CharacterFinish.allCases.last { Spacer(minLength: 0) }
                         }
+                        Spacer(minLength: 0)
                     }
                     .padding(.leading, Panel.iconColumn + 12)
                 }
@@ -339,20 +338,25 @@ private struct CharacterPane: View {
 
     private func swatch(_ finish: CharacterFinish) -> some View {
         let selected = settings.finish == finish
+        let name = finish.displayName(for: settings.kind)
         return Button {
-            settings.finish = finish
+            withAnimation(Island.press) { settings.finish = finish }
         } label: {
-            Circle()
-                .fill(finish.swatch)
-                .overlay(Circle().strokeBorder(Color.white.opacity(0.14), lineWidth: 1))
-                .frame(width: 22, height: 22)
-                .padding(3)
-                .overlay(Circle().strokeBorder(Color.white.opacity(selected ? 0.9 : 0), lineWidth: 1.5))
-                .contentShape(Circle())
+            VStack(spacing: 6) {
+                Circle()
+                    .fill(finish.swatch(for: settings.kind))
+                    .overlay(Circle().strokeBorder(Color.white.opacity(0.14), lineWidth: 1))
+                    .frame(width: 26, height: 26)
+                    .padding(3)
+                    .overlay(Circle().strokeBorder(Color.white.opacity(selected ? 0.9 : 0), lineWidth: 1.5))
+                Text(name)
+                    .font(.system(size: 11, weight: selected ? .semibold : .medium))
+                    .foregroundColor(selected ? Panel.primary : Panel.secondary)
+            }
+            .contentShape(Rectangle())
         }
         .buttonStyle(IslandPressStyle())
-        .help(finish.displayName)
-        .accessibilityLabel(finish.displayName)
+        .accessibilityLabel(name)
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }

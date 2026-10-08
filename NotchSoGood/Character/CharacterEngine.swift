@@ -175,15 +175,15 @@ private func body(_ kind: CharacterKind, _ s: CharacterState, _ t: Float, _ A: F
         }
     case .tail:
         // p: length, base angle, curl, tip curl, wave, wave speed, thickness, fluff
-        P.p[6] = 1
+        P.p[6] = 1.35
         switch s {
         case .idle:  P.p[0] = 1.05; P.p[1] = 0.25; P.p[2] = 1.9; P.p[3] = 1.2; P.p[4] = 0.25; P.p[5] = 0.6
         case .work:  P.p[0] = 2.1; P.p[1] = 0.2*A*sin(t*2.2); P.p[3] = 0.6; P.p[4] = 0.55*A; P.p[5] = 2.6
         case .think: P.p[0] = 2.0; P.p[1] = -0.12 + 0.05*sin(t*0.9); P.p[2] = 0.15; P.p[3] = 2.7; P.p[4] = 0.12; P.p[5] = 0.8
         case .need:  P.p[0] = 2.35; P.p[1] = 0.32*A*sin(t*7.5); P.p[3] = 0.5; P.p[4] = 0.45*A; P.p[5] = 6.5
         case .done:  P.p[0] = 2.7; P.p[1] = 0.05; P.p[2] = 0.1; P.p[3] = 4.4*(0.4 + 0.6*ease(t/0.5)); P.p[4] = 0.1; P.p[5] = 1
-        case .warn:  P.p[0] = 1.55; P.p[1] = 0.04*A*sin(t*38); P.p[3] = 0.3; P.p[4] = 0.05; P.p[5] = 1; P.p[6] = 1.75; P.p[7] = 1
-        case .error: P.p[0] = 2.45; P.p[1] = 0.06*sin(t*1.2); P.p[3] = -0.5; P.p[4] = 0.04; P.p[5] = 0.5; P.p[6] = 0.8; P.dark = 0.25
+        case .warn:  P.p[0] = 1.55; P.p[1] = 0.04*A*sin(t*38); P.p[3] = 0.3; P.p[4] = 0.05; P.p[5] = 1; P.p[6] = 2.1; P.p[7] = 1
+        case .error: P.p[0] = 2.45; P.p[1] = 0.06*sin(t*1.2); P.p[3] = -0.5; P.p[4] = 0.04; P.p[5] = 0.5; P.p[6] = 1.1; P.dark = 0.25
         }
     case .roost:
         // p: wing spread, wing wrap, flap, ear perk, lift left foot, lift right foot
@@ -207,13 +207,13 @@ private func body(_ kind: CharacterKind, _ s: CharacterState, _ t: Float, _ A: F
         // targets only; the puppet runs the physics. p: radius, neck, turbulence, -, hang factor, thought bubbles, film thinning
         P.p[1] = 1; P.p[2] = 0.25; P.p[4] = 1.04
         switch s {
-        case .idle:  P.p[0] = 0.36; P.p[4] = 0.55; P.p[2] = 0.18
-        case .work:  P.p[0] = 0.6 + 0.05*sin(t*2.1); P.p[2] = 0.35; P.p[6] = 0.1
-        case .think: P.p[0] = 0.56; P.p[2] = 0.2; P.p[5] = 1
+        case .idle:  P.p[0] = 0.46; P.p[4] = 0.55; P.p[2] = 0.18
+        case .work:  P.p[0] = 0.7 + 0.05*sin(t*2.1); P.p[2] = 0.35; P.p[6] = 0.1
+        case .think: P.p[0] = 0.66; P.p[2] = 0.2; P.p[5] = 1
         case .need:  let w = ease(t/7); P.p[0] = 0.8 + 0.34*w; P.p[2] = 0.3 + 0.3*w; P.p[6] = 0.15 + 0.85*w
         case .done:  P.p[0] = 0.95; P.p[6] = 0.35
-        case .warn:  P.p[0] = 0.72; P.p[2] = 1.4; P.p[6] = 0.55 + 0.35*(sin(t*11) > 0.55 ? 1 : 0)
-        case .error: P.p[0] = 0.5
+        case .warn:  P.p[0] = 0.8; P.p[2] = 1.4; P.p[6] = 0.55 + 0.35*(sin(t*11) > 0.55 ? 1 : 0)
+        case .error: P.p[0] = 0.58
         }
     }
 }
@@ -241,7 +241,7 @@ private func target(_ kind: CharacterKind, _ s: CharacterState, _ t: Float, _ M:
 /// acceleration and inflation. Done: pinch off, float, tear open, spray, regrow.
 /// Error: pop at once and leave a soap drop on the notch.
 private final class BubbleSim {
-    var r: Float = 0.36, vr: Float = 0
+    var r: Float = 0.46, vr: Float = 0
     var x: Float = 0, vx: Float = 0, y: Float = -0.2, vy: Float = 0
     var m: [Float] = [0, 0, 0], mv: [Float] = [0, 0, 0]
     var neck: Float = 1, burst: Float = 0, gone = false, dropK: Float = 0
