@@ -195,6 +195,19 @@ class NotificationManager: ObservableObject {
         followActiveDisplay = defaults.bool(forKey: "followActiveDisplay")
 
         SoundManager.shared.isEnabled = soundEnabled
+
+        // Sessions whose terminal is gone (tab closed, agent killed) send no
+        // SessionEnd; drop them as soon as their session leader exits.
+        Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { _ in
+            Task { @MainActor in NotificationManager.shared.sweepEndedSessions() }
+        }
+    }
+
+    private func sweepEndedSessions() {
+        for session in activeSessions {
+            guard let pid = session.sourcePid, pid > 1 else { continue }
+            if kill(pid, 0) != 0 && errno == ESRCH { endSession(sessionId: session.id) }
+        }
     }
 
     // MARK: - Session lifecycle
@@ -709,7 +722,7 @@ class NotificationManager: ObservableObject {
 
     /// Bump when the hook bridge's wire format or command line changes, so an
     /// upgrade reinstalls hooks even if the app version didn't move.
-    private static let hooksSchemaVersion = 3
+    private static let hooksSchemaVersion = 4
 
     /// Install hooks on first launch, on version updates, and whenever the hook
     /// bridge itself changes shape.

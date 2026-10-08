@@ -20,6 +20,35 @@ enum ProcessTree {
         return ppid > 1 ? ppid : nil
     }
 
+    /// The short command name of a process (kp_proc.p_comm), or nil if it's gone.
+    static func name(of pid: pid_t) -> String? {
+        var info = kinfo_proc()
+        var size = MemoryLayout<kinfo_proc>.stride
+        var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, pid]
+        guard sysctl(&mib, 4, &info, &size, nil, 0) == 0, size > 0 else { return nil }
+        return withUnsafeBytes(of: info.kp_proc.p_comm) { raw in
+            String(decoding: raw.prefix { $0 != 0 }, as: UTF8.self)
+        }
+    }
+
+    /// Hooks run as throwaway children (agent → sh → python3 hook.py). The
+    /// first ancestor that isn't one of those is the agent itself, which
+    /// lives exactly as long as the session.
+    private static let transient: Set<String> = [
+        "python3", "python", "Python", "sh", "bash", "zsh", "dash", "fish", "env", "timeout", "nice",
+    ]
+
+    static func agentAncestor(of pid: pid_t, maxDepth: Int = 8) -> pid_t? {
+        var current = pid
+        for _ in 0..<maxDepth {
+            guard let name = name(of: current) else { return nil }
+            if !transient.contains(name) && !name.hasPrefix("python") { return current }
+            guard let parent = parentPid(of: current) else { return nil }
+            current = parent
+        }
+        return nil
+    }
+
     /// Walk up from `pid` until we hit a process AppKit knows as an app.
     /// Skips ourselves so a hook that somehow runs under us can't self-match.
     static func owningApp(of pid: pid_t, maxDepth: Int = 16) -> NSRunningApplication? {

@@ -90,6 +90,14 @@ def send(event, wait=False):
         # Signal end-of-request so the app's read loop doesn't wait on us.
         sock.shutdown(socket.SHUT_WR)
         if not wait:
+            # Stay connected until the app has read us (it closes right away,
+            # usually within milliseconds): while we're connected it can ask
+            # the kernel who we are and find the agent and terminal above us.
+            try:
+                sock.settimeout(0.5)
+                sock.recv(1)
+            except Exception:
+                pass
             return None
         chunks = []
         while True:

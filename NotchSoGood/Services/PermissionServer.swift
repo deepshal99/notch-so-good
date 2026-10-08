@@ -53,9 +53,41 @@ class PermissionServer {
 
     /// The hook process's pid. We walk its ancestry to find the terminal or IDE
     /// that owns the session — far more reliable than any env var.
-    static func hookPid(from json: [String: Any]) -> pid_t? {
-        guard let raw = (json["pid"] as? NSNumber)?.int32Value, raw > 0 else { return nil }
-        return raw
+    /// The long-lived process the session runs under (the terminal tab's
+    /// session leader), used to find the owning app.
+    /// Who is on the other end of a hook connection, asked of the kernel
+    /// while the hook is still connected: the hook itself (alive exactly as
+    /// long as it waits on us) and the agent above it (alive as long as the
+    /// session). The agent pid is what focus and display routing walk up from,
+    /// and what tells us a session ended without saying so.
+    static func peer(of socket: Int32) -> (hook: pid_t, agent: pid_t?)? {
+        var pid: pid_t = 0
+        var len = socklen_t(MemoryLayout<pid_t>.size)
+        guard getsockopt(socket, SOL_LOCAL, LOCAL_PEERPID, &pid, &len) == 0, pid > 1 else { return nil }
+        let agent = ProcessTree.agentAncestor(of: pid)
+        #if DEBUG
+        NSLog("NotchSoGood: hook %d, agent %d (%@)", pid, agent ?? -1, agent.flatMap { ProcessTree.name(of: $0) } ?? "-")
+        #endif
+        return (pid, agent)
+    }
+
+    /// While a request waits, check once a second that its hook is still
+    /// there. If the agent killed it (Escape, session closed), withdraw the
+    /// card at once instead of leaving it up for two minutes.
+    private func watchWaitingHook(pid: pid_t?, requestId: String) {
+        guard let pid else { return }
+        queue.asyncAfter(deadline: .now() + 1) { [weak self] in
+            guard let self else { return }
+            self.lock.lock()
+            let stillPending = self.pendingRequests[requestId] != nil
+            self.lock.unlock()
+            guard stillPending else { return }
+            if kill(pid, 0) != 0 && errno == ESRCH {
+                self.timeoutRequest(requestId: requestId)
+            } else {
+                self.watchWaitingHook(pid: pid, requestId: requestId)
+            }
+        }
     }
 
     // MARK: - Settings resolution
@@ -333,7 +365,7 @@ class PermissionServer {
         let sessionId = NotchNotification.nonEmpty(json["session_id"] as? String)
         let cwd = NotchNotification.nonEmpty(json["cwd"] as? String)
         let sourceBundleId = Self.bundleId(from: json)
-        let hookPid = Self.hookPid(from: json)
+        let agentPid = Self.peer(of: clientSocket)?.agent
         let modeRaw = json["permission_mode"] as? String
         let mode = Self.effectiveMode(payloadMode: modeRaw, cwd: cwd)
 
@@ -365,7 +397,7 @@ class PermissionServer {
                     sessionId: sessionId,
                     displayName: cwd,
                     sourceBundleId: sourceBundleId,
-                    sourcePid: hookPid,
+                    sourcePid: agentPid,
                     permissionMode: mode,
                     sourceApp: sourceApp,
                     model: model
@@ -386,7 +418,7 @@ class PermissionServer {
                 // an unknown session would read as "standard" and prompt anyway.
                 NotificationManager.shared.adoptSession(
                     sessionId: sessionId, cwd: cwd, sourceBundleId: sourceBundleId,
-                    sourcePid: hookPid, permissionMode: mode
+                    sourcePid: agentPid, permissionMode: mode
                 )
                 let notification = NotchNotification(
                     type: .complete,
@@ -411,7 +443,7 @@ class PermissionServer {
             DispatchQueue.main.async {
                 NotificationManager.shared.adoptSession(
                     sessionId: sessionId, cwd: cwd, sourceBundleId: sourceBundleId,
-                    sourcePid: hookPid, permissionMode: mode
+                    sourcePid: agentPid, permissionMode: mode
                 )
                 let notification = NotchNotification(
                     type: type,
@@ -428,7 +460,7 @@ class PermissionServer {
                 NotificationManager.shared.handleUserPromptSubmit(
                     sessionId: sessionId,
                     cwd: cwd,
-                    sourcePid: hookPid,
+                    sourcePid: agentPid,
                     permissionMode: mode,
                     promptTitle: NotchNotification.clean(json["prompt_title"] as? String, limit: 80)
                 )
@@ -459,7 +491,7 @@ class PermissionServer {
         let toolInput = json["tool_input"] as? String ?? ""
         let sessionId = NotchNotification.nonEmpty(json["session_id"] as? String)
         let cwd = NotchNotification.nonEmpty(json["cwd"] as? String)
-        let hookPid = Self.hookPid(from: json)
+        let agentPid = Self.peer(of: clientSocket)?.agent
         let mode = Self.effectiveMode(payloadMode: json["permission_mode"] as? String, cwd: cwd)
         #if DEBUG
         let forceTest = json["force_test"] as? Bool ?? false
@@ -477,7 +509,7 @@ class PermissionServer {
                 toolName: toolName,
                 toolDetail: detail,
                 cwd: cwd,
-                sourcePid: hookPid,
+                sourcePid: agentPid,
                 permissionMode: mode
             )
         }
@@ -534,6 +566,7 @@ class PermissionServer {
         queue.asyncAfter(deadline: .now() + 120) { [weak self] in
             self?.timeoutRequest(requestId: requestId)
         }
+        watchWaitingHook(pid: Self.peer(of: clientSocket)?.hook, requestId: requestId)
     }
 
     // MARK: - Permission response
