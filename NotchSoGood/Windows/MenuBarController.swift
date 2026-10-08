@@ -50,6 +50,7 @@ final class MenuBarController: NSObject, NSWindowDelegate {
     private var lastClosed = Date.distantPast
 
     @objc func toggle() {
+        if closing { return }
         if isOpen { close(); return }
         guard Date().timeIntervalSince(lastClosed) > 0.25 else { return }
         open()
@@ -120,15 +121,31 @@ final class MenuBarController: NSObject, NSWindowDelegate {
     }
 
     func close() {
-        guard let panel, panel.isVisible else { return }
-        panel.orderOut(nil)
-        panel.contentView = nil
-        hosting = nil
-        contentSize = nil
+        guard let panel, panel.isVisible, !closing else { return }
+        closing = true
         lastClosed = Date()
         statusItem?.button?.highlight(false)
         removeDismissTriggers()
+        // A quick fade, then gone.
+        NSAnimationContext.runAnimationGroup({ context in
+            context.duration = 0.12
+            context.timingFunction = CAMediaTimingFunction(name: .easeIn)
+            panel.animator().alphaValue = 0
+        }, completionHandler: { [weak self] in
+            Task { @MainActor in
+                guard let self else { return }
+                panel.orderOut(nil)
+                panel.alphaValue = 1
+                panel.contentView = nil
+                self.hosting = nil
+                self.contentSize = nil
+                self.closing = false
+            }
+        })
     }
+
+    /// True during the close fade, so a second close doesn't stack.
+    private var closing = false
 
     /// Size to the content and hang under the menu bar item, kept on screen.
     func layout(anchor: NSRect? = nil) {

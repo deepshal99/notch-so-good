@@ -306,6 +306,9 @@ struct NotchNotificationView: View {
 
             // Who's asking.
             HStack(spacing: 8) {
+                if let session {
+                    Circle().fill(session.color).frame(width: 7, height: 7)
+                }
                 if let toolChip { Chip(text: toolChip) }
                 if let projectName {
                     Text(projectName)

@@ -16,6 +16,8 @@ struct MenuBarContentView: View {
     /// Reports the content's size so the panel can hug it as it changes.
     var onSize: (CGSize) -> Void = { _ in }
     @State private var axTrusted = AXIsProcessTrusted()
+    @State private var appeared = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private let axRecheck = Timer.publish(every: 2, on: .main, in: .common).autoconnect()
 
     private static let shape = RoundedRectangle(cornerRadius: Island.radius, style: .continuous)
@@ -54,8 +56,14 @@ struct MenuBarContentView: View {
                 .onAppear { onSize(geo.size) }
                 .onChange(of: geo.size) { _, size in onSize(size) }
         })
+        // Drops in like the island opening: a short spring from just above,
+        // anchored at the menu bar.
+        .scaleEffect(appeared || reduceMotion ? 1 : 0.96, anchor: .top)
+        .offset(y: appeared || reduceMotion ? 0 : -8)
+        .opacity(appeared ? 1 : 0)
         .environment(\.colorScheme, .dark)
         .onAppear {
+            withAnimation(reduceMotion ? .easeOut(duration: 0.15) : Island.spring) { appeared = true }
             axTrusted = AXIsProcessTrusted()
             // Not forced: at most every few minutes, so opening the menu never
             // means a Keychain read and two requests each time.
