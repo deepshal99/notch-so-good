@@ -20,6 +20,12 @@ enum DebugSnapshots {
         finishSheet(to: dir.appendingPathComponent("finishes.png"))
         pillSheet(to: dir.appendingPathComponent("pill.png"))
         notchSheet(to: dir.appendingPathComponent("notch.png"))
+        if let img = render(kind: .peek, state: .work, framing: .portrait, sizePt: CGSize(width: 40, height: 40), scale: 4, t: 1.4) {
+            let ctx = canvas(img.width, img.height)
+            ctx.setFillColor(CGColor(gray: 0, alpha: 1)); ctx.fill(CGRect(x: 0, y: 0, width: img.width, height: img.height))
+            ctx.draw(img, in: CGRect(x: 0, y: 0, width: img.width, height: img.height))
+            write(ctx.makeImage(), dir.appendingPathComponent("portrait.png"))
+        }
         cardSheet(to: dir.appendingPathComponent("cards.png"))
         settingsSheet(to: dir.appendingPathComponent("settings.png"))
         popoverSheet(to: dir.appendingPathComponent("popover.png"))

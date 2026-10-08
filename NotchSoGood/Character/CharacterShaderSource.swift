@@ -293,7 +293,7 @@ static float4 shade(thread Ctx& c, float2 xy) {
     float3 col;
     if (FINISH == 0) {          // obsidian: black glass, with a cool edge light so it reads on a black notch
         col = base*(0.2 + 0.8*dif) + envMap(c, R, 0.0)*(mix(0.1, 1.0, fres) + 0.26) + pow(nh, 160.0)*1.0;
-        col += float3(0.62, 0.66, 0.74)*pow(f1, 3.2)*0.6;
+        col += float3(0.62, 0.66, 0.74)*pow(f1, 6.0)*0.75;   // a crisp rim, not a wash
     } else if (FINISH == 1) {   // soft-touch rubber
         col = base*(0.16 + 0.95*wrap)*occ + float3(pow(nh, 10.0)*0.10) + envMap(c, R, 0.35)*fres*0.25;
     } else if (FINISH == 2) {   // porcelain
