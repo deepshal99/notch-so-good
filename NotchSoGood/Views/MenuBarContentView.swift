@@ -11,10 +11,14 @@ struct MenuBarContentView: View {
     @ObservedObject private var limits = UsageLimitsStore.shared
     @ObservedObject private var characterSettings = CharacterSettings.shared
 
-    @Environment(\.dismiss) private var dismiss
-    @State private var window: NSWindow?
+    /// Closes the panel (it's ours, not a menu bar window).
+    var onClose: () -> Void = {}
+    /// Reports the content's size so the panel can hug it as it changes.
+    var onSize: (CGSize) -> Void = { _ in }
     @State private var axTrusted = AXIsProcessTrusted()
     private let axRecheck = Timer.publish(every: 2, on: .main, in: .common).autoconnect()
+
+    private static let shape = RoundedRectangle(cornerRadius: Island.radius, style: .continuous)
 
     /// The island's open width, so the panel reads as the same object.
     static let width: CGFloat = 360
@@ -39,12 +43,15 @@ struct MenuBarContentView: View {
         // grows and shrinks with what's shown (a flexible height left empty
         // space when, say, the Accessibility card went away).
         .fixedSize(horizontal: false, vertical: true)
-        .background(Color.black)
-        .ignoresSafeArea()
-        .background(WindowReader { window in
-            self.window = window
-            window?.appearance = NSAppearance(named: .darkAqua)
-            window?.backgroundColor = .black
+        // The island's shape: black, with the concentric corners of an open
+        // card (20 pt inner cards + 10 pt inset = 30), and a faint edge.
+        .background(Self.shape.fill(Color.black))
+        .overlay(Self.shape.strokeBorder(Color.white.opacity(0.1), lineWidth: 1))
+        .clipShape(Self.shape)
+        .background(GeometryReader { geo in
+            Color.clear
+                .onAppear { onSize(geo.size) }
+                .onChange(of: geo.size) { _, size in onSize(size) }
         })
         .environment(\.colorScheme, .dark)
         .onAppear {
@@ -325,8 +332,7 @@ struct MenuBarContentView: View {
             }
             .keyboardShortcut("q", modifiers: .command)
             IslandButton(label: "Settings", shortcut: "⌘,", style: .primary, hint: "Opens Settings") {
-                dismiss()
-                window?.orderOut(nil)
+                onClose()
                 SettingsWindowController.shared.show()
             }
             .keyboardShortcut(",", modifiers: .command)
@@ -341,26 +347,4 @@ extension UsageLimitsStore.LimitWindow {
         var id: String { window.id }
         var label: String { window.label }
     }
-}
-
-/// Hands back the NSWindow a view lives in, once it has one.
-private struct WindowReader: NSViewRepresentable {
-    let onWindow: (NSWindow?) -> Void
-
-    final class Probe: NSView {
-        var onWindow: ((NSWindow?) -> Void)?
-        override func viewDidMoveToWindow() {
-            super.viewDidMoveToWindow()
-            let window = self.window
-            DispatchQueue.main.async { [weak self] in self?.onWindow?(window) }
-        }
-    }
-
-    func makeNSView(context: Context) -> Probe {
-        let probe = Probe()
-        probe.onWindow = onWindow
-        return probe
-    }
-
-    func updateNSView(_ probe: Probe, context: Context) {}
 }

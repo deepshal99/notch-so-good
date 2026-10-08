@@ -22,6 +22,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         SettingsWindowController.shared.updater = updaterController.updater
+        MenuBarController.shared.install()
         // Auto-install hooks on first launch / version update
         NotificationManager.shared.installHooksIfNeeded()
 

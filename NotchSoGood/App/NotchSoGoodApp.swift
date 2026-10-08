@@ -4,24 +4,12 @@ import SwiftUI
 struct NotchSoGoodApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
+    // The menu bar item and its panel are ours (MenuBarController). SwiftUI's
+    // App still needs a scene; a menu bar extra that's never inserted creates
+    // no window and no item (an empty Settings scene opened a blank window
+    // whenever the app activated).
     var body: some Scene {
-        MenuBarExtra {
-            MenuBarContentView(notificationManager: NotificationManager.shared)
-        } label: {
-            MenuBarIconView()
-        }
-        .menuBarExtraStyle(.window)
-    }
-}
-
-/// Menu bar label: Peek hanging from a sliver of notch, with an orange dot
-/// when a session is waiting on the user.
-struct MenuBarIconView: View {
-    @ObservedObject private var manager = NotificationManager.shared
-
-    var body: some View {
-        Image(nsImage: manager.needsAttention ? MenuBarGlyph.attention : MenuBarGlyph.normal)
-            .accessibilityLabel(manager.needsAttention ? "Notch So Good, a session needs you" : "Notch So Good")
+        MenuBarExtra("Notch So Good", isInserted: .constant(false)) { EmptyView() }
     }
 }
 
