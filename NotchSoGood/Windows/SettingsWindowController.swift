@@ -21,8 +21,12 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         window.makeKeyAndOrderFront(nil)
     }
 
+    /// Tear the window down rather than hide it: hidden, its live character
+    /// previews and observers would keep running for nothing.
     func close() {
         window?.orderOut(nil)
+        window?.contentView = nil
+        window = nil
     }
 
     private func build() {

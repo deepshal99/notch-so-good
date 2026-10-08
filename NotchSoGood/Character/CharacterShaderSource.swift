@@ -271,7 +271,7 @@ static float4 shade(thread Ctx& c, float2 xy) {
     float sq = sqrt(disc), t = max(-bb - sq, 0.0), tEnd = -bb + sq, d = 1e9, minD = 1e9; bool hit = false;
     for (int i = 0; i < 120; i++) {
         float3 p = ro + rd*t; d = map(c, p); minD = min(minD, d);
-        if (d < 0.0007) { hit = true; break; }
+        if (d < max(0.0007, 0.15/uScale)) { hit = true; break; }   // within a sliver of a pixel
         t += d; if (t > tEnd) break;
     }
     float4 bgl = bgLayer(c, xy, minD);
@@ -279,9 +279,10 @@ static float4 shade(thread Ctx& c, float2 xy) {
     float pix = 1.0/uScale;
     float cov = hit ? 1.0 : 1.0 - smoothstep(0.0, pix*0.6, minD);
     if (cov < 0.01) return bgl;
-    float3 p = ro + rd*t, n = nrm(c, p), V = -rd;
+    float3 p = ro + rd*t, V = -rd;
     if (p.y > uTopY) return bgl;                                 // tucked behind the notch
     map(c, p); float mat = c.mat;
+    float3 n = nrm(c, p);
     float3 q = toObj(c, p), nO = rotV(c, n);
     float3 L = normalize(float3(-0.55, 0.8, 0.65));
     float ndl = dot(n, L), dif = max(ndl, 0.0), wrap = max((ndl + 0.6)/1.6, 0.0);

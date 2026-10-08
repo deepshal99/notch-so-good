@@ -53,7 +53,7 @@ class NotificationManager: ObservableObject {
     }
 
     // Active session tracking — supports multiple concurrent sessions
-    struct SubagentInfo: Identifiable {
+    struct SubagentInfo: Identifiable, Equatable {
         let id: String             // subagent/task ID
         let parentSessionId: String
         var description: String    // short task description
@@ -61,7 +61,7 @@ class NotificationManager: ObservableObject {
         let startTime: Date
     }
 
-    struct SessionInfo: Identifiable {
+    struct SessionInfo: Identifiable, Equatable {
         let id: String
         let startTime: Date
         var projectName: String   // sanitized cwd or short UUID fallback
@@ -120,7 +120,10 @@ class NotificationManager: ObservableObject {
     /// to repeat on every hook event, and the answer only changes when the user
     /// drags a window to another screen.
     private var displayCache: [String: (id: CGDirectDisplayID, at: Date)] = [:]
-    private let displayCacheTTL: TimeInterval = 3
+    /// A window moving to another display almost always goes with switching
+    /// apps, which clears the cache (see init); between switches the answer
+    /// holds, and asking costs Accessibility round trips on the main thread.
+    private let displayCacheTTL: TimeInterval = 30
 
     /// Which screen a session's notch UI should appear on, or nil to use the
     /// built-in notch screen.
@@ -195,6 +198,10 @@ class NotificationManager: ObservableObject {
         followActiveDisplay = defaults.bool(forKey: "followActiveDisplay")
 
         SoundManager.shared.isEnabled = soundEnabled
+
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
+        ) { _ in Task { @MainActor in NotificationManager.shared.invalidateDisplayCache() } }
 
         // Sessions whose terminal is gone (tab closed, agent killed) send no
         // SessionEnd; drop them as soon as their session leader exits.

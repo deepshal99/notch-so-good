@@ -162,10 +162,12 @@ class SessionFileWatcher {
         watchers[sessionId]?.fileOffset = newOffset
         lock.unlock()
 
-        // Parse new lines for interrupt signals
-        guard let text = String(data: newData, encoding: .utf8) else { return }
+        // Parse new lines for interrupt signals. Transcripts carry whole tool
+        // results; only lines that could be an interrupt are worth parsing.
+        guard newData.range(of: Data("nterrupt".utf8)) != nil,
+              let text = String(data: newData, encoding: .utf8) else { return }
 
-        for line in text.split(separator: "\n") {
+        for line in text.split(separator: "\n") where line.contains("nterrupt") {
             guard let data = line.data(using: .utf8),
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
                 continue

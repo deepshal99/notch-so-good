@@ -100,8 +100,10 @@ class NotchWindowController {
             height: expandedH
         )
 
-        pillDataSource.sessions = sessions
-        pillDataSource.primaryStartTime = primaryStartTime
+        // Only publish real changes: every hook event lands here, and each
+        // assignment re-renders the pill.
+        if pillDataSource.sessions != sessions { pillDataSource.sessions = sessions }
+        if pillDataSource.primaryStartTime != primaryStartTime { pillDataSource.primaryStartTime = primaryStartTime }
         if pillDataSource.showsRunway != showsRunway { pillDataSource.showsRunway = showsRunway }
 
         if pillPanel == nil {
@@ -136,7 +138,7 @@ class NotchWindowController {
             pillPanel?.contentView = hostingView
 
         } else {
-            pillPanel?.setFrame(panelFrame, display: true)
+            if pillPanel?.frame != panelFrame { pillPanel?.setFrame(panelFrame, display: true) }
         }
 
         // Don't show/restore the pill while a notification is on screen —
