@@ -168,16 +168,16 @@ def test_socket_is_up():
 
 
 def test_bypass_mode_never_prompts():
-    """The reported bug: bypass mode still popped a permission card."""
+    """Bypass mode: no card, and no decision from us either (the agent decides)."""
     reply, elapsed = send(
         pre_tool("bypass-1", "Bash", "rm -rf node_modules", mode="bypassPermissions"),
         wait=True, timeout=8,
     )
-    approved = isinstance(reply, dict) and reply.get("decision") == "approve"
+    approved = isinstance(reply, dict) and reply.get("decision") == "defer"
     fast = elapsed < 1.0
     wait_ui(0.8)
     shot("bypass-no-card")
-    return (check("bypass mode approves Bash", approved, "reply=%r" % (reply,))
+    return (check("bypass mode leaves Bash to the agent (no prompt, no approval)", approved, "reply=%r" % (reply,))
             and check("bypass mode answers immediately", fast, "%.3fs" % elapsed))
 
 
@@ -188,8 +188,8 @@ def test_auto_and_plan_modes():
             pre_tool("mode-%s" % mode, "Write", "/tmp/x.txt", mode=mode),
             wait=True, timeout=8,
         )
-        approved = isinstance(reply, dict) and reply.get("decision") == "approve"
-        ok &= check("%s mode approves Write in %.3fs" % (mode, elapsed), approved,
+        approved = isinstance(reply, dict) and reply.get("decision") == "defer"
+        ok &= check("%s mode leaves Write to the agent in %.3fs" % (mode, elapsed), approved,
                     "reply=%r" % (reply,))
     return ok
 
@@ -197,8 +197,8 @@ def test_auto_and_plan_modes():
 def test_accept_edits_scope():
     reply, _ = send(pre_tool("ae-1", "Edit", "/tmp/a.swift", mode="acceptEdits"),
                     wait=True, timeout=8)
-    edits_ok = check("acceptEdits approves Edit",
-                     isinstance(reply, dict) and reply.get("decision") == "approve",
+    edits_ok = check("acceptEdits leaves Edit to the agent",
+                     isinstance(reply, dict) and reply.get("decision") == "defer",
                      "reply=%r" % (reply,))
 
     # A non-edit tool is NOT covered by acceptEdits: the app must hold it open.
@@ -219,8 +219,8 @@ def test_accept_edits_scope():
 
 def test_safe_tool_autoapproved():
     reply, elapsed = send(pre_tool("safe-1", "Read", "/tmp/file"), wait=True, timeout=8)
-    return check("safe tool (Read) approved in default mode",
-                 isinstance(reply, dict) and reply.get("decision") == "approve",
+    return check("safe tool (Read) left to the agent in default mode",
+                 isinstance(reply, dict) and reply.get("decision") == "defer",
                  "%.3fs reply=%r" % (elapsed, reply))
 
 
