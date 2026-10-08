@@ -56,17 +56,17 @@ struct SessionPillView: View {
     private var pillTotalHeight: CGFloat { hovered ? (notchHeight + expandedContentHeight) : notchHeight }
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 1)) { context in
+        Group {
             ZStack(alignment: .top) {
                 pillShape
                     .fill(Color.black)
                     .frame(width: pillWidth, height: pillTotalHeight)
 
-                header(now: context.date)
+                header()
 
                 if hovered {
                     VStack(spacing: 0) {
-                        sessionList(now: context.date)
+                        sessionList()
                         if dataSource.showsRunway {
                             runwayFooter
                         }
@@ -95,7 +95,7 @@ struct SessionPillView: View {
 
     // MARK: - Header (level with the notch)
 
-    private func header(now: Date) -> some View {
+    private func header() -> some View {
         HStack(spacing: 0) {
             // Left wing: the character, hanging from the notch edge. Open, it
             // slides to the text column and looks down at the list.
@@ -103,9 +103,10 @@ struct SessionPillView: View {
                 state: characterState,
                 framing: .pill,
                 gaze: hovered ? SIMD2<Float>(0.03, -0.09) : nil,
-                // On screen for hours: 30 fps while it just works, full rate when
-                // it wants you, celebrates, or you're looking.
-                framesPerSecond: (hovered || characterState == .need || characterState == .done) ? 60 : 30
+                // On screen for hours: its resting motion (breathing, glances) is
+                // slow and reads smoothly at 20 fps; full rate when it wants you
+                // or you're looking. Frames that wouldn't change are skipped.
+                framesPerSecond: (hovered || characterState == .need) ? 60 : 20
             )
             .frame(width: wingCollapsed, height: notchHeight)
             .padding(.leading, hovered ? wall + column - 17 : 0)
@@ -116,7 +117,7 @@ struct SessionPillView: View {
             // Right wing: runway, read like a battery. The session timer stands
             // in until usage is known (or when it can't be read).
             // Collapsed, it centres in the wing clear of the corner fillet.
-            trailingStatus(now: now)
+            trailingStatus()
                 .frame(width: hovered ? nil : wing - wall - 2)
                 .padding(.trailing, hovered ? wall + column : wall + 2)
                 .frame(width: wing, alignment: .trailing)
@@ -126,20 +127,16 @@ struct SessionPillView: View {
     }
 
     @ViewBuilder
-    private func trailingStatus(now: Date) -> some View {
+    private func trailingStatus() -> some View {
         if let runway {
             RunwayIndicator(percentLeft: runway.percentLeft, compact: !hovered)
         } else {
             let primary = sessions.first
             let waiting = primary?.status == .needsInput || primary?.status == .needsPermission
-            let elapsed = ElapsedFormatter.compact(Int(now.timeIntervalSince(primaryStartTime)))
-            Text(elapsed)
-                .font(.system(size: hovered ? 11.5 : 10.5, weight: .semibold))
-                .monospacedDigit()
-                .foregroundColor(waiting ? CharacterState.need.color : .white.opacity(0.72))
-                .lineLimit(1)
-                .fixedSize()
-                .accessibilityLabel("Elapsed \(elapsed)")
+            ElapsedText(since: primaryStartTime, compact: true,
+                        font: .system(size: hovered ? 11.5 : 10.5, weight: .semibold).monospacedDigit(),
+                        color: waiting ? CharacterState.need.color : .white.opacity(0.72))
+                .accessibilityLabel("Elapsed")
         }
     }
 
@@ -162,25 +159,25 @@ struct SessionPillView: View {
     // MARK: - Session list
 
     @ViewBuilder
-    private func sessionList(now: Date) -> some View {
+    private func sessionList() -> some View {
         if PillLayout.needsScrolling(sessions) {
-            ScrollView(.vertical) { rows(now: now) }
+            ScrollView(.vertical) { rows() }
                 .scrollIndicators(.hidden)
                 .frame(height: PillLayout.maxListHeight)
         } else {
-            rows(now: now)
+            rows()
         }
     }
 
-    private func rows(now: Date) -> some View {
+    private func rows() -> some View {
         VStack(spacing: 0) {
             ForEach(Array(buildRowList().enumerated()), id: \.element.id) { index, row in
                 Group {
                     switch row.kind {
-                    case .single(let session): sessionRow(session, now: now)
+                    case .single(let session): sessionRow(session)
                     case .header(let name, let count): groupHeader(name, count: count)
-                    case .sub(let session): subSessionRow(session, now: now)
-                    case .subagent(let sub): subagentRow(sub, now: now)
+                    case .sub(let session): subSessionRow(session)
+                    case .subagent(let sub): subagentRow(sub)
                     }
                 }
                 .opacity(hovered ? 1 : 0)
@@ -225,16 +222,16 @@ struct SessionPillView: View {
 
     /// One session: dot, what it's working on (or the project), and underneath
     /// where and what it's doing right now; elapsed on the right.
-    private func sessionRow(_ session: NotificationManager.SessionInfo, now: Date) -> some View {
+    private func sessionRow(_ session: NotificationManager.SessionInfo) -> some View {
         Button { onTap(session.id) } label: {
-            IslandSessionRow(session: session, now: now)
+            IslandSessionRow(session: session)
                 .padding(.leading, rowInset - 3.5)
                 .padding(.trailing, rowInset)
                 .frame(height: PillLayout.sessionRow)
                 .contentShape(Rectangle())
         }
         .buttonStyle(IslandRowStyle())
-        .accessibilityLabel(SessionRowParts.accessibilityLabel(session, now: now))
+        .accessibilityLabel(SessionRowParts.accessibilityLabel(session))
         .accessibilityHint("Opens this session in its terminal")
     }
 
@@ -255,7 +252,7 @@ struct SessionPillView: View {
         .frame(height: PillLayout.groupHeader, alignment: .bottom)
     }
 
-    private func subSessionRow(_ session: NotificationManager.SessionInfo, now: Date) -> some View {
+    private func subSessionRow(_ session: NotificationManager.SessionInfo) -> some View {
         Button { onTap(session.id) } label: {
             HStack(spacing: 8) {
                 StatusDot(color: session.color, size: 6)
@@ -273,7 +270,7 @@ struct SessionPillView: View {
                 }
                 SessionRowParts.badges(for: session)
                 Spacer(minLength: 8)
-                SessionRowParts.trailing(session: session, now: now)
+                SessionRowParts.trailing(session: session)
             }
             .padding(.leading, rowInset - 3)
             .padding(.trailing, rowInset)
@@ -281,7 +278,7 @@ struct SessionPillView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(IslandRowStyle())
-        .accessibilityLabel(SessionRowParts.accessibilityLabel(session, now: now))
+        .accessibilityLabel(SessionRowParts.accessibilityLabel(session))
         .accessibilityHint("Opens this session in its terminal")
     }
 
@@ -293,7 +290,7 @@ struct SessionPillView: View {
     }
 
     /// A subagent, hung off its parent with a hairline.
-    private func subagentRow(_ sub: NotificationManager.SubagentInfo, now: Date) -> some View {
+    private func subagentRow(_ sub: NotificationManager.SubagentInfo) -> some View {
         HStack(spacing: 7) {
             Path { p in
                 p.move(to: CGPoint(x: 0.5, y: 0))
@@ -311,9 +308,7 @@ struct SessionPillView: View {
                 .foregroundColor(Island.secondary)
                 .lineLimit(1)
             Spacer(minLength: 8)
-            Text(ElapsedFormatter.precise(Int(now.timeIntervalSince(sub.startTime))))
-                .font(Island.numeric)
-                .foregroundColor(Island.tertiary)
+            ElapsedText(since: sub.startTime)
         }
         .padding(.leading, rowInset + 3)
         .padding(.trailing, rowInset)

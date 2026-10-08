@@ -110,8 +110,10 @@ class PillHoverMonitor: ObservableObject {
             : collapsedScreenRect.insetBy(dx: -4, dy: -4)
         let inside = checkRect.contains(mouse)
 
-        // Toggle ignoresMouseEvents: only interactive when mouse is over pill area
-        panel.ignoresMouseEvents = !inside
+        // Toggle ignoresMouseEvents: only interactive when mouse is over pill area.
+        // Only on change: this runs on every mouse move anywhere on screen, and
+        // each set is a WindowServer round trip.
+        if panel.ignoresMouseEvents == inside { panel.ignoresMouseEvents = !inside }
 
         if inside != isHovered {
             self.isHovered = inside
@@ -162,7 +164,7 @@ class NotificationHoverMonitor {
         guard let panel else { return }
         let mouse = NSEvent.mouseLocation
         let now = contentScreenRect.insetBy(dx: -4, dy: -4).contains(mouse)
-        panel.ignoresMouseEvents = !now
+        if panel.ignoresMouseEvents == now { panel.ignoresMouseEvents = !now }
         if now != inside {
             inside = now
             onHoverChange?(now)

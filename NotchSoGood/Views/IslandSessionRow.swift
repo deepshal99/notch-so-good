@@ -5,7 +5,6 @@ import SwiftUI
 /// for the notch's list and the menu bar panel, so the two can't drift apart.
 struct IslandSessionRow: View {
     let session: NotificationManager.SessionInfo
-    let now: Date
 
     var body: some View {
         HStack(spacing: 8) {
@@ -37,7 +36,7 @@ struct IslandSessionRow: View {
                 .foregroundColor(Island.tertiary)
             }
             Spacer(minLength: 8)
-            SessionRowParts.trailing(session: session, now: now)
+            SessionRowParts.trailing(session: session)
         }
     }
 }
@@ -63,7 +62,7 @@ enum SessionRowParts {
         }
     }
 
-    static func trailing(session: NotificationManager.SessionInfo, now: Date) -> some View {
+    static func trailing(session: NotificationManager.SessionInfo) -> some View {
         HStack(spacing: 8) {
             let running = session.subagents.filter { $0.status == .running }.count
             if running > 0 {
@@ -74,15 +73,13 @@ enum SessionRowParts {
                 .foregroundColor(Island.tertiary)
                 .accessibilityLabel("\(running) subagent\(running == 1 ? "" : "s") running")
             }
-            Text(ElapsedFormatter.precise(Int(now.timeIntervalSince(session.startTime))))
-                .font(Island.numeric)
-                .foregroundColor(Island.tertiary)
+            ElapsedText(since: session.startTime)
         }
     }
 
-    static func accessibilityLabel(_ session: NotificationManager.SessionInfo, now: Date) -> String {
+    static func accessibilityLabel(_ session: NotificationManager.SessionInfo) -> String {
         let phase = session.status.activityLine(toolName: session.activeToolName, toolDetail: session.activeToolDetail)
-        let elapsed = ElapsedFormatter.precise(Int(now.timeIntervalSince(session.startTime)))
+        let elapsed = ElapsedFormatter.precise(Int(Date().timeIntervalSince(session.startTime)))
         var label = "\(session.taskTitle ?? session.projectName), \(session.agentSource.displayName), \(phase), \(elapsed)"
         if let mode = session.permissionMode.badgeLabel { label += ", \(mode) mode" }
         return label
@@ -102,5 +99,27 @@ struct IslandRowStyle: ButtonStyle {
             .scaleEffect(configuration.isPressed ? 0.98 : 1)
             .animation(Island.press, value: configuration.isPressed)
             .onHover { h in withAnimation(.hover) { hovered = h } }
+    }
+}
+
+/// A running clock in a label. Only this text re-renders each tick, never the
+/// view around it: the pill and menu used to rebuild whole trees every second
+/// just to move a timer.
+struct ElapsedText: View {
+    let since: Date
+    var compact = false
+    var font: Font = Island.numeric
+    var color: Color = Island.tertiary
+
+    var body: some View {
+        // Precise times tick every second; compact ones (1h08m) only by the minute.
+        TimelineView(.periodic(from: .now, by: compact && Date().timeIntervalSince(since) >= 3600 ? 60 : 1)) { context in
+            let seconds = Int(context.date.timeIntervalSince(since))
+            Text(compact ? ElapsedFormatter.compact(seconds) : ElapsedFormatter.precise(seconds))
+                .font(font)
+                .foregroundColor(color)
+                .lineLimit(1)
+                .fixedSize()
+        }
     }
 }

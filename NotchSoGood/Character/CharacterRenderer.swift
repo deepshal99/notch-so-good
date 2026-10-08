@@ -1,6 +1,7 @@
 import AppKit
 import MetalKit
 import QuartzCore
+import simd
 
 /// Shared Metal state: one device, one library compiled from source in the
 /// background at launch, and a lazily built pipeline per (character, finish).
@@ -258,22 +259,43 @@ final class CharacterMTKView: MTKView, MTKViewDelegate {
 
     private func updatePause(_ window: NSWindow) {
         let visible = window.isVisible && window.occlusionState.contains(.visible)
+        // Coming back into view: redraw for certain rather than trust the layer.
+        if visible && isPaused { lastDrawn = nil }
         isPaused = !visible
         // Never leave a blank view: draw one frame whenever we resume.
         if visible { draw() }
     }
 
-    func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {}
+    func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) { lastDrawn = nil }
+
+    /// What was last put on screen. Each tick computes the pose (cheap), but
+    /// only takes a drawable and commits GPU work when the picture would
+    /// actually change: a character holding still costs next to nothing.
+    private var lastDrawn: (uniforms: CharacterUniforms, points: [SIMD4<Float>], pipeline: ObjectIdentifier)?
+
+    /// True when two frames would look the same: every uniform within a
+    /// fraction of a pixel's worth, ignoring the clock unless something on
+    /// screen is driven by it (think dots, Bubble's film).
+    private func looksSame(_ a: CharacterUniforms, _ b: CharacterUniforms, _ pa: [SIMD4<Float>], _ pb: [SIMD4<Float>]) -> Bool {
+        let timeMatters = kind == .bubble || b.b.w > 0.001
+        let same = withUnsafeBytes(of: a) { ra in
+            withUnsafeBytes(of: b) { rb in
+                let fa = ra.bindMemory(to: Float.self), fb = rb.bindMemory(to: Float.self)
+                for i in 0..<fa.count where i != 6 || timeMatters {     // a.z is the clock
+                    if abs(fa[i] - fb[i]) > 0.004 { return false }
+                }
+                return true
+            }
+        }
+        guard same, pa.count == pb.count else { return false }
+        for i in pa.indices where simd_reduce_max(simd_abs(pa[i] - pb[i])) > 0.004 { return false }
+        return true
+    }
 
     func draw(in view: MTKView) {
         let fresh = CharacterRenderer.shared.pipeline(kind: kind, finish: finish)
         if let fresh { lastPipeline = (kind, fresh) }
-        guard let pipeline = fresh ?? (lastPipeline?.kind == kind ? lastPipeline?.state : nil),
-              let queue = CharacterRenderer.shared.queue,
-              let pass = currentRenderPassDescriptor,
-              let drawable = currentDrawable,
-              let buffer = queue.makeCommandBuffer(),
-              let encoder = buffer.makeRenderCommandEncoder(descriptor: pass) else { return }
+        guard let pipeline = fresh ?? (lastPipeline?.kind == kind ? lastPipeline?.state : nil) else { return }
 
         let t = now
         let pose = puppet.pose(now: t, motion: effectiveMotion)
@@ -281,6 +303,17 @@ final class CharacterMTKView: MTKView, MTKViewDelegate {
         let vp = framing.viewport(sizePt: bounds.size, pixelsPerPoint: pixelsPerPoint, kind: kind)
         var (uniforms, points) = puppet.uniforms(pose, viewport: vp, finish: finish, time: t, gazeOverride: gazeOverride)
         if !framing.allowsAura { uniforms.c.w = 0 }
+
+        if let last = lastDrawn, last.pipeline == ObjectIdentifier(pipeline),
+           looksSame(last.uniforms, uniforms, last.points, points) {
+            return
+        }
+        guard let queue = CharacterRenderer.shared.queue,
+              let pass = currentRenderPassDescriptor,
+              let drawable = currentDrawable,
+              let buffer = queue.makeCommandBuffer(),
+              let encoder = buffer.makeRenderCommandEncoder(descriptor: pass) else { return }
+        lastDrawn = (uniforms, points, ObjectIdentifier(pipeline))
 
         encoder.setRenderPipelineState(pipeline)
         encoder.setFragmentBytes(&uniforms, length: MemoryLayout<CharacterUniforms>.stride, index: 0)

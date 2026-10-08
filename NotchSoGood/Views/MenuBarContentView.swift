@@ -119,21 +119,21 @@ struct MenuBarContentView: View {
     private var sessions: some View {
         let all = sessionsList
         if !all.isEmpty {
-            TimelineView(.periodic(from: .now, by: 1)) { context in
+            Group {
                 VStack(spacing: 0) {
                     ForEach(all.prefix(6)) { session in
                         Button {
                             TerminalLauncher.focusClaudeCode(sessionId: session.id, sourceBundleId: session.sourceBundleId,
                                                              cwd: session.cwd, sourcePid: session.sourcePid)
                         } label: {
-                            IslandSessionRow(session: session, now: context.date)
+                            IslandSessionRow(session: session)
                                 .padding(.leading, column - Island.inset - 3.5)
                                 .padding(.trailing, column - Island.inset)
                                 .frame(height: PillLayout.sessionRow)
                                 .contentShape(Rectangle())
                         }
                         .buttonStyle(IslandRowStyle())
-                        .accessibilityLabel(SessionRowParts.accessibilityLabel(session, now: context.date))
+                        .accessibilityLabel(SessionRowParts.accessibilityLabel(session))
                         .accessibilityHint("Opens this session in its terminal")
                     }
                     if all.count > 6 {
