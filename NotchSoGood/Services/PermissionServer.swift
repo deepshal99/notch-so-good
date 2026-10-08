@@ -157,8 +157,9 @@ class PermissionServer {
         if toolName.hasPrefix("mcp__") {
             let parts = toolName.split(separator: "__", omittingEmptySubsequences: true)
             if let funcName = parts.last {
+                // The verb starts the name: get_issue reads, set_budget_limit doesn't.
                 let lower = funcName.lowercased()
-                if readOnlyKeywords.contains(where: { lower.contains($0) }) {
+                if readOnlyKeywords.contains(where: { lower.hasPrefix($0) }) {
                     return true
                 }
             }
@@ -176,6 +177,8 @@ class PermissionServer {
                 guard let parenEnd = rule.lastIndex(of: ")") else { continue }
                 let pattern = String(rule[patternStart..<parenEnd])
                 if pattern == "*" { return true }
+                // `git status; rm -rf ~` must not ride on a `git status` rule.
+                if toolName == "Bash", toolInput.range(of: #"[;&|`\n]|\$\("#, options: .regularExpression) != nil { continue }
                 if pattern.hasSuffix(":*") {
                     let prefix = String(pattern.dropLast(2))
                     if toolInput.hasPrefix(prefix) { return true }
@@ -491,12 +494,14 @@ class PermissionServer {
             // already decided, and in acceptEdits it has decided about edits — a
             // prompt here would be a second gate the user never asked for, and it
             // blocks the tool until they answer it.
+            // "defer" means: no decision from us, the agent's own rules decide.
+            // We never approve on the user's behalf.
             if mode.autoApproves(toolName: toolName) {
-                sendSocketResponse(clientSocket: clientSocket, body: "{\"decision\":\"approve\"}")
+                sendSocketResponse(clientSocket: clientSocket, body: "{\"decision\":\"defer\"}")
                 return
             }
             if Self.isToolApproved(toolName, toolInput: toolInput, cwd: cwd) {
-                sendSocketResponse(clientSocket: clientSocket, body: "{\"decision\":\"approve\"}")
+                sendSocketResponse(clientSocket: clientSocket, body: "{\"decision\":\"defer\"}")
                 return
             }
         }

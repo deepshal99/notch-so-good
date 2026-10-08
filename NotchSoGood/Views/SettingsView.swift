@@ -194,7 +194,7 @@ private struct AlertsPane: View {
                 }
                 PanelDivider()
                 PanelRow(icon: "lock.shield.fill", title: "A tool needs permission",
-                         subtitle: "Allow or deny from the notch. When off, requests are approved automatically.") {
+                         subtitle: "Allow or deny from the notch. When off, Claude Code asks in the terminal as usual.") {
                     Toggle("", isOn: $notificationManager.showOnPermission).labelsHidden()
                 }
                 HStack(spacing: 10) {

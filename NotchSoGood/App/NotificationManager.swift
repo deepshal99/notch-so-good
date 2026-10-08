@@ -751,13 +751,13 @@ class NotificationManager: ObservableObject {
         // bypass/auto/plan session get a blocking prompt, and never mark it as
         // "needs approval" — it doesn't.
         if permissionMode(for: sessionId).autoApproves(toolName: toolName) {
-            PermissionServer.shared.respond(requestId: requestId, approve: true)
+            PermissionServer.shared.handOffToTerminal(requestId: requestId)
             return
         }
 
         guard showOnPermission else {
-            // If permission notifications are disabled, auto-approve
-            PermissionServer.shared.respond(requestId: requestId, approve: true)
+            // Cards are off: the agent asks in its own terminal, as if we weren't here.
+            PermissionServer.shared.handOffToTerminal(requestId: requestId)
             return
         }
 

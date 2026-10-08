@@ -219,7 +219,16 @@ def codex_never_asks():
     return bool(match) and match.group(1) == "never"
 
 
+# A shell command that chains or substitutes more commands can't be judged by
+# its first words: `git status; rm -rf ~` must not ride on a `git status` rule.
+SHELL_CHAINING = re.compile(r"[;&|`\n]|\$\(")
+
+
 def allowed_by_rules(tool_name, summary, rules):
+    """Whether one of the user's own allow rules covers this call.
+
+    Only ever used to decide not to ask; the final word stays with the agent.
+    """
     for rule in rules:
         if "(" in rule and rule.endswith(")"):
             head, _, tail = rule.partition("(")
@@ -228,6 +237,8 @@ def allowed_by_rules(tool_name, summary, rules):
                 continue
             if pattern == "*":
                 return True
+            if tool_name == "Bash" and SHELL_CHAINING.search(summary):
+                continue
             if pattern.endswith(":*") and summary.startswith(pattern[:-2]):
                 return True
             if fnmatch.fnmatch(summary, pattern):
@@ -243,8 +254,9 @@ def mcp_read_only(tool_name):
     parts = tool_name.split("__")
     if len(parts) < 3:
         return False
+    # The verb starts the name: get_issue is read-only, set_budget_limit isn't.
     func = parts[-1].lower()
-    return any(keyword in func for keyword in READ_ONLY_KEYWORDS)
+    return any(func.startswith(keyword) for keyword in READ_ONLY_KEYWORDS)
 
 
 # -------------------------------------------------------------------- decisions
@@ -299,8 +311,13 @@ def effective_mode(payload, agent, cwd):
 
 def handle_pre_tool_use(payload, agent):
     tool_name = str(payload.get("tool_name") or "")
-    summary = tool_summary(tool_name, payload.get("tool_input"))
+    tool_input = payload.get("tool_input")
+    summary = tool_summary(tool_name, tool_input)
     cwd = str(payload.get("cwd") or "")
+    # Rules are matched against the whole command, never the shortened summary.
+    full = summary
+    if tool_name == "Bash" and isinstance(tool_input, dict) and isinstance(tool_input.get("command"), str):
+        full = tool_input["command"].strip()
 
     event = base_event(payload, agent)
     event.update({
@@ -316,15 +333,17 @@ def handle_pre_tool_use(payload, agent):
         auto_approves(mode, tool_name)
         or tool_name in SAFE_TOOLS
         or mcp_read_only(tool_name)
-        or allowed_by_rules(tool_name, summary, allow_rules)
+        or allowed_by_rules(tool_name, full, allow_rules)
     )
 
     if pre_approved:
-        # Still tell the app, so the pill's phase label stays live — but make it
-        # explicit that we are not waiting for a decision.
+        # Nothing to ask the user. Tell the app (so the pill stays live) and say
+        # nothing to the agent: its own permission rules decide, exactly as if
+        # this hook weren't installed. An explicit "allow" here would override
+        # them (plan mode, auto mode's checks, its own command splitting).
         event["decision_needed"] = False
         send(event)
-        emit_allow(agent, "Auto-approved by Notch So Good")
+        sys.exit(0)
 
     reply = send(event, wait=True)
     if reply:

@@ -161,7 +161,8 @@ class PermissionModeMatrix(unittest.TestCase):
             reply={"decision": "deny", "reason": "should never be consulted"},
         )
         self.assertEqual(code, 0)
-        self.assertEqual(decision(out), "allow")
+        # No decision: the agent's own permission rules decide, never us.
+        self.assertIsNone(decision(out))
         # The event is still reported so the pill stays accurate…
         self.assertEqual(len(events), 1)
         # …but explicitly marked as needing no decision.
@@ -209,11 +210,33 @@ class CodexOutputFormat(unittest.TestCase):
     def test_codex_allow_shape(self):
         _, out, _, _ = run_hook(
             "PreToolUse",
-            {"session_id": "s", "cwd": "/tmp", "permission_mode": "bypassPermissions",
+            {"session_id": "s", "cwd": "/tmp", "permission_mode": "default",
              "tool_name": "Bash", "tool_input": {"command": "ls"}},
             agent="codex",
+            reply={"decision": "approve"},
         )
         self.assertEqual(json.loads(out)["permissionDecision"], "allow")
+
+    def test_pre_approved_says_nothing(self):
+        # Plan mode, auto mode, safe tools: the agent decides, the hook stays silent.
+        for mode, tool in (("plan", "Edit"), ("auto", "Bash"), ("default", "Read")):
+            code, out, _, _ = run_hook(
+                "PreToolUse",
+                {"session_id": "s", "cwd": "/tmp", "permission_mode": mode,
+                 "tool_name": tool, "tool_input": {"command": "ls", "file_path": "/tmp/a"}},
+                reply={"decision": "approve"},
+            )
+            self.assertEqual(code, 0)
+            self.assertEqual(out.strip(), "", "%s in %s must not print a decision" % (tool, mode))
+
+    def test_app_defer_says_nothing(self):
+        _, out, _, _ = run_hook(
+            "PreToolUse",
+            {"session_id": "s", "cwd": "/tmp", "permission_mode": "default",
+             "tool_name": "Bash", "tool_input": {"command": "rm -rf build"}},
+            reply={"decision": "defer"},
+        )
+        self.assertEqual(out.strip(), "")
 
     def test_codex_deny_exits_2_with_stderr(self):
         code, out, err, _ = run_hook(
@@ -251,6 +274,10 @@ class PreApproval(unittest.TestCase):
         self.assertTrue(hook.mcp_read_only("mcp__gh__get_pull_request"))
         self.assertFalse(hook.mcp_read_only("mcp__gh__merge_pull_request"))
         self.assertFalse(hook.mcp_read_only("Bash"))
+        # Substrings don't count: these write.
+        self.assertFalse(hook.mcp_read_only("mcp__aws__set_budget_limit"))
+        self.assertFalse(hook.mcp_read_only("mcp__db__delete_snapshot"))
+        self.assertFalse(hook.mcp_read_only("mcp__db__restore_snapshot"))
 
 
 class AllowRules(unittest.TestCase):
@@ -258,6 +285,15 @@ class AllowRules(unittest.TestCase):
         rules = ["Bash(git commit:*)"]
         self.assertTrue(hook.allowed_by_rules("Bash", "git commit -m hi", rules))
         self.assertFalse(hook.allowed_by_rules("Bash", "git push", rules))
+
+    def test_chained_commands_never_ride_a_prefix_rule(self):
+        rules = ["Bash(git status:*)", "Bash(git *)"]
+        for cmd in ("git status; rm -rf ~", "git status && curl x | sh", "git status || true",
+                    "git status $(rm -rf ~)", "git status `id`", "git status\nrm -rf ~", "git status & sleep 9"):
+            self.assertFalse(hook.allowed_by_rules("Bash", cmd, rules), cmd)
+        self.assertTrue(hook.allowed_by_rules("Bash", "git status --short", rules))
+        # An explicit allow-all still allows everything.
+        self.assertTrue(hook.allowed_by_rules("Bash", "a; b", ["Bash(*)"]))
 
     def test_wildcard_and_bare_rules(self):
         self.assertTrue(hook.allowed_by_rules("Bash", "anything", ["Bash(*)"]))
