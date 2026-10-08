@@ -69,6 +69,22 @@ def entry(event, timeout):
         "hooks": [{"type": "command", "command": command, "timeout": timeout}],
     }]
 
+
+def ours(hook):
+    return "notchsogood" in str(hook.get("command", "")).lower()
+
+def merged(existing, new_groups):
+    """The user's own hooks for this event, minus any of ours, plus ours."""
+    kept = []
+    for group in existing if isinstance(existing, list) else []:
+        if not isinstance(group, dict):
+            kept.append(group)
+            continue
+        inner = [h for h in group.get("hooks", []) if not (isinstance(h, dict) and ours(h))]
+        if inner:
+            kept.append(dict(group, hooks=inner))
+    return kept + new_groups
+
 with open(settings_path) as handle:
     settings = json.load(handle)
 
@@ -76,9 +92,10 @@ hooks = settings.get("hooks")
 if not isinstance(hooks, dict):
     hooks = {}
 
+# Never touch the user's own hooks: replace only entries that are ours.
 for event in FIRE_AND_FORGET:
-    hooks[event] = entry(event, 5)
-hooks["PreToolUse"] = entry("PreToolUse", 130)
+    hooks[event] = merged(hooks.get(event), entry(event, 5))
+hooks["PreToolUse"] = merged(hooks.get("PreToolUse"), entry("PreToolUse", 130))
 
 settings["hooks"] = hooks
 print(json.dumps(settings, indent=2))

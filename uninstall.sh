@@ -72,11 +72,37 @@ else
     echo -e "  ${YELLOW}!${RESET} Remove hooks manually from ~/.claude/settings.json"
 fi
 
-# Remove Codex CLI hooks (the hooks.json we wrote is entirely ours)
+# Remove ONLY our Codex CLI hooks — the user may keep their own in the same file.
 CODEX_HOOKS="$HOME/.codex/hooks.json"
 if [ -f "$CODEX_HOOKS" ] && grep -q "notchsogood" "$CODEX_HOOKS" 2>/dev/null; then
-    rm -f "$CODEX_HOOKS"
-    echo -e "  ${GREEN}✓${RESET} Removed Codex CLI hooks"
+    if python3 - "$CODEX_HOOKS" <<'PYEOF'
+import json, os, sys
+path = sys.argv[1]
+doc = json.load(open(path))
+hooks = doc.get("hooks", {}) if isinstance(doc, dict) else {}
+for event in list(hooks):
+    groups = []
+    for g in hooks[event] if isinstance(hooks[event], list) else []:
+        if isinstance(g, dict) and isinstance(g.get("hooks"), list):
+            g["hooks"] = [h for h in g["hooks"] if "notchsogood" not in str(h.get("command", "")).lower()]
+            if not g["hooks"]:
+                continue
+        groups.append(g)
+    if groups:
+        hooks[event] = groups
+    else:
+        hooks.pop(event)
+if hooks or any(k != "hooks" for k in doc):
+    doc["hooks"] = hooks
+    json.dump(doc, open(path, "w"), indent=2)
+else:
+    os.remove(path)
+PYEOF
+    then
+        echo -e "  ${GREEN}✓${RESET} Removed Codex CLI hooks (yours were left alone)"
+    else
+        echo -e "  ${YELLOW}!${RESET} Remove hooks manually from ~/.codex/hooks.json"
+    fi
 fi
 
 # Hook bridge

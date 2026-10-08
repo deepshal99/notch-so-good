@@ -64,13 +64,41 @@ def entry(event, timeout):
         "hooks": [{"type": "command", "command": command, "timeout": timeout}],
     }]
 
-hooks = {}
+
+def ours(hook):
+    return "notchsogood" in str(hook.get("command", "")).lower()
+
+def merged(existing, new_groups):
+    """The user's own hooks for this event, minus any of ours, plus ours."""
+    kept = []
+    for group in existing if isinstance(existing, list) else []:
+        if not isinstance(group, dict):
+            kept.append(group)
+            continue
+        inner = [h for h in group.get("hooks", []) if not (isinstance(h, dict) and ours(h))]
+        if inner:
+            kept.append(dict(group, hooks=inner))
+    return kept + new_groups
+
+document = {}
+if os.path.exists(hooks_path):
+    try:
+        with open(hooks_path) as handle:
+            document = json.load(handle)
+    except Exception:
+        sys.exit("Error: %s is not valid JSON; fix it and run this again." % hooks_path)
+if not isinstance(document, dict):
+    document = {}
+hooks = document.get("hooks") if isinstance(document.get("hooks"), dict) else {}
+
+# Never touch the user's own hooks: replace only entries that are ours.
 for event in FIRE_AND_FORGET:
-    hooks[event] = entry(event, 5)
-hooks["PreToolUse"] = entry("PreToolUse", 130)
+    hooks[event] = merged(hooks.get(event), entry(event, 5))
+hooks["PreToolUse"] = merged(hooks.get("PreToolUse"), entry("PreToolUse", 130))
+document["hooks"] = hooks
 
 with open(hooks_path, "w") as handle:
-    json.dump({"hooks": hooks}, handle, indent=2)
+    json.dump(document, handle, indent=2)
     handle.write("\n")
 PYEOF
 
