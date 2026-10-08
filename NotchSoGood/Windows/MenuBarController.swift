@@ -14,6 +14,8 @@ final class MenuBarController: NSObject, NSWindowDelegate {
     private var panel: MenuPanel?
     private var hosting: NSHostingView<AnyView>?
     private var outsideClickMonitor: Any?
+    private var localClickMonitor: Any?
+    private var workspaceObservers: [NSObjectProtocol] = []
     private var attentionObserver: AnyCancellable?
     private var contentSize: CGSize?
 
@@ -70,12 +72,44 @@ final class MenuBarController: NSObject, NSWindowDelegate {
         layout(anchor: buttonWindow.frame)
 
         statusItem?.button?.highlight(true)
-        NSApp.activate(ignoringOtherApps: true)
         panel.makeKeyAndOrderFront(nil)
+        NSApp.activate()
+        installDismissTriggers()
+    }
 
-        outsideClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
+    /// Everything that closes a menu: a click anywhere else (in another app or
+    /// in our own notch windows), another app coming forward, a Space switch,
+    /// the panel losing focus, Escape. Any one is enough; none depends on the
+    /// panel having become key.
+    private func installDismissTriggers() {
+        removeDismissTriggers()
+        outsideClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]) { [weak self] _ in
             Task { @MainActor in self?.close() }
         }
+        localClickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
+            // Clicks inside the panel, or on the menu bar item (which toggles), stay.
+            if let self, event.window !== self.panel, event.window !== self.statusItem?.button?.window {
+                self.close()
+            }
+            return event
+        }
+        let center = NSWorkspace.shared.notificationCenter
+        for name in [NSWorkspace.didActivateApplicationNotification, NSWorkspace.activeSpaceDidChangeNotification] {
+            workspaceObservers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] note in
+                if let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+                   app.processIdentifier == ProcessInfo.processInfo.processIdentifier { return }
+                Task { @MainActor in self?.close() }
+            })
+        }
+    }
+
+    private func removeDismissTriggers() {
+        if let outsideClickMonitor { NSEvent.removeMonitor(outsideClickMonitor) }
+        if let localClickMonitor { NSEvent.removeMonitor(localClickMonitor) }
+        outsideClickMonitor = nil
+        localClickMonitor = nil
+        workspaceObservers.forEach(NSWorkspace.shared.notificationCenter.removeObserver)
+        workspaceObservers = []
     }
 
     func close() {
@@ -86,8 +120,7 @@ final class MenuBarController: NSObject, NSWindowDelegate {
         contentSize = nil
         lastClosed = Date()
         statusItem?.button?.highlight(false)
-        if let outsideClickMonitor { NSEvent.removeMonitor(outsideClickMonitor) }
-        outsideClickMonitor = nil
+        removeDismissTriggers()
     }
 
     /// Size to the content and hang under the menu bar item, kept on screen.
