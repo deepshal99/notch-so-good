@@ -12,6 +12,7 @@ import Sparkle
 @MainActor
 enum DebugSnapshots {
     static func runIfRequested() {
+        FilmFrames.runIfRequested()
         let args = CommandLine.arguments
         guard let i = args.firstIndex(of: "--snapshots"), i + 1 < args.count else { return }
         let dir = URL(fileURLWithPath: args[i + 1], isDirectory: true)
@@ -27,6 +28,7 @@ enum DebugSnapshots {
             write(ctx.makeImage(), dir.appendingPathComponent("portrait.png"))
         }
         badgeSheet(to: dir.appendingPathComponent("badge.png"))
+        iconMaster(to: dir.appendingPathComponent("icon-1024.png"))
         cardSheet(to: dir.appendingPathComponent("cards.png"))
         settingsSheet(to: dir.appendingPathComponent("settings.png"))
         popoverSheet(to: dir.appendingPathComponent("popover.png"))
@@ -56,6 +58,38 @@ enum DebugSnapshots {
                 ctx.restoreGState()
             }
         }
+        write(ctx.makeImage(), url)
+    }
+
+    /// The app icon master (1024 px, macOS template: an 824 px body with a soft
+    /// shadow): Peek in Neon hanging from a notch, on the tile's dark gradient.
+    /// `bash` turns it into AppIcon.icns; see the README of the icon script.
+    static func iconMaster(to url: URL) {
+        let canvasPx = 1024, body: CGFloat = 824, inset: CGFloat = 100
+        let ctx = canvas(canvasPx, canvasPx)
+        let box = CGRect(x: inset, y: inset, width: body, height: body)
+        let shape = CGPath(roundedRect: box, cornerWidth: 186, cornerHeight: 186, transform: nil)
+        ctx.saveGState()
+        ctx.setShadow(offset: CGSize(width: 0, height: -12), blur: 28, color: CGColor(gray: 0, alpha: 0.45))
+        ctx.addPath(shape); ctx.setFillColor(CGColor(gray: 0.05, alpha: 1)); ctx.fillPath()
+        ctx.restoreGState()
+        ctx.saveGState(); ctx.addPath(shape); ctx.clip()
+        let space = CGColorSpace(name: CGColorSpace.sRGB)!
+        let grad = CGGradient(colorsSpace: space, colors: [CGColor(red: 0x1C/255, green: 0x1C/255, blue: 0x21/255, alpha: 1),
+                                                          CGColor(red: 0x0B/255, green: 0x0B/255, blue: 0x0D/255, alpha: 1)] as CFArray, locations: [0, 1])!
+        ctx.drawLinearGradient(grad, start: CGPoint(x: box.midX, y: box.maxY), end: CGPoint(x: box.midX, y: box.minY), options: [])
+        let n = CharacterFraming.badgeNotch
+        // Narrower than the badge's, so it reads as a notch and not a slab.
+        let nw = body*0.52, nh = body*n.height
+        let notch = CGRect(x: box.midX - nw/2, y: box.maxY - nh, width: nw, height: nh)
+        ctx.setFillColor(CGColor(gray: 0, alpha: 1))
+        ctx.addPath(CGPath(roundedRect: notch.insetBy(dx: 0, dy: -notch.height), cornerWidth: notch.height*0.75, cornerHeight: notch.height*0.75, transform: nil)); ctx.fillPath()
+        if let img = render(kind: .peek, state: .work, finish: .neon, framing: .badge, sizePt: CGSize(width: body, height: body), scale: 1, t: 1.4) {
+            ctx.draw(img, in: box)
+        }
+        ctx.restoreGState()
+        // A hairline, as on the tiles.
+        ctx.addPath(shape); ctx.setStrokeColor(CGColor(gray: 1, alpha: 0.08)); ctx.setLineWidth(2); ctx.strokePath()
         write(ctx.makeImage(), url)
     }
 
