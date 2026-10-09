@@ -40,7 +40,7 @@ struct SessionPillView: View {
     private let column: CGFloat = Island.inset + Island.cardPadding
 
     /// The character reflects whichever session most needs the user.
-    private var characterState: CharacterState { CharacterState(session: sessions.first) }
+    private var characterState: CharacterState { CharacterState(session: sessions.first, runway: runway) }
 
     private var runway: UsageLimitsStore.LimitWindow? {
         limits.sessionWindow(for: sessions.first?.agentSource ?? .claude)

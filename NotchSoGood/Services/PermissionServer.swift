@@ -428,6 +428,26 @@ class PermissionServer {
                 NotificationManager.shared.handleNotification(notification)
             }
 
+        case "StopFailure":
+            close(clientSocket)
+            let error = json["error"] as? String
+            let details = json["error_details"] as? String
+            DispatchQueue.main.async {
+                NotificationManager.shared.adoptSession(
+                    sessionId: sessionId, cwd: cwd, sourceBundleId: sourceBundleId,
+                    sourcePid: agentPid, permissionMode: mode
+                )
+                let resetsAt = UsageLimitsStore.shared.sessionWindow(for: .claude)?.resetsAt
+                let copy = StopFailure.copy(error: error, details: details,
+                                            resetsIn: resetsAt.map { UsageLimitsStore.resetCountdown($0) })
+                NotificationManager.shared.handleNotification(NotchNotification(
+                    type: .error,
+                    message: copy.message,
+                    title: copy.title,
+                    sessionId: sessionId
+                ))
+            }
+
         case "Notification":
             close(clientSocket)
             let notifType = json["notification_type"] as? String ?? "general"

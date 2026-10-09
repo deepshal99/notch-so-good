@@ -6,9 +6,11 @@ enum SessionStatus: String {
     case needsPermission
     case compacting
     case completed
+    /// The turn ended on an API error (rate limit, sign-in, overload…).
+    case failed
 
     /// The same colour language as the character: blue works, violet thinks,
-    /// orange needs you, green is done.
+    /// orange needs you, green is done, red stopped.
     var dotColor: Color {
         switch self {
         case .running:         return Color(hex: "6FB6FF")
@@ -16,6 +18,7 @@ enum SessionStatus: String {
         case .needsPermission: return Color(hex: "FFA54D")
         case .compacting:      return Color(hex: "B79CFF")
         case .completed:       return Color(hex: "5BE49B")
+        case .failed:          return Color(hex: "FF6B61")
         }
     }
 
@@ -56,8 +59,9 @@ enum SessionStatus: String {
 
     var attentionPriority: Int {
         switch self {
-        case .needsPermission: return 4
-        case .needsInput:      return 3
+        case .needsPermission: return 5
+        case .needsInput:      return 4
+        case .failed:          return 3
         case .compacting:      return 2
         case .running:         return 1
         case .completed:       return 0
@@ -71,6 +75,7 @@ enum SessionStatus: String {
         case .needsPermission: return "Permission"
         case .compacting: return "Compacting"
         case .completed: return "Done"
+        case .failed: return "Stopped"
         }
     }
 
@@ -93,6 +98,7 @@ enum SessionStatus: String {
         case .needsPermission: return "Needs approval"
         case .compacting:      return "Compacting"
         case .completed:       return "Done"
+        case .failed:          return "Stopped"
         }
     }
 }

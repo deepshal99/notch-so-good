@@ -11,7 +11,7 @@ enum UsageForecast {
     }
 
     /// Heads-up points, as percent of a window used.
-    static let headsUpLevels = [80, 95]
+    static let headsUpLevels = [80, 95, 100]
 
     /// The highest heads-up level a window has crossed, or nil below the first.
     static func headsUpLevel(percentLeft: Int) -> Int? {

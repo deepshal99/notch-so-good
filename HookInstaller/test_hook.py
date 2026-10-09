@@ -420,6 +420,19 @@ class PayloadShaping(unittest.TestCase):
         _, _, _, events = run_hook("Stop", {"session_id": "s", "cwd": "/tmp"})
         self.assertEqual(events[0]["last_assistant_message"], "Task completed")
 
+    def test_stop_failure_carries_the_error(self):
+        _, _, _, events = run_hook("StopFailure", {
+            "session_id": "s", "cwd": "/tmp", "error": "rate_limit",
+            "error_details": "429 Too Many Requests"})
+        self.assertEqual(events[0]["event"], "StopFailure")
+        self.assertEqual(events[0]["error"], "rate_limit")
+        self.assertEqual(events[0]["error_details"], "429 Too Many Requests")
+
+    def test_stop_failure_defaults_to_unknown(self):
+        _, _, _, events = run_hook("StopFailure", {"session_id": "s", "cwd": "/tmp", "error_details": {"x": 1}})
+        self.assertEqual(events[0]["error"], "unknown")
+        self.assertEqual(events[0]["error_details"], "")
+
     def test_subagent_id_and_description_fallbacks(self):
         self.assertEqual(hook.subagent_id({"agent_id": "a1"}), "a1")
         self.assertEqual(hook.subagent_id({"task_id": "t1"}), "t1")

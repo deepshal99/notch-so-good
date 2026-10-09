@@ -165,15 +165,24 @@ enum CharacterFraming: Equatable {
         case .portrait:
             return CharacterViewport(size: [w, h], center: [w/2, h/2], scale: h/(kind.notchUnits*0.86))
         case .badge:
-            return CharacterViewport(size: [w, h], center: [w/2, h/2], scale: h/(kind.notchUnits*Self.badgeUnits(for: state)),
+            let fit = Self.badgeFit(for: state), scale = h/(kind.notchUnits*fit.units)
+            return CharacterViewport(size: [w, h], center: [w/2 - fit.shiftX*scale, h/2], scale: scale,
                                      notchY: h*Float(Self.badgeNotch.height))
         }
     }
 
     /// How much taller than the character a badge is, and its notch as a
     /// fraction of the box: deep enough to hold the grip, wide enough to cover it.
-    /// Reaching out for you, Peek hangs at arm's length, so it comes in smaller.
-    static func badgeUnits(for state: CharacterState) -> Float { state == .need ? 1.42 : 1.12 }
+    /// How much taller than the character a badge is in each pose, and how far
+    /// (in character units) the pose leans right. Reaching out for you, Peek
+    /// hangs at arm's length; out cold, it dangles from one arm, off to the side.
+    static func badgeFit(for state: CharacterState) -> (units: Float, shiftX: Float) {
+        switch state {
+        case .need: return (1.42, 0)
+        case .error: return (1.56, 0.42)
+        default: return (1.12, 0)
+        }
+    }
     static let badgeNotch = CGSize(width: 0.8, height: 0.11)
 
     /// The glow around the character only works where nothing clips it.

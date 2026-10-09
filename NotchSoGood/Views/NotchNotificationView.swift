@@ -166,6 +166,7 @@ struct NotchNotificationView: View {
         case .complete: return notification.title ?? "Finished"
         case .question: return notification.title ?? "Needs your input"
         case .permission: return notification.title ?? "Needs your go-ahead"
+        case .error: return notification.title ?? "Stopped"
         case .general: return notification.displayTitle
         }
     }

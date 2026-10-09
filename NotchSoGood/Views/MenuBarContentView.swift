@@ -84,12 +84,19 @@ struct MenuBarContentView: View {
     /// crops badly as a still, so the portrait stays awake; the status line
     /// says it's off duty.
     private var characterState: CharacterState {
-        waitingCount > 0 ? .need : .work
+        if waitingCount > 0 { return .need }
+        if outOfUsage || failedCount > 0 { return .error }
+        return .work
     }
 
+    private var failedCount: Int { sessionsList.filter { $0.status == .failed }.count }
+    private var outOfUsage: Bool { (runway?.percentLeft ?? 1) <= 0 }
+
     private var statusLine: String {
-        if sessionsList.isEmpty { return "\(characterSettings.kind.displayName) is off duty" }
         if waitingCount > 0 { return "\(waitingCount) waiting on you" }
+        if outOfUsage { return "Out of usage until it resets" }
+        if failedCount > 0 { return failedCount == 1 ? "A session stopped on an error" : "\(failedCount) sessions stopped on errors" }
+        if sessionsList.isEmpty { return "\(characterSettings.kind.displayName) is off duty" }
         return "\(sessionsList.count) session\(sessionsList.count == 1 ? "" : "s") working"
     }
 
@@ -107,7 +114,7 @@ struct MenuBarContentView: View {
                     .foregroundColor(Island.primary)
                 Text(statusLine)
                     .font(Island.meta)
-                    .foregroundColor(waitingCount > 0 ? CharacterState.need.color : Island.secondary)
+                    .foregroundColor(characterState == .work ? Island.secondary : characterState.color)
                     .lineLimit(1)
             }
             Spacer(minLength: 8)

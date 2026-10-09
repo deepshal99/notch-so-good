@@ -546,6 +546,8 @@ class NotificationManager: ObservableObject {
                 updateSessionStatus(sessionId: sid, status: .needsPermission, message: notification.message)
             case .complete:
                 updateSessionStatus(sessionId: sid, status: .completed, message: notification.message)
+            case .error:
+                updateSessionStatus(sessionId: sid, status: .failed, message: notification.message)
             case .general:
                 break
             }
@@ -558,7 +560,8 @@ class NotificationManager: ObservableObject {
             guard showOnQuestion else { return }
         case .permission:
             guard showOnPermission else { return }
-        case .general:
+        case .error, .general:
+            // A stopped session can't carry on without you: always say so.
             break
         }
 
@@ -595,6 +598,7 @@ class NotificationManager: ObservableObject {
             .question: "Should I refactor the animation module?",
             .permission: "Claude wants to edit AppDelegate.swift",
             .general: "Hey! Claude Code is ready for you",
+            .error: "Hit the usage limit. Resets in 1h 12m.",
         ]
 
         let notification = NotchNotification(
@@ -729,7 +733,7 @@ class NotificationManager: ObservableObject {
 
     /// Bump when the hook bridge's wire format or command line changes, so an
     /// upgrade reinstalls hooks even if the app version didn't move.
-    private static let hooksSchemaVersion = 4
+    private static let hooksSchemaVersion = 5
 
     /// Install hooks on first launch, on version updates, and whenever the hook
     /// bridge itself changes shape.

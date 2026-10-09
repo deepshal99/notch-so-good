@@ -48,10 +48,26 @@ do {
         (CharacterState(notification: NotchNotification(type: .permission, message: "x", permissionRequestId: "r")), .need),
         (CharacterState(notification: NotchNotification(type: .complete, message: "x")), .done),
         (CharacterState(notification: NotchNotification(type: .general, message: "x", title: NotchNotification.limitsTitle)), .warn),
+        (CharacterState(notification: NotchNotification(type: .general, message: "x", title: NotchNotification.limitsOutTitle)), .error),
+        (CharacterState(notification: NotchNotification(type: .error, message: "x")), .error),
         (CharacterState(notification: NotchNotification(type: .general, message: "x", title: NotchNotification.nudgeTitle)), .need),
     ]
     for (got, want) in checks where got != want { failed += 1; print("FAIL notification maps to \(got), want \(want)") }
-    if checks.allSatisfy({ $0.0 == $0.1 }) { print("PASS notifications map to need / done / warn") }
+    if checks.allSatisfy({ $0.0 == $0.1 }) { print("PASS notifications map to need / done / warn / error") }
+}
+
+// A turn that died on an API error reads as plain words, with the next step.
+do {
+    var ok = true
+    func expect(_ got: StopFailure.Copy, _ title: String, _ message: String) {
+        if got != StopFailure.Copy(title: title, message: message) { ok = false; failed += 1; print("FAIL stop failure copy: \(got)") }
+    }
+    expect(StopFailure.copy(error: "rate_limit", details: nil, resetsIn: "1h 12m"), NotchNotification.limitsOutTitle, "Hit the usage limit. Resets in 1h 12m.")
+    expect(StopFailure.copy(error: "rate_limit", details: nil), NotchNotification.limitsOutTitle, "Hit the usage limit. Try again once it resets.")
+    expect(StopFailure.copy(error: "authentication_failed", details: "401"), "Signed out", "Run /login in Claude Code, then try again.")
+    expect(StopFailure.copy(error: nil, details: "{\"type\":\"error\"}"), "Stopped on an error", "The turn ended on an API error.")
+    expect(StopFailure.copy(error: "something_new", details: "Context window\nexceeded"), "Stopped on an error", "Context window exceeded")
+    if ok { print("PASS stop failures read as plain words") }
 }
 
 if failed > 0 { print("\(failed) character case(s) failed"); exit(1) }

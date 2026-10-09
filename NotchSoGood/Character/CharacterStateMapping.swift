@@ -6,9 +6,11 @@ extension CharacterState {
         switch notification.type {
         case .permission, .question: self = .need
         case .complete: self = .done
+        case .error: self = .error
         case .general:
             switch notification.title {
             case NotchNotification.limitsTitle: self = .warn
+            case NotchNotification.limitsOutTitle: self = .error
             case NotchNotification.nudgeTitle: self = .need
             default: self = .work
             }

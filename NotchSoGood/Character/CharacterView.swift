@@ -99,11 +99,24 @@ struct CharacterView: NSViewRepresentable {
 
 extension CharacterState {
     /// The collapsed pill shows the session that most needs the user.
+    /// A session's state, with the 5-hour window taken into account: once it's
+    /// used up nothing can run, so Peek is out cold until it resets, unless a
+    /// session is waiting on you (that still needs you first).
+    init(session: NotificationManager.SessionInfo?, runway: UsageLimitsStore.LimitWindow?) {
+        let state = CharacterState(session: session)
+        if let runway, runway.percentLeft <= 0, state != .need {
+            self = .error
+        } else {
+            self = state
+        }
+    }
+
     init(session: NotificationManager.SessionInfo?) {
         guard let session else { self = .idle; return }
         switch session.status {
         case .needsInput, .needsPermission: self = .need
         case .completed: self = .done
+        case .failed: self = .error
         case .compacting: self = .think
         // Between tool calls the model is reasoning; during one, it's working.
         case .running: self = session.activeToolName == nil ? .think : .work

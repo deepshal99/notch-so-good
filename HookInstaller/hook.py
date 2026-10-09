@@ -459,6 +459,11 @@ def handle_simple(event_name, payload, agent):
         event["model"] = str(payload.get("model") or "")
     elif event_name == "Stop":
         event["last_assistant_message"] = (last_assistant_message(payload) or "Task completed")[:MAX_MESSAGE]
+    elif event_name == "StopFailure":
+        # The turn died on an API error: the app says which, in plain words.
+        event["error"] = str(payload.get("error") or "unknown")[:40]
+        details = payload.get("error_details")
+        event["error_details"] = (details if isinstance(details, str) else "")[:MAX_MESSAGE]
     elif event_name == "Notification":
         event["notification_type"] = classify_notification(payload)
         event["message"] = str(payload.get("message") or "Claude needs attention")[:MAX_MESSAGE]

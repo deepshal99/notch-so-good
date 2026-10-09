@@ -39,7 +39,7 @@ enum DebugSnapshots {
     /// The menu's avatar box in the poses the menu uses, in every finish.
     static func badgeSheet(to url: URL) {
         let pt: CGFloat = 44, s: CGFloat = 4, px = Int(pt*s), gap = 12*Int(s)
-        let finishes = CharacterKind.peek.finishes, states: [CharacterState] = [.work, .need, .done]
+        let finishes = CharacterKind.peek.finishes, states: [CharacterState] = [.work, .need, .done, .error]
         let ctx = canvas(gap + finishes.count*(px + gap), gap + states.count*(px + gap))
         ctx.setFillColor(CGColor(gray: 0, alpha: 1)); ctx.fill(CGRect(x: 0, y: 0, width: ctx.width, height: ctx.height))
         for (r, state) in states.enumerated() {
@@ -235,6 +235,8 @@ enum DebugSnapshots {
             (NotchNotification(type: .complete, message: "Fixed the reconnect race. The socket now backs off before retrying, and all 76 tests pass."), 0.45),
             (NotchNotification(type: .question, message: "Which cache should back the session store? Redis, in-memory LRU, or SQLite?"), 1.6),
             (NotchNotification(type: .general, message: "Under 10% of the 5-hour window left. Resets in 58m.", title: NotchNotification.limitsTitle), 1.2),
+            (NotchNotification(type: .error, message: "Hit the usage limit. Resets in 1h 12m.", title: NotchNotification.limitsOutTitle), 1.6),
+            (NotchNotification(type: .error, message: "Run /login in Claude Code, then try again.", title: "Signed out"), 1.6),
         ]
         let s: CGFloat = 2
         var images: [(CGImage, CGSize)] = []

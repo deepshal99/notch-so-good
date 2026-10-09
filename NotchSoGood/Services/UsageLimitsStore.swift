@@ -125,10 +125,13 @@ final class UsageLimitsStore: ObservableObject {
 
             let countdown = session.resetsAt.map { Self.resetCountdown($0) } ?? "soon"
             let agent = session.source == .claude ? "" : "\(session.source.displayName): "
+            let empty = level == 100
             NotificationManager.shared.handleNotification(NotchNotification(
                 type: .general,
-                message: "\(agent)\(level)% of the 5-hour window used. Resets in \(countdown).",
-                title: NotchNotification.limitsTitle
+                message: empty
+                    ? "\(agent)The 5-hour window is used up. Resets in \(countdown)."
+                    : "\(agent)\(level)% of the 5-hour window used. Resets in \(countdown).",
+                title: empty ? NotchNotification.limitsOutTitle : NotchNotification.limitsTitle
             ))
         }
     }

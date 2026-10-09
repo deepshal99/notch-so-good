@@ -55,7 +55,7 @@ echo -e "\n${BOLD}7/10  Character engine${RESET}"
 TMP=$(mktemp -d)
 swiftc -O NotchSoGood/Character/CharacterModel.swift NotchSoGood/Character/CharacterEngine.swift \
   NotchSoGood/Character/CharacterStateMapping.swift NotchSoGood/Models/NotchNotification.swift \
-  NotchSoGood/Models/NotificationType.swift NotchSoGood/Utilities/ColorHex.swift \
+  NotchSoGood/Models/NotificationType.swift NotchSoGood/Models/StopFailure.swift NotchSoGood/Utilities/ColorHex.swift \
   Tests/CharacterEngineTests/main.swift -o "$TMP/character"
 "$TMP/character" | tail -4 || fail=1
 rm -rf "$TMP"
