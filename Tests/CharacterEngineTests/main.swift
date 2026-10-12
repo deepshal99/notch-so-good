@@ -42,6 +42,41 @@ do {
     if !ok { failed += 1 }
 }
 
+// Every trick stays finite, at full and Calm strength, and hands back exactly
+// the pose it started from once it's over.
+do {
+    var ok = true
+    for trick in PeekTrick.allCases {
+        for strength: Float in [1, 0.65] {
+            let puppet = CharacterPuppet(kind: .peek, state: .work, now: 0)
+            puppet.trick = (trick, 1, strength)
+            var t = 0.0
+            while t < 1 + Double(trick.duration) + 0.2 {
+                let pose = puppet.pose(now: t, motion: CharacterMotion.gooey.params)
+                let (u, pts) = puppet.uniforms(pose, viewport: vp, finish: .neon, time: t, gazeOverride: nil)
+                let all = [u.pos, u.pivot, u.rot, u.gazeEye, u.lidFace, u.eyeA, u.V0, u.V1, u.V2, u.V3] + pts
+                if !all.allSatisfy(finite) { ok = false; failed += 1; print("FAIL \(trick) at \(t): non-finite"); break }
+                t += 1.0/60
+            }
+            if puppet.trick != nil { ok = false; failed += 1; print("FAIL \(trick) never ended") }
+        }
+        // An event mid-trick cuts it off.
+        let cut = CharacterPuppet(kind: .peek, state: .work, now: 0)
+        cut.trick = (trick, 0, 1)
+        _ = cut.pose(now: 0.5, motion: CharacterMotion.gooey.params)
+        cut.setState(.need, now: 0.6, motion: CharacterMotion.gooey.params)
+        if cut.trick != nil { ok = false; failed += 1; print("FAIL \(trick) survived a state change") }
+    }
+    // Dozing nods off, and any state change wakes it.
+    let sleeper = CharacterPuppet(kind: .peek, state: .done, now: 0)
+    sleeper.setDozing(true, now: 1)
+    let asleep = sleeper.pose(now: 3, motion: CharacterMotion.gooey.params)
+    if asleep.eye[3] < 0.9 { ok = false; failed += 1; print("FAIL dozing doesn't close the eyes") }
+    sleeper.setState(.need, now: 3.1, motion: CharacterMotion.gooey.params)
+    if sleeper.isDozing { ok = false; failed += 1; print("FAIL a state change didn't wake it") }
+    if ok { print("PASS tricks stay finite, end on time, give way to events; dozing wakes") }
+}
+
 // Session status maps onto the right expression.
 do {
     let checks: [(CharacterState, CharacterState)] = [

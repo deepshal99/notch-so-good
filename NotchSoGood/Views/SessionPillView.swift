@@ -14,6 +14,8 @@ struct SessionPillView: View {
     @ObservedObject var hoverMonitor: PillHoverMonitor
 
     @State private var appeared: Bool
+    /// Bumped whenever a session changes, so the character knows something happened.
+    @State private var activity = 0
     @ObservedObject private var limits = UsageLimitsStore.shared
 
     init(dataSource: PillDataSource, notchWidth: CGFloat, notchHeight: CGFloat, hasNotch: Bool = true,
@@ -91,6 +93,7 @@ struct SessionPillView: View {
         .onAppear {
             withAnimation(Island.spring) { appeared = true }
         }
+        .onChange(of: sessions) { _, _ in activity &+= 1 }
     }
 
     // MARK: - Header (level with the notch)
@@ -106,7 +109,9 @@ struct SessionPillView: View {
                 // On screen for hours: its resting motion (breathing, glances) is
                 // slow and reads smoothly at 20 fps; full rate when it wants you
                 // or you're looking. Frames that wouldn't change are skipped.
-                framesPerSecond: (hovered || characterState == .need) ? 60 : 20
+                framesPerSecond: (hovered || characterState == .need) ? 60 : 20,
+                lively: true,
+                activity: activity
             )
             .frame(width: wingCollapsed, height: notchHeight)
             .padding(.leading, hovered ? wall + column - 17 : 0)

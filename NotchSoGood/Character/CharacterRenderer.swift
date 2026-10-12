@@ -198,8 +198,16 @@ final class CharacterMTKView: MTKView, MTKViewDelegate {
     var finish: CharacterFinish = .obsidian
     var motion: CharacterMotion = .gooey
     var framing: CharacterFraming = .pill
-    var gazeOverride: SIMD2<Float>?
+    var gazeOverride: SIMD2<Float>? {
+        didSet { if oldValue == nil, gazeOverride != nil, lively { puppet.greet(now: now) } }
+    }
     var reduceMotion = false
+    /// The pill's character has a life of its own between events: tricks, a
+    /// doze when nothing's happened for a while, eyes on your pointer. Off
+    /// everywhere else (cards, previews), where it should hold its pose.
+    var lively = false
+    /// The rate SwiftUI asked for; tricks and the pointer run at 60 while they last.
+    var baseFramesPerSecond = 60 { didSet { updateFrameRate() } }
 
     private var puppet: CharacterPuppet
     /// The last pipeline drawn for this character, kept while a new finish compiles
@@ -247,6 +255,96 @@ final class CharacterMTKView: MTKView, MTKViewDelegate {
         guard s != state else { return }
         state = s
         puppet.setState(s, now: now, motion: effectiveMotion)
+        noteActivity()
+    }
+
+    // MARK: Life between events (pill only)
+
+    /// When to try the next trick, the last one played, and the last loop-de-loop.
+    private var nextTrickAt = CharacterMTKView.trickGap()
+    private var lastTrick: PeekTrick?
+    private var lastTwirl: Double = -.infinity
+    private var lastActivity: Double = 0
+    /// How much the eyes are on the pointer (eased 0…1), and where.
+    private var pointerWeight: Float = 0
+    private var pointerGaze = SIMD2<Float>(0, 0)
+    private var lastTick: Double?
+    private var activityToken = 0
+
+    /// Calm states only: anything that needs you has to read in under a second.
+    private var calmState: Bool { state == .work || state == .think || state == .done }
+
+    /// Something happened (an event, a state change): wake up, and no trick right away.
+    func noteActivity(_ token: Int? = nil) {
+        if let token { guard token != activityToken else { return }; activityToken = token }
+        lastActivity = now
+        puppet.setDozing(false, now: now)
+        scheduleTrick(from: now)
+    }
+
+    private func scheduleTrick(from t: Double) { nextTrickAt = t + Self.trickGap() }
+
+    #if DEBUG
+    /// Debug builds: NSG_TRICK_EVERY / NSG_DOZE_AFTER (seconds) shorten the waits for testing.
+    private static let env = ProcessInfo.processInfo.environment
+    private static func trickGap() -> Double { env["NSG_TRICK_EVERY"].flatMap(Double.init) ?? Double.random(in: 25...60) }
+    private static let dozeAfter = env["NSG_DOZE_AFTER"].flatMap(Double.init) ?? 180
+    #else
+    private static func trickGap() -> Double { Double.random(in: 25...60) }
+    private static let dozeAfter: Double = 180
+    #endif
+
+    private func pickTrick(at t: Double) -> PeekTrick? {
+        var pool: [PeekTrick] = [.peekaboo, .oneHand, .pullUp, .monkeyBars, .twirl, .slip, .wave, .stretch]
+        pool.removeAll { $0 == lastTrick }
+        if motion == .calm || t - lastTwirl < 300 { pool.removeAll { $0 == .twirl } }
+        return pool.randomElement()
+    }
+
+    /// One tick of the director: start a trick when it's due, doze after three
+    /// quiet minutes, follow the pointer when it's near.
+    private func live(_ pose: inout CharacterPose, at t: Double) {
+        let dt = Float(min(0.1, max(0, t - (lastTick ?? t)))); lastTick = t
+        guard lively, kind == .peek else { return }
+        let hovered = gazeOverride != nil
+
+        // Doze after three minutes with nothing happening.
+        if calmState, !puppet.isDozing, t - lastActivity > Self.dozeAfter { puppet.setDozing(true, now: t) }
+
+        // Tricks: calm states, not hovered, not asleep, not with Reduce Motion.
+        if t >= nextTrickAt {
+            if calmState, !hovered, !puppet.isDozing, !reduceMotion, puppet.trick == nil, let trick = pickTrick(at: t) {
+                puppet.trick = (trick, t, motion == .calm ? 0.65 : 1)
+                lastTrick = trick
+                if trick == .twirl { lastTwirl = t }
+            }
+            scheduleTrick(from: t)
+        }
+
+        // Eyes on the pointer when it's near the notch.
+        var target: Float = 0
+        if calmState, !hovered, !puppet.isDozing, puppet.trick == nil, let window, let screen = window.screen {
+            let mouse = NSEvent.mouseLocation
+            let me = window.convertToScreen(convert(bounds, to: nil))
+            let dx = Float(mouse.x - me.midX), below = Float(me.maxY - mouse.y)
+            if abs(dx) < 320, below > 0, below < 200, screen.frame.contains(mouse) {
+                target = 1
+                pointerGaze = [0.14*max(-1, min(1, dx/220)), -0.05 - 0.04*max(0, min(1, below/150))]
+            }
+        }
+        pointerWeight += (target - pointerWeight)*min(1, dt*7)
+        if pointerWeight > 0.005 {
+            let w = pointerWeight
+            pose.gaze = pose.gaze*(1 - w) + pointerGaze*w
+            pose.yaw = pose.yaw*(1 - w) + (-pointerGaze.x*1.6)*w
+        }
+        updateFrameRate(at: t)
+    }
+
+    private func updateFrameRate(at t: Double? = nil) {
+        let busy = lively && (puppet.isPerforming(now: t ?? now) || pointerWeight > 0.005)
+        let fps = busy ? 60 : baseFramesPerSecond
+        if preferredFramesPerSecond != fps { preferredFramesPerSecond = fps }
     }
 
     private var effectiveMotion: CharacterMotion.Params {
@@ -281,7 +379,7 @@ final class CharacterMTKView: MTKView, MTKViewDelegate {
     private func updatePause(_ window: NSWindow) {
         let visible = window.isVisible && window.occlusionState.contains(.visible)
         // Coming back into view: redraw for certain rather than trust the layer.
-        if visible && isPaused { lastDrawn = nil }
+        if visible && isPaused { lastDrawn = nil; scheduleTrick(from: now) }
         isPaused = !visible
         // Never leave a blank view: draw one frame whenever we resume.
         if visible { draw() }
@@ -319,7 +417,8 @@ final class CharacterMTKView: MTKView, MTKViewDelegate {
         guard let pipeline = fresh ?? (lastPipeline?.kind == kind ? lastPipeline?.state : nil) else { return }
 
         let t = now
-        let pose = puppet.pose(now: t, motion: effectiveMotion)
+        var pose = puppet.pose(now: t, motion: effectiveMotion)
+        live(&pose, at: t)
         let pixelsPerPoint = bounds.width > 0 ? drawableSize.width/bounds.width : (window?.backingScaleFactor ?? 2)
         let vp = framing.viewport(sizePt: bounds.size, pixelsPerPoint: pixelsPerPoint, kind: kind, state: state)
         var (uniforms, points) = puppet.uniforms(pose, viewport: vp, finish: finish, time: t, gazeOverride: gazeOverride)

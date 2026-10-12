@@ -44,7 +44,7 @@ curl -fsSL https://raw.githubusercontent.com/deepshal99/notch-so-good/main/get.s
 
 ## What it does
 
-**Lives in the notch.** While an agent works, a black pill extends your notch: Peek on the left, a ring on the right showing how much of your 5-hour window is left. Peek is a real-time 3D character: it breathes, blinks, glances at you now and then, reads along while the agent works and climbs out when it needs you.
+**Lives in the notch.** While an agent works, a black pill extends your notch: Peek on the left, a ring on the right showing how much of your 5-hour window is left. Peek is a real-time 3D character: it breathes, blinks, reads along while the agent works and climbs out when it needs you. In between it has a life of its own: peekaboo, monkey bars, the odd loop-de-loop, a doze when things go quiet, and eyes on your cursor when it's near.
 
 **Taps you when you're needed.** A question, a finished task, a usage heads-up: the notch opens into a card that says what happened and in which project, with the task's name taken from your prompt. Click it to jump to the right terminal tab. Cards you're reading stay put; the rest leave on their own.
 

@@ -13,6 +13,7 @@ import Sparkle
 enum DebugSnapshots {
     static func runIfRequested() {
         FilmFrames.runIfRequested()
+        TrickReel.runIfRequested()
         let args = CommandLine.arguments
         guard let i = args.firstIndex(of: "--snapshots"), i + 1 < args.count else { return }
         let dir = URL(fileURLWithPath: args[i + 1], isDirectory: true)

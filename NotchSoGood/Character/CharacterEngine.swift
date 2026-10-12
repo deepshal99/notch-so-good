@@ -363,6 +363,27 @@ final class CharacterPuppet {
     private(set) var phase: Float = 0
     private let bubble = BubbleSim()
     private var lastPose: CharacterPose?
+    /// A trick in progress, when it started, and how big it plays (1, or less for Calm).
+    var trick: (kind: PeekTrick, start: Double, strength: Float)?
+    /// When it nodded off (nil while awake), and when it last woke up.
+    private var dozeFrom: Double?
+    private var wokeAt: Double?
+    /// When the pointer last came over the pill, for a happy squint.
+    private var greetedAt: Double?
+
+    var isDozing: Bool { dozeFrom != nil }
+    /// True while something is moving that 20 fps would make choppy.
+    func isPerforming(now: Double) -> Bool {
+        trick != nil || (wokeAt.map { now - $0 < 1.2 } ?? false) || (greetedAt.map { now - $0 < 0.9 } ?? false)
+            || (dozeFrom.map { now - $0 < 1.2 } ?? false)
+    }
+
+    func setDozing(_ on: Bool, now: Double) {
+        if on, dozeFrom == nil { dozeFrom = now; trick = nil }
+        if !on, dozeFrom != nil { dozeFrom = nil; wokeAt = now }
+    }
+
+    func greet(now: Double) { greetedAt = now }
 
     init(kind: CharacterKind, state: CharacterState, now: Double) {
         self.kind = kind; self.state = state; self.since = now
@@ -372,11 +393,27 @@ final class CharacterPuppet {
         guard s != state else { return }
         frozen = lastPose ?? pose(now: now, motion: motion)
         state = s; since = now
+        trick = nil
+        if dozeFrom != nil { dozeFrom = nil; wokeAt = now }
     }
 
     func pose(now: Double, motion M: CharacterMotion.Params) -> CharacterPose {
         let t = Float(now - since)
-        let tgt = target(kind, state, t, M)
+        var tgt = target(kind, state, t, M)
+        if let trick {
+            let u = Float(now - trick.start)
+            if u >= trick.kind.duration { self.trick = nil } else { tgt = .withTrick(trick.kind, u, base: tgt, strength: trick.strength) }
+        }
+        if let dozeFrom {
+            tgt = dozePose(base: tgt, sleep: sstep(0, 1.1, Float(now - dozeFrom)), t: Float(now), wake: -1)
+        } else if let wokeAt, now - wokeAt < 1.2 {
+            tgt = dozePose(base: tgt, sleep: 0, t: Float(now), wake: Float(now - wokeAt))
+        }
+        if let greetedAt, now - greetedAt < 0.9 {
+            let k = bump(Float(now - greetedAt), 0.9)
+            tgt.eye = zip(tgt.eye, [Float(0), 1, 0, 0, 0]).map { $0 + ($1 - $0)*k }
+            tgt.glow += 0.35*k; tgt.blink *= 1 - k
+        }
         var P = tgt
         if let frozen {
             if t < 2.5 { P = CharacterPose.blend(frozen, tgt, springCurve(t, M)) }
@@ -525,5 +562,184 @@ extension CharacterPuppet {
         u.P0 = SIMD4(params[0], params[1], params[2], params[3]); u.P1 = SIMD4(params[4], params[5], params[6], params[7])
         u.V0 = SIMD4(V[0], 0); u.V1 = SIMD4(V[1], 0); u.V2 = SIMD4(V[2], 0); u.V3 = SIMD4(V[3], 0)
         return (u, T)
+    }
+}
+
+// MARK: - Tricks (Peek)
+//
+// Short moves Peek does on its own between events. Each is a pose laid over
+// whatever state it's in, faded in and out, so it can start or be cut off at
+// any moment and the state underneath carries on.
+
+enum PeekTrick: String, CaseIterable {
+    case peekaboo, oneHand, pullUp, monkeyBars, twirl, slip, wave, stretch, doze, watch
+
+    var duration: Float {
+        switch self {
+        case .peekaboo: return 3.3
+        case .oneHand: return 3.4
+        case .pullUp: return 3.0
+        case .monkeyBars: return 3.9
+        case .twirl: return 3.6
+        case .slip: return 2.9
+        case .wave: return 3.0
+        case .stretch: return 2.6
+        case .doze: return 6.2
+        case .watch: return 4.4
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .peekaboo: return "Peekaboo"
+        case .oneHand: return "One-paw hang"
+        case .pullUp: return "Pull-up"
+        case .monkeyBars: return "Monkey bars"
+        case .twirl: return "Loop-de-loop"
+        case .slip: return "Slip and catch"
+        case .wave: return "Wave"
+        case .stretch: return "Stretch"
+        case .doze: return "Dozing"
+        case .watch: return "Watches your cursor"
+        }
+    }
+}
+
+/// Piecewise ease through (time, value) keys; holds the ends.
+private func keys(_ u: Float, _ k: [(Float, Float)]) -> Float {
+    guard let first = k.first, let last = k.last else { return 0 }
+    if u <= first.0 { return first.1 }
+    if u >= last.0 { return last.1 }
+    for i in 0..<(k.count - 1) where u < k[i + 1].0 {
+        return k[i].1 + (k[i + 1].1 - k[i].1)*sstep(k[i].0, k[i + 1].0, u)
+    }
+    return last.1
+}
+
+/// A pop that only starts at `at`.
+private func popAt(_ u: Float, _ at: Float, _ f: Float = 10, _ z: Float = 4) -> Float { u > at ? pop(u - at, f, z) : 0 }
+
+private func eyes(open: Float = 0, happy: Float = 0, x: Float = 0, closed: Float = 0) -> [Float] {
+    let rest = max(0, 1 - happy - x - closed)
+    return [max(open, rest), happy, x, closed, 0]
+}
+
+/// The trick's pose over `base`, `u` seconds in. The caller fades it in and out.
+func trickPose(_ trick: PeekTrick, _ u: Float, base: CharacterPose) -> CharacterPose {
+    var P = base
+    P.blink = 0
+    switch trick {
+    case .peekaboo:
+        // hides in the notch, peeks out to check around, hides again, then pops out
+        P.pos.y = keys(u, [(0, base.pos.y), (0.45, 0.05), (0.85, 0.05), (1.1, -0.42), (1.75, -0.42), (1.95, 0.05), (2.2, 0.05), (2.38, -0.98)])
+            - 0.14*popAt(u, 2.38, 11, 4)
+        P.squash = 1 + 0.12*popAt(u, 2.38, 11, 4)
+        P.gaze = [keys(u, [(1.1, -0.13), (1.35, -0.13), (1.5, 0.13), (1.75, 0.13)])*(u < 2.2 ? 1 : 0), u > 2.3 ? -0.08 : 0]
+        P.eyeScale = 1 + 0.32*bump(u - 2.38, 0.6)
+        P.eye = eyes(happy: keys(u, [(2.75, 0), (2.9, 1)]))
+        P.roll = 0
+    case .oneHand:
+        let w = keys(u, [(0.15, 0), (0.45, 1), (2.75, 1), (3.05, 0)])
+        P.p[0] = w; P.pivotX = 0.56*w
+        P.roll = w*(-0.24 + 0.16*(u > 0.45 ? sin((u - 0.45)*3.6)*exp(-0.45*(u - 0.45)) : 0))
+        P.pos.y = base.pos.y - 0.12*w
+        P.eye = eyes(happy: w); P.gaze = [0.04, -0.04]
+    case .pullUp:
+        let up = keys(u, [(0.2, 0), (0.7, 1), (0.95, 1), (1.3, 0), (1.55, 0), (2.0, 1), (2.2, 1), (2.55, 0)])
+        P.pos.y = base.pos.y + 0.5*up - 0.05*popAt(u, 1.3, 12, 5) - 0.05*popAt(u, 2.55, 12, 5)
+        P.squash = 1 - 0.07*up
+        P.eye = eyes(closed: 0.75*up); P.eyeScale = 1 - 0.1*up
+        P.glow = base.glow + 0.25*up; P.gaze = [0, 0.03*up]
+        P.roll = 0.03*sin(u*24)*up
+    case .monkeyBars:
+        // paw over paw along the notch edge, a look around, and back
+        let R = keys(u, [(0.2, 0), (0.45, 0.28), (0.8, 0.28), (1.05, 0.55), (2.6, 0.55), (2.85, 0.28), (3.2, 0.28), (3.45, 0)])
+        let L = keys(u, [(0.5, 0), (0.75, 0.28), (1.1, 0.28), (1.35, 0.55), (2.3, 0.55), (2.55, 0.28), (2.9, 0.28), (3.15, 0)])
+        let liftR = bump(u - 0.2, 0.25) + bump(u - 0.8, 0.25) + bump(u - 2.6, 0.25) + bump(u - 3.2, 0.25)
+        let liftL = bump(u - 0.5, 0.25) + bump(u - 1.1, 0.25) + bump(u - 2.3, 0.25) + bump(u - 2.9, 0.25)
+        P.p[1] = 0.4*liftR; P.p[0] = 0.4*liftL
+        P.p[3] = R; P.p[2] = -L
+        P.pos.x = (R + L)/2
+        P.roll = -0.14*(liftR - liftL)
+        let look = keys(u, [(1.4, 0), (1.55, 1), (1.85, 1), (1.95, -1), (2.15, -1), (2.25, 0)])
+        P.gaze = [0.13*look, -0.02]
+        P.yaw = -P.gaze.x*1.6
+    case .twirl:
+        // swings to build speed, spins round its grip, lands
+        let amp = keys(u, [(0.1, 0), (1.5, 0.3), (1.75, 0)])
+        P.roll = amp*sin((u - 0.1)*2*Float.pi/0.95)
+        P.spin = 2*Float.pi*sstep(1.65, 2.45, u)
+        P.squash = 1 + 0.11*popAt(u, 2.45, 10, 4)
+        P.pos.y = base.pos.y - 0.08*popAt(u, 2.45, 10, 4)
+        P.eye = eyes(happy: keys(u, [(2.45, 0), (2.6, 1)])); P.gaze = [0, -0.04]
+    case .slip:
+        let w = keys(u, [(0.35, 0), (0.45, 1), (1.5, 1), (1.8, 0)])
+        P.p[0] = w; P.pivotX = 0.56*w
+        P.roll = -0.28*w - 0.16*popAt(u, 0.45, 8, 3)*(u < 1.8 ? 1 : 0)
+        P.pos.y = base.pos.y - 0.16*w
+        let x = bump(u - 0.45, 0.35) > 0.25 ? Float(1) : 0
+        let relief = keys(u, [(1.9, 0), (2.0, 1), (2.15, 1), (2.3, 0)])
+        P.eye = eyes(happy: keys(u, [(2.3, 0), (2.45, 1)]), x: x, closed: relief)
+        P.eyeScale = 1 + 0.3*bump(u - 0.8, 0.9)
+        P.gaze = [0, u > 0.8 && u < 1.7 ? 0.06 : -0.04]
+    case .wave:
+        let w = keys(u, [(0.15, 0), (0.45, 1), (2.45, 1), (2.75, 0)])
+        P.p[0] = 0.42*w
+        P.p[2] = w*0.55*sin(max(0, u - 0.45)*10)
+        P.pivotX = 0.56*w; P.roll = -0.1*w
+        P.eye = eyes(happy: w); P.gaze = [0.02, -0.09*w]
+    case .stretch:
+        P.squash = keys(u, [(0.15, 1), (0.85, 1.15), (1.45, 1.15), (1.62, 0.9), (1.85, 1.05), (2.1, 1)])
+        P.eye = eyes(closed: keys(u, [(0.3, 0), (0.55, 1), (1.45, 1), (1.6, 0)]))
+        P.roll = 0.05*sin(u*5)*keys(u, [(0.6, 0), (0.9, 1), (1.4, 1), (1.5, 0)])
+        P.glow = base.glow + 0.2*keys(u, [(0.5, 0), (1, 1), (1.5, 0)])
+        P.gaze = [0, 0.04]
+    case .doze:
+        // nods off, sags, breathes slow; then something happens and it jolts awake
+        P = dozePose(base: base, sleep: keys(u, [(0.2, 0), (1.3, 1), (4.1, 1), (4.15, 0)]), t: u, wake: u - 4.15)
+    case .watch:
+        let c = watchCursor(u)
+        P.gaze = [0.14*c.x, -0.05 - 0.04*c.y]
+        P.yaw = -P.gaze.x*1.6
+        let hover = keys(u, [(2.6, 0), (2.75, 1), (3.4, 1), (3.55, 0)])
+        P.eye = eyes(happy: hover); P.glow = base.glow + 0.35*hover
+        P.squash = 1 + 0.05*bump(u - 2.6, 0.4)
+    }
+    return P
+}
+
+/// Dozing: `sleep` 0…1 nods it off (eyes shut, a slow breath, a sag); `wake`
+/// is seconds since it woke (negative while asleep or never), for the jolt.
+func dozePose(base: CharacterPose, sleep: Float, t: Float, wake: Float) -> CharacterPose {
+    var P = base
+    let jolt = wake >= 0 ? bump(wake, 0.45) : 0, wide = wake >= 0 ? bump(wake, 0.9) : 0
+    P.pos.y = base.pos.y - 0.12*sleep + 0.035*sin(t*1.7)*sleep + 0.2*jolt
+    P.squash = base.squash*(1 + 0.03*sin(t*1.7 + 0.8)*sleep + (wake >= 0 ? 0.12*pop(wake, 12, 4) : 0))
+    P.roll = base.roll*(1 - sleep) + 0.07*sin(t*0.75)*sleep
+    P.eye = zip(base.eye, [Float(0), 0, 0, 1, 0]).map { $0 + ($1 - $0)*sleep }
+    P.blink = base.blink*(1 - sleep)
+    P.eyeScale = base.eyeScale + 0.35*wide
+    P.glow = base.glow*(1 - 0.6*sleep)
+    P.gaze = base.gaze*(1 - sleep) + SIMD2(0, -0.05)*sleep
+    if sleep > 0 { P.yaw = base.yaw*(1 - sleep) }
+    return P
+}
+
+/// The demo cursor for `.watch`, -1…1 across the pill, 0 at the notch line.
+func watchCursor(_ u: Float) -> SIMD2<Float> {
+    [keys(u, [(0.1, -1), (1.1, 1), (1.9, -0.4), (2.6, 0), (3.6, 0), (4.3, -1)]),
+     keys(u, [(0.1, 1), (1.1, 0.6), (2.6, 0.2), (3.6, 0.2), (4.3, 1)])]
+}
+
+extension CharacterPose {
+    /// `base` with `trick` laid over it, faded in over 0.3 s and out over the last 0.4 s.
+    /// `strength` below 1 plays a smaller, softer version (Calm motion).
+    static func withTrick(_ trick: PeekTrick, _ u: Float, base: CharacterPose, strength: Float = 1) -> CharacterPose {
+        let D = trick.duration
+        guard u > 0, u < D else { return base }
+        let k = strength*sstep(0, 0.3, u)*(1 - sstep(D - 0.4, D, u))
+        var P = blend(base, trickPose(trick, u, base: base), k)
+        P.spin = trickPose(trick, u, base: base).spin
+        return P
     }
 }

@@ -56,12 +56,19 @@ struct CharacterView: NSViewRepresentable {
     var kind: CharacterKind? = nil
     var finish: CharacterFinish? = nil
     var framesPerSecond: Int = 60
+    /// Tricks, dozing and pointer-watching (the pill only). `activity` changes
+    /// whenever something happens, which wakes it and puts off the next trick.
+    var lively = false
+    var activity = 0
 
     @ObservedObject private var settings = CharacterSettings.shared
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     init(state: CharacterState, framing: CharacterFraming, gaze: SIMD2<Float>? = nil,
-         kind: CharacterKind? = nil, finish: CharacterFinish? = nil, framesPerSecond: Int = 60) {
+         kind: CharacterKind? = nil, finish: CharacterFinish? = nil, framesPerSecond: Int = 60,
+         lively: Bool = false, activity: Int = 0) {
+        self.lively = lively
+        self.activity = activity
         self.state = state
         self.framing = framing
         self.gaze = gaze
@@ -87,8 +94,10 @@ struct CharacterView: NSViewRepresentable {
         view.reduceMotion = reduceMotion
         view.framing = framing
         view.gazeOverride = gaze
-        view.preferredFramesPerSecond = reduceMotion ? min(framesPerSecond, 30) : framesPerSecond
+        view.lively = lively
+        view.baseFramesPerSecond = reduceMotion ? min(framesPerSecond, 30) : framesPerSecond
         view.setState(state)
+        if lively { view.noteActivity(activity) }
         view.setAccessibilityElement(true)
         view.setAccessibilityRole(.image)
         view.setAccessibilityLabel("\((kind ?? settings.kind).displayName), \(state.label)")
