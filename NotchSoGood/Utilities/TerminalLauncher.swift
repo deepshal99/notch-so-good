@@ -81,6 +81,14 @@ struct TerminalLauncher {
         return nil
     }
 
+    /// Whether the frontmost app is where agents run: a terminal, an editor,
+    /// Conductor, or the app any live session belongs to.
+    static func frontmostRunsAgents(sessionPids: [pid_t]) -> Bool {
+        guard let front = NSWorkspace.shared.frontmostApplication else { return true }
+        if let id = front.bundleIdentifier, knownApps.contains(id) { return true }
+        return sessionPids.contains { ProcessTree.owningApp(of: $0)?.processIdentifier == front.processIdentifier }
+    }
+
     private static func runningApp(bundleId: String) -> NSRunningApplication? {
         NSRunningApplication.runningApplications(withBundleIdentifier: bundleId)
             .first { !$0.isTerminated }

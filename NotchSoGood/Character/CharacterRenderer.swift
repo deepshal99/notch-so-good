@@ -227,6 +227,10 @@ final class CharacterMTKView: MTKView, MTKViewDelegate {
         colorPixelFormat = .bgra8Unorm
         clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 0)
         framebufferOnly = true
+        // The drawable is sized when the view is, not checked on every frame:
+        // MTKView's per-frame resize check dirtied the window's layout, and
+        // SwiftUI redid the whole pill's layout behind each character frame.
+        autoResizeDrawable = false
         enableSetNeedsDisplay = false
         preferredFramesPerSecond = 60
         wantsLayer = true
@@ -239,7 +243,7 @@ final class CharacterMTKView: MTKView, MTKViewDelegate {
     required init(coder: NSCoder) { fatalError("init(coder:) is not used") }
 
     deinit {
-        windowObservers.forEach(NotificationCenter.default.removeObserver)
+        windowObservers.forEach { NotificationCenter.default.removeObserver($0); NSWorkspace.shared.notificationCenter.removeObserver($0) }
     }
 
     override var isOpaque: Bool { false }
@@ -354,13 +358,22 @@ final class CharacterMTKView: MTKView, MTKViewDelegate {
     // Pause when hidden: the pill and cards are ordered out far more than they're shown.
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        windowObservers.forEach(NotificationCenter.default.removeObserver)
+        windowObservers.forEach { NotificationCenter.default.removeObserver($0); NSWorkspace.shared.notificationCenter.removeObserver($0) }
         windowObservers = []
         guard let window else { isPaused = true; return }
+        resizeDrawable()
         updatePause(window)
         // Occlusion alone isn't enough: menu bar and settings windows are often
         // still offscreen when the view arrives and can become visible without
         // an occlusion change reaching us, which left the character never drawn.
+        // A Space change can hide a panel without an occlusion notice reaching
+        // us (full-screen apps): recheck then too, so a hidden character never
+        // keeps drawing.
+        windowObservers.append(NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.activeSpaceDidChangeNotification, object: nil, queue: .main) { [weak self] _ in
+            guard let self, let w = self.window else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { self.updatePause(w) }
+        })
         for name in [NSWindow.didChangeOcclusionStateNotification, NSWindow.didBecomeKeyNotification,
                      NSWindow.didExposeNotification, NSWindow.didResizeNotification] {
             windowObservers.append(NotificationCenter.default.addObserver(forName: name, object: window, queue: .main) { [weak self] note in
@@ -387,27 +400,62 @@ final class CharacterMTKView: MTKView, MTKViewDelegate {
 
     func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) { lastDrawn = nil }
 
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        resizeDrawable()
+    }
+
+    override func viewDidChangeBackingProperties() {
+        super.viewDidChangeBackingProperties()
+        resizeDrawable()
+    }
+
+    private func resizeDrawable() {
+        let scale = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
+        let size = CGSize(width: (bounds.width*scale).rounded(), height: (bounds.height*scale).rounded())
+        guard size.width > 0, size.height > 0, size != drawableSize else { return }
+        drawableSize = size
+        lastDrawn = nil
+    }
+
     /// What was last put on screen. Each tick computes the pose (cheap), but
     /// only takes a drawable and commits GPU work when the picture would
     /// actually change: a character holding still costs next to nothing.
     private var lastDrawn: (uniforms: CharacterUniforms, points: [SIMD4<Float>], pipeline: ObjectIdentifier)?
 
-    /// True when two frames would look the same: every uniform within a
-    /// fraction of a pixel's worth, ignoring the clock unless something on
-    /// screen is driven by it (think dots, Bubble's film).
-    private func looksSame(_ a: CharacterUniforms, _ b: CharacterUniforms, _ pa: [SIMD4<Float>], _ pb: [SIMD4<Float>]) -> Bool {
+    /// Uniform slots that move things on screen (position, pivot, rotation,
+    /// gaze, lids, bounds, the character's own points), in character units or
+    /// radians: compared in on-screen pixels. Everything else (colours, glow,
+    /// eye shapes) is compared as a plain value.
+    private static let geometrySlots: [Bool] = {
+        let count = MemoryLayout<CharacterUniforms>.stride / MemoryLayout<Float>.stride
+        return (0..<count).map { (20...39).contains($0) || (56...83).contains($0) }
+    }()
+
+    /// Glow and rim light (c.x, c.y): soft light, where a 2% step is invisible.
+    private static let lightSlots: Set<Int> = [12, 13]
+
+    /// True when two frames would look the same: nothing has moved a third of
+    /// a pixel, and no colour or glow changed visibly. Ignores the clock
+    /// unless something on screen is driven by it (think dots, Bubble's film).
+    /// Slow motion (breathing, reading) then redraws only as often as it
+    /// visibly moves, at any frame rate.
+    private func looksSame(_ a: CharacterUniforms, _ b: CharacterUniforms, _ pa: [SIMD4<Float>], _ pb: [SIMD4<Float>], pixelsPerUnit: Float) -> Bool {
         let timeMatters = kind == .bubble || b.b.w > 0.001
+        let geometry = 0.35/max(pixelsPerUnit, 1), value: Float = 0.006
+        let slots = Self.geometrySlots
         let same = withUnsafeBytes(of: a) { ra in
             withUnsafeBytes(of: b) { rb in
                 let fa = ra.bindMemory(to: Float.self), fb = rb.bindMemory(to: Float.self)
                 for i in 0..<fa.count where i != 6 || timeMatters {     // a.z is the clock
-                    if abs(fa[i] - fb[i]) > 0.004 { return false }
+                    let tolerance = i < slots.count && slots[i] ? geometry : (Self.lightSlots.contains(i) ? 0.02 : value)
+                    if abs(fa[i] - fb[i]) > tolerance { return false }
                 }
                 return true
             }
         }
         guard same, pa.count == pb.count else { return false }
-        for i in pa.indices where simd_reduce_max(simd_abs(pa[i] - pb[i])) > 0.004 { return false }
+        for i in pa.indices where simd_reduce_max(simd_abs(pa[i] - pb[i])) > geometry { return false }
         return true
     }
 
@@ -425,7 +473,7 @@ final class CharacterMTKView: MTKView, MTKViewDelegate {
         if !framing.allowsAura { uniforms.c.w = 0 }
 
         if let last = lastDrawn, last.pipeline == ObjectIdentifier(pipeline),
-           looksSame(last.uniforms, uniforms, last.points, points) {
+           looksSame(last.uniforms, uniforms, last.points, points, pixelsPerUnit: vp.scale) {
             return
         }
         guard let queue = CharacterRenderer.shared.queue,

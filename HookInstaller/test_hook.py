@@ -212,6 +212,18 @@ class Questions(unittest.TestCase):
         self.assertEqual((out.strip(), events), ("", []))
 
 
+class HostQuestions(unittest.TestCase):
+    def test_conductors_question_is_shown_not_answered(self):
+        payload = {"session_id": "s", "cwd": "/repo", "tool_name": "mcp__conductor__AskUserQuestion",
+                   "tool_input": {"questions": [{"question": "Ship it?", "header": "Release", "multiSelect": False,
+                                                 "options": ["Yes", {"label": "Not yet", "description": "Wait"}]}]}}
+        _, out, _, events = run_hook("PreToolUse", payload, reply={"answers": {"Ship it?": "Yes"}})
+        self.assertEqual(out.strip(), "")
+        self.assertEqual(events[0]["event"], "HostQuestion")
+        self.assertEqual(events[0]["host"], "conductor")
+        self.assertEqual([o["label"] for o in events[0]["questions"][0]["options"]], ["Yes", "Not yet"])
+
+
 class Activity(unittest.TestCase):
     def test_pre_tool_use_never_answers(self):
         code, out, _, events = run_hook("PreToolUse", BASH, reply={"decision": "allow"})

@@ -309,6 +309,8 @@ def clean_questions(raw):
             continue
         options = []
         for option in item.get("options") if isinstance(item.get("options"), list) else []:
+            if isinstance(option, str) and option:
+                option = {"label": option}
             if isinstance(option, dict) and isinstance(option.get("label"), str):
                 description = option.get("description")
                 options.append({
@@ -383,10 +385,26 @@ def handle_ask_user_question(payload, agent, tool_input):
     sys.exit(0)
 
 
+def is_host_question(tool_name):
+    """A question tool an app brings along instead of Claude's own (Conductor's
+    `mcp__conductor__AskUserQuestion`): the app shows it and takes the answer,
+    so the notch can show the question but not answer it."""
+    return tool_name != "AskUserQuestion" and tool_name.startswith("mcp__") and tool_name.endswith("AskUserQuestion")
+
+
 def handle_pre_tool_use(payload, agent):
     """Activity only: what the agent is doing right now, for the pill. Runs in
     the background where the agent supports it, and never answers."""
     tool_name = str(payload.get("tool_name") or "")
+    tool_input = payload.get("tool_input")
+    if is_host_question(tool_name) and isinstance(tool_input, dict):
+        questions = clean_questions(tool_input.get("questions"))
+        if questions:
+            event = base_event(payload, agent)
+            event.update({"event": "HostQuestion", "tool_name": tool_name, "questions": questions,
+                          "host": tool_name.split("__")[1] if tool_name.count("__") >= 2 else ""})
+            send(event)
+            sys.exit(0)
     event = base_event(payload, agent)
     event.update({
         "event": "PreToolUse",

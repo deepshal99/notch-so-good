@@ -27,10 +27,14 @@ final class Telemetry {
         isConfigured = true
     }
 
+    /// Counts are only marked as sent when they really are.
+    private var canSend: Bool { isConfigured && NotificationManager.shared.telemetryEnabled }
+
     /// `install` once ever, `active_day` once a day.
     func noteLaunch() {
-        if !UserDefaults.standard.bool(forKey: "telemetry.installed") {
-            UserDefaults.standard.set(true, forKey: "telemetry.installed")
+        guard canSend else { return }
+        if !UserDefaults.standard.bool(forKey: "telemetry.sent.installed") {
+            UserDefaults.standard.set(true, forKey: "telemetry.sent.installed")
             trackEvent("install")
         }
         once(per: "active_day")
@@ -43,8 +47,9 @@ final class Telemetry {
     }
 
     private func once(per event: String, props: [String: Any] = [:]) {
+        guard canSend else { return }
         let today = ISO8601DateFormatter.string(from: Date(), timeZone: .current, formatOptions: [.withFullDate])
-        let key = "telemetry.\(event)"
+        let key = "telemetry.sent.\(event)"
         guard UserDefaults.standard.string(forKey: key) != today else { return }
         UserDefaults.standard.set(today, forKey: key)
         trackEvent(event, props: props)

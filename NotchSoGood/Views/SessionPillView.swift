@@ -106,11 +106,10 @@ struct SessionPillView: View {
                 state: characterState,
                 framing: .pill,
                 gaze: hovered ? SIMD2<Float>(0.03, -0.09) : nil,
-                // On screen for hours: its resting motion (breathing, reading) is
-                // slow and tiny, and reads smoothly at 12 fps; full rate when it
-                // wants you, you're looking, or it's doing a trick. Frames that
-                // wouldn't change are skipped.
-                framesPerSecond: (hovered || characterState == .need) ? 60 : 12,
+                // On screen for hours: resting motion runs at 30 fps, full rate
+                // when it wants you, you're looking, or it's doing a trick.
+                // Frames that wouldn't visibly change are skipped either way.
+                framesPerSecond: (hovered || characterState == .need) ? 60 : PillLayout.restingFPS,
                 lively: true,
                 activity: activity
             )

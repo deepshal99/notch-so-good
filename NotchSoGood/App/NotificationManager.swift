@@ -699,7 +699,9 @@ class NotificationManager: ObservableObject {
         if !edited.isEmpty { activeSessions[idx].turnEdited.formUnion(edited.prefix(200)) }
         if tests == "passed" || tests == "failed" { activeSessions[idx].turnTests = tests }
         let current = activeSessions[idx].status
-        if current == .needsPermission || current == .compacting {
+        // A question answered in the host app ends with its tool returning.
+        if current == .needsPermission || current == .compacting
+            || (current == .needsInput && toolName.hasSuffix("AskUserQuestion")) {
             activeSessions[idx].status = .running
         }
         refreshPill()
@@ -774,6 +776,21 @@ class NotificationManager: ObservableObject {
         updateSessionStatus(sessionId: sid, status: .running)
     }
 
+    /// A question an app asks in its own window (Conductor): shown here with
+    /// its options, answered there. Clicking the card takes you to it.
+    func showHostQuestion(sessionId: String?, questions: [AgentQuestion], host: String?) {
+        guard let first = questions.first else { return }
+        let options = first.options.map(\.label).joined(separator: " · ")
+        let more = questions.count > 1 ? " (+\(questions.count - 1) more)" : ""
+        handleNotification(NotchNotification(
+            type: .question,
+            message: "\(first.question)\(more)  \(options)",
+            title: host.map { "\(first.header.isEmpty ? "Question" : first.header) · answer in \($0)" }
+                ?? (first.header.isEmpty ? "Question" : first.header),
+            sessionId: sessionId
+        ))
+    }
+
     /// Compaction is over (PostCompact, or the SessionStart that follows /compact).
     func compactionFinished(sessionId: String?) {
         guard let sid = NotchNotification.nonEmpty(sessionId),
@@ -797,7 +814,7 @@ class NotificationManager: ObservableObject {
 
     /// Bump when the hook bridge's wire format or command line changes, so an
     /// upgrade reinstalls hooks even if the app version didn't move.
-    private static let hooksSchemaVersion = 6
+    private static let hooksSchemaVersion = 7
 
     /// Install hooks on first launch, on version updates, and whenever the hook
     /// bridge itself changes shape.

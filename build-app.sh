@@ -59,6 +59,12 @@ else
     echo "⚠️  Sparkle.framework not found in build artifacts — auto-update won't work"
 fi
 
+# Anonymous counts (see Telemetry.swift), when the project key is on this Mac.
+APTABASE_KEY_FILE="$HOME/Documents/NotchSoGood-signing/aptabase-key.txt"
+if [ -n "$APTABASE_APP_KEY" ] || [ -f "$APTABASE_KEY_FILE" ]; then
+    plutil -replace AptabaseAppKey -string "${APTABASE_APP_KEY:-$(cat "$APTABASE_KEY_FILE")}" "$CONTENTS/Info.plist"
+fi
+
 # Code-sign the app bundle so Sparkle can validate updates. Ad-hoc by default.
 # Set CODESIGN_IDENTITY (e.g. an "Apple Development" identity) for local builds:
 # an ad-hoc signature changes with every build, and macOS ties the

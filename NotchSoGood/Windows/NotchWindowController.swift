@@ -114,7 +114,6 @@ class NotchWindowController {
 
         if pillPanel == nil {
             pillPanel = NotchPanel(contentRect: panelFrame)
-            pillPanel?.showsOverFullScreen = false
             pillPanel?.level = .popUpMenu
 
             let pillView = SessionPillView(
@@ -329,8 +328,10 @@ class NotchWindowController {
             panel?.setFrame(frame, display: true)
         }
 
-        // Over someone's full-screen app, only a card that needs an answer shows.
-        panel?.showsOverFullScreen = isPermission
+        // Over a full-screen video or slides, only a card that needs an answer
+        // shows; over the full-screen app your agents run in, everything does.
+        panel?.showsOverFullScreen = isPermission || TerminalLauncher.frontmostRunsAgents(
+            sessionPids: MainActor.assumeIsolated { NotificationManager.shared.activeSessions.compactMap(\.sourcePid) })
         let resolvedBundleId = notification.sourceBundleId ?? sessionSourceBundleId
         let resolvedCwd = sessionCwd
 

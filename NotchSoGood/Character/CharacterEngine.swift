@@ -63,10 +63,23 @@ private func taps(_ t: Float, _ rate: Float) -> Float {
     return exp(-f*8)*(1 - exp(-f*50))
 }
 /// Eyes reading lines: sweep right, snap back, next line.
+/// Eyes reading lines the way eyes do: a quick jump to each word, a hold on
+/// it, then back to the start of the next line. Holding still between jumps
+/// also means nothing needs redrawing for most of the time.
 private func read(_ t: Float) -> SIMD2<Float> {
-    let per: Float = 1.5, i = floor(t/per), f = fmodPos(t, per)/per
-    let x = f < 0.8 ? -0.11 + 0.22*(f/0.8) : 0.11 - 0.22*ease((f - 0.8)/0.2)
-    return [x, 0.025 - Float(Int(i) % 3)*0.025]
+    let per: Float = 1.6, i = floor(t/per), c = fmodPos(t, per)
+    let stops: [Float] = [-0.11, -0.04, 0.03, 0.10]
+    let hold: Float = 0.3, jump: Float = 0.07
+    var x = stops[0]
+    for k in 1..<stops.count {
+        let at = Float(k)*hold
+        x += (stops[k] - stops[k - 1])*sstep(at, at + jump, c)
+    }
+    // Back to the next line's start, a little slower.
+    x += (stops[0] - stops[stops.count - 1])*sstep(1.42, 1.56, c)
+    let line = Float(Int(i) % 3), next = Float((Int(i) + 1) % 3)
+    let y = 0.025 - (line + (next - line)*sstep(1.42, 1.56, c))*0.025
+    return [x, y]
 }
 
 /// A smooth 0→1→0 bump lasting `dur`.

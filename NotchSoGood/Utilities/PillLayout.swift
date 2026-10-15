@@ -21,6 +21,10 @@ enum PillLayout {
     static let maxContentHeight: CGFloat = dropTopPad + maxListHeight + runwayFooter + dropBottomPad
 
     static let wingCollapsed: CGFloat = 56
+    /// The pill's frame rate between events: smooth for breathing and reading
+    /// (which only redraw when they visibly move); glances, tricks, reactions
+    /// and hover run at 60.
+    static let restingFPS = 30
     static let wingExpanded: CGFloat = 110
 
     /// Height the session list wants, before clamping.
