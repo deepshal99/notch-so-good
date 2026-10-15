@@ -142,8 +142,8 @@ sed -i '' -E "s/^  version \".*\"/  version \"$VERSION\"/; s/^  sha256 \".*\"/  
 if [ "${DRY_RUN:-0}" = 1 ]; then
     step "Dry run: built, signed and fed; publishing skipped"
     git diff --stat
-    git checkout -- NotchSoGood/Info.plist npm/package.json updates.xml appcast.xml Casks/notch-so-good.rb 2>/dev/null || true
-    git clean -fq updates.xml 2>/dev/null || true
+    git checkout -- NotchSoGood/Info.plist npm/package.json appcast.xml Casks/notch-so-good.rb
+    if git ls-files --error-unmatch updates.xml >/dev/null 2>&1; then git checkout -- updates.xml; else rm -f updates.xml; fi
     echo "  (changes undone; $ZIP left for inspection)"
     exit 0
 fi
