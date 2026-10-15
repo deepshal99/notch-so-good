@@ -17,9 +17,9 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>4.6.0</string>
+	<string>4.7.0</string>
 	<key>CFBundleVersion</key>
-	<string>22</string>
+	<string>23</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>14.0</string>
 	<key>LSUIElement</key>
@@ -28,15 +28,15 @@
 	<string>Notch So Good focuses the exact terminal tab running your agent session when you click a notification.</string>
 	<key>NSHumanReadableCopyright</key>
 	<string>Copyright © 2026 Notch So Good. All rights reserved.</string>
-	<key>SUEnableAutomaticChecks</key>
-	<true/>
 	<key>SUAutomaticallyUpdate</key>
 	<true/>
-	<key>SUScheduledCheckInterval</key>
-	<integer>3600</integer>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
 	<key>SUFeedURL</key>
 	<string>https://raw.githubusercontent.com/deepshal99/notch-so-good/main/updates.xml</string>
 	<key>SUPublicEDKey</key>
 	<string>fC18bLpS30RBmwb2ssk8SOUseRio2dN/qyzB7LK1a6U=</string>
+	<key>SUScheduledCheckInterval</key>
+	<integer>3600</integer>
 </dict>
 </plist>
