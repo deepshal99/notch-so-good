@@ -21,7 +21,17 @@ struct TerminalLauncher {
         cwd: String? = nil,
         sourcePid: pid_t? = nil
     ) -> Bool {
-        guard let app = resolveApp(sourcePid: sourcePid, sourceBundleId: sourceBundleId) else {
+        // The agent's terminal device pins the exact tab, even when several
+        // sessions share a folder. Under tmux, the pane gets selected and the
+        // terminal showing that tmux session is the one to bring forward.
+        var tty = sourcePid.flatMap(ProcessTree.tty(of:))
+        var ownerPid = sourcePid
+        if let sourcePid, let paneTTY = tty, ProcessTree.isUnderTmux(sourcePid),
+           let client = selectTmuxPane(tty: paneTTY) {
+            tty = client.tty
+            ownerPid = client.pid
+        }
+        guard let app = resolveApp(sourcePid: ownerPid, sourceBundleId: sourceBundleId) else {
             return false
         }
 
@@ -33,12 +43,13 @@ struct TerminalLauncher {
             app.activate(options: [.activateAllWindows])
         }
 
-        if let cwd = NotchNotification.nonEmpty(cwd) {
-            let bundleId = app.bundleIdentifier ?? ""
-            targetingQueue.async {
-                if !deepLinkToTab(bundleId: bundleId, cwd: cwd) {
-                    raiseMatchingWindow(app: app, cwd: cwd)
-                }
+        let bundleId = app.bundleIdentifier ?? ""
+        let folder = NotchNotification.nonEmpty(cwd)
+        targetingQueue.async {
+            if let tty, focusTab(bundleId: bundleId, tty: tty) { return }
+            guard let folder else { return }
+            if !deepLinkToTab(bundleId: bundleId, cwd: folder) {
+                raiseMatchingWindow(app: app, cwd: folder)
             }
         }
         return true
@@ -91,6 +102,68 @@ struct TerminalLauncher {
         "com.raphaelamorim.rio",         // Rio
         "com.apple.Terminal",            // Terminal.app (last resort)
     ]
+
+    // MARK: - Exact tab by terminal device
+
+    /// Terminal and iTerm2 know each tab's tty: the one the agent runs on is
+    /// the right tab, whatever its title or folder.
+    private static func focusTab(bundleId: String, tty: String) -> Bool {
+        let device = appleScriptString(tty)
+        switch bundleId {
+        case "com.apple.Terminal":
+            return runAppleScript("""
+            tell application "Terminal"
+                repeat with w in windows
+                    repeat with t from 1 to count of tabs of w
+                        if tty of tab t of w is \(device) then
+                            set selected tab of w to tab t of w
+                            set index of w to 1
+                            return true
+                        end if
+                    end repeat
+                end repeat
+            end tell
+            return false
+            """)
+        case "com.googlecode.iterm2":
+            return runAppleScript("""
+            tell application "iTerm2"
+                repeat with w in windows
+                    tell w
+                        repeat with t in tabs
+                            repeat with s in sessions of t
+                                if tty of s is \(device) then
+                                    tell t to select
+                                    tell s to select
+                                    select w
+                                    return true
+                                end if
+                            end repeat
+                        end repeat
+                    end tell
+                end repeat
+            end tell
+            return false
+            """)
+        default:
+            return false
+        }
+    }
+
+    /// Select the tmux pane on `tty` and return the client (terminal) showing
+    /// its session: its tty and pid, so that terminal and tab come forward.
+    private static func selectTmuxPane(tty: String) -> (tty: String, pid: pid_t)? {
+        guard let tmux = executablePath("tmux") else { return nil }
+        let panes = String(decoding: run(tmux, ["list-panes", "-a", "-F", "#{pane_tty} #{session_name} #{window_id} #{pane_id}"]).output, as: UTF8.self)
+        guard let pane = panes.split(separator: "\n").map({ $0.split(separator: " ").map(String.init) })
+            .first(where: { $0.count == 4 && $0[0] == tty }) else { return nil }
+        _ = run(tmux, ["select-window", "-t", pane[2]])
+        _ = run(tmux, ["select-pane", "-t", pane[3]])
+        let clients = String(decoding: run(tmux, ["list-clients", "-F", "#{client_tty} #{client_pid} #{client_session}"]).output, as: UTF8.self)
+        guard let client = clients.split(separator: "\n").map({ $0.split(separator: " ").map(String.init) })
+            .first(where: { $0.count == 3 && $0[2] == pane[1] }), let pid = pid_t(client[1]) else { return nil }
+        return (client[0], pid)
+    }
 
     // MARK: - Terminal-specific deep-linking
 

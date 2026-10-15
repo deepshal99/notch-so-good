@@ -229,14 +229,38 @@ enum DebugSnapshots {
         var session = NotificationManager.SessionInfo(id: "s", startTime: Date(), projectName: "api", status: .needsPermission, cwd: repo)
         session.taskTitle = "Fix the flaky websocket reconnect"
         session.colorIndex = 1
+        let always = CardInteraction.AlwaysRule(label: "Bash(git push origin fix/ws-reconnect)", destination: "localSettings")
+        let plan = """
+        # Make reconnects back off
+
+        1. Add an exponential backoff (250 ms → 8 s, with jitter) to `SocketClient.reconnect()`.
+        2. Cancel the pending retry when the app goes to the background.
+        3. Cover it with a fake clock in `SocketClientTests`: drop, retry, give up after 6 tries.
+        4. Remove the old fixed 1 s retry and its flag.
+        """
+        let questions = [
+            AgentQuestion(question: "Which cache should back the session store?", header: "Cache", multiSelect: false, options: [
+                .init(label: "Redis", description: "Shared across instances; needs a server"),
+                .init(label: "In-memory LRU", description: "Fastest; lost on restart"),
+                .init(label: "SQLite", description: "Persistent, single file"),
+            ]),
+            AgentQuestion(question: "Which platforms should the reconnect fix ship to first?", header: "Platforms", multiSelect: true, options: [
+                .init(label: "macOS", description: ""), .init(label: "iOS", description: ""), .init(label: "Web", description: ""),
+            ]),
+        ]
         let cards: [(NotchNotification, Double)] = [
-            (NotchNotification(type: .permission, message: "git push origin fix/ws-reconnect", title: "Run command", permissionRequestId: "x", toolName: "Bash"), 1.6),
-            (NotchNotification(type: .permission, message: "rm -rf build/ dist/ && npm run build -- --mode production --sourcemap && npm run test:e2e -- --reporter=dot --bail", title: "Run command", permissionRequestId: "z", toolName: "Bash"), 1.6),
-            (NotchNotification(type: .permission, message: "src/session/store.ts", title: "Edit file", permissionRequestId: "y", toolName: "Edit"), 1.6),
+            (NotchNotification(type: .permission, message: "Push the fix branch", title: "Run command", permissionRequestId: "x", toolName: "Bash",
+                               detail: "git push origin fix/ws-reconnect", interaction: .permission(always: always)), 1.6),
+            (NotchNotification(type: .permission, message: "Clean, build and run the e2e suite", title: "Run command", permissionRequestId: "z", toolName: "Bash",
+                               detail: "git status && rm -rf ~/build dist/ && npm run build -- --mode production --sourcemap && npm run test:e2e -- --reporter=dot --bail", interaction: .permission(always: nil)), 1.6),
+            (NotchNotification(type: .permission, message: "src/session/store.ts", title: "Edit file", permissionRequestId: "y", toolName: "Edit",
+                               detail: "/Users/you/code/api/src/session/store.ts\n-   retry(after: 1.0)\n+   retry(after: backoff.next())\n+   backoff.reset(onSuccess: true)"), 1.6),
+            (NotchNotification(type: .permission, message: "Make reconnects back off", title: "Plan ready", permissionRequestId: "p", toolName: "ExitPlanMode",
+                               detail: CardText.planSummary(plan).body, interaction: .plan), 1.6),
+            (NotchNotification(type: .permission, message: questions[0].question, title: "Cache", permissionRequestId: "q", toolName: "AskUserQuestion",
+                               interaction: .question(questions)), 1.6),
             (NotchNotification(type: .complete, message: "Fixed the reconnect race. The socket now backs off before retrying, and all 76 tests pass."), 0.45),
-            (NotchNotification(type: .question, message: "Which cache should back the session store? Redis, in-memory LRU, or SQLite?"), 1.6),
             (NotchNotification(type: .general, message: "Under 10% of the 5-hour window left. Resets in 58m.", title: NotchNotification.limitsTitle), 1.2),
-            (NotchNotification(type: .error, message: "Hit the usage limit. Resets in 1h 12m.", title: NotchNotification.limitsOutTitle), 1.6),
             (NotchNotification(type: .error, message: "Run /login in Claude Code, then try again.", title: "Signed out"), 1.6),
         ]
         let s: CGFloat = 2
@@ -244,8 +268,8 @@ enum DebugSnapshots {
         for (i, (n, t)) in cards.enumerated() {
             let h = notchH + NotchNotificationView.Metrics.contentHeight(for: n, panelWidth: panelW)
             let view = NotchNotificationView(notification: n, hasNotch: true, notchWidth: notchW, notchHeight: notchH, onTap: {}, onDismiss: {},
-                                             onApprove: {}, onAlwaysAllow: {}, onDeny: {},
-                                             session: i == 5 ? nil : session, appearImmediately: true)
+                                             onRespond: { _ in },
+                                             session: n.title == NotchNotification.limitsTitle ? nil : session, appearImmediately: true)
                 .frame(width: panelW, height: h)
             let host = NSHostingView(rootView: view)
             guard let base = bitmap(host, size: CGSize(width: panelW, height: h), scale: s, settle: 0.9) else { continue }

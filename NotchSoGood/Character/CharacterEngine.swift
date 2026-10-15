@@ -372,10 +372,18 @@ final class CharacterPuppet {
     private var greetedAt: Double?
 
     var isDozing: Bool { dozeFrom != nil }
-    /// True while something is moving that 20 fps would make choppy.
+    /// True while something is moving that a resting frame rate would make
+    /// choppy: a trick, waking up, a greeting, nodding off, or a glance.
     func isPerforming(now: Double) -> Bool {
         trick != nil || (wokeAt.map { now - $0 < 1.2 } ?? false) || (greetedAt.map { now - $0 < 0.9 } ?? false)
-            || (dozeFrom.map { now - $0 < 1.2 } ?? false)
+            || (dozeFrom.map { now - $0 < 1.2 } ?? false) || isGlancing(now: now)
+    }
+
+    /// The quick eye moves of `glance` (see Ambient life): about 0.7 s in every 7.3.
+    private func isGlancing(now: Double) -> Bool {
+        guard state == .work, dozeFrom == nil else { return false }
+        let c = fmodPos(Float(now - since), 7.3)
+        return (c > 4.4 && c < 4.9) || (c > 6.0 && c < 6.6)
     }
 
     func setDozing(_ on: Bool, now: Double) {

@@ -19,7 +19,8 @@ class SessionFileWatcher {
         var fileDescriptor: Int32
     }
 
-    private let projectsDir = NSHomeDirectory() + "/.claude/projects"
+    private let projectsDir = (ProcessInfo.processInfo.environment["CLAUDE_CONFIG_DIR"].flatMap { $0.isEmpty ? nil : $0 }
+                               ?? NSHomeDirectory() + "/.claude") + "/projects"
 
     // MARK: - Public API
 
@@ -173,19 +174,24 @@ class SessionFileWatcher {
                 continue
             }
 
-            // Check for interrupt: tool_result with is_error and "interrupted" in content
-            if json["type"] as? String == "user",
-               let message = json["message"] as? [String: Any],
-               let content = message["content"] as? [[String: Any]] {
-                for block in content {
-                    if block["type"] as? String == "tool_result",
-                       block["is_error"] as? Bool == true {
-                        let resultContent = block["content"] as? String ?? ""
-                        if resultContent.localizedCaseInsensitiveContains("interrupted") {
-                            handleInterrupt(sessionId: sessionId)
-                            return
-                        }
-                    }
+            // Interrupts show up two ways: a failed tool_result ("…interrupted by
+            // user for tool use"), or, when Esc lands mid-reply, a user text
+            // block "[Request interrupted by user]".
+            guard json["type"] as? String == "user", let message = json["message"] as? [String: Any] else { continue }
+            if let text = message["content"] as? String, text.hasPrefix("[Request interrupted by user") {
+                handleInterrupt(sessionId: sessionId)
+                return
+            }
+            for block in message["content"] as? [[String: Any]] ?? [] {
+                if block["type"] as? String == "tool_result", block["is_error"] as? Bool == true,
+                   (block["content"] as? String ?? "").localizedCaseInsensitiveContains("interrupted") {
+                    handleInterrupt(sessionId: sessionId)
+                    return
+                }
+                if block["type"] as? String == "text",
+                   (block["text"] as? String ?? "").hasPrefix("[Request interrupted by user") {
+                    handleInterrupt(sessionId: sessionId)
+                    return
                 }
             }
         }
@@ -193,16 +199,7 @@ class SessionFileWatcher {
 
     private func handleInterrupt(sessionId: String) {
         DispatchQueue.main.async {
-            // Cancel any pending permission requests for this session
-            // Only this session's requests: another session's card stays up.
-            let pendingIds = PermissionServer.shared.pendingRequestIds(for: sessionId)
-            for reqId in pendingIds {
-                PermissionServer.shared.respond(requestId: reqId, response: .deny)
-                NotificationManager.shared.windowController.dismissPermission(requestId: reqId)
-            }
-
-            // Update session status
-            NotificationManager.shared.updateSessionStatus(sessionId: sessionId, status: .needsInput)
+            NotificationManager.shared.handleInterrupt(sessionId: sessionId)
         }
     }
 

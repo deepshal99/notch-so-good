@@ -38,6 +38,12 @@ class NotchWindowController {
     // Permission queue — when multiple tools need approval simultaneously
     private var permissionQueue: [NotchNotification] = []
     private var permissionQueueMeta: [(sourceBundleId: String?, cwd: String?, sourcePid: pid_t?)] = []
+    /// Finished / error / heads-up cards that arrived while a waiting card was
+    /// up: shown once it's answered, newest few only, instead of being lost.
+    private var heldCards: [(notification: NotchNotification, meta: (sourceBundleId: String?, cwd: String?, sourcePid: pid_t?))] = []
+    /// When the current waiting card appeared. Hotkeys ignore its first half
+    /// second, so a double press never answers a card you haven't seen.
+    private var waitingShownAt = Date.distantPast
 
     /// Screen each panel is currently built for. The pill bakes its notch
     /// dimensions into the SwiftUI view, so moving it to a display with
@@ -263,6 +269,8 @@ class NotchWindowController {
         // "finished" from another session or a usage heads-up must never replace
         // it (that used to strand the request with no buttons and no hotkeys).
         if activePermissionRequestId != nil && !notification.isInteractivePermission {
+            heldCards.append((notification, (sessionSourceBundleId, sessionCwd, sessionSourcePid)))
+            if heldCards.count > 3 { heldCards.removeFirst(heldCards.count - 3) }
             return
         }
 
@@ -318,6 +326,7 @@ class NotchWindowController {
 
         activePermissionRequestId = notification.permissionRequestId
         activeNotification = notification
+        if isPermission { waitingShownAt = Date() }
 
         let phase = NotificationPhase()
         notificationPhase = phase
@@ -345,23 +354,9 @@ class NotchWindowController {
                     NotificationManager.shared.muteRepeats(sessionId: notification.sessionId, type: notification.type)
                 }
             },
-            onApprove: isPermission ? { [weak self] in
-                guard let reqId = self?.activePermissionRequestId else { return }
-                PermissionServer.shared.respond(requestId: reqId, response: .allow)
-                self?.activePermissionRequestId = nil
-                self?.dismiss()
-            } : nil,
-            onAlwaysAllow: isPermission ? { [weak self] in
-                guard let reqId = self?.activePermissionRequestId else { return }
-                PermissionServer.shared.respond(requestId: reqId, response: .allowAlways)
-                self?.activePermissionRequestId = nil
-                self?.dismiss()
-            } : nil,
-            onDeny: isPermission ? { [weak self] in
-                guard let reqId = self?.activePermissionRequestId else { return }
-                PermissionServer.shared.respond(requestId: reqId, response: .deny)
-                self?.activePermissionRequestId = nil
-                self?.dismiss()
+            onRespond: isPermission ? { [weak self] response in
+                guard let self, let reqId = self.activePermissionRequestId else { return }
+                self.answer(reqId, response, focus: (notification.sessionId, resolvedBundleId, resolvedCwd, sessionSourcePid))
             } : nil,
             phase: phase,
             // Always called on the main thread (UI entry points only).
@@ -416,9 +411,38 @@ class NotchWindowController {
         }
     }
 
+    /// Send the user's answer. Handing back to the terminal also brings the
+    /// terminal forward, since that's where the answer happens now.
+    private func answer(_ reqId: String, _ response: CardResponse,
+                        focus: (sessionId: String?, bundleId: String?, cwd: String?, pid: pid_t?)? = nil) {
+        activePermissionRequestId = nil
+        if response == .handOff {
+            PermissionServer.shared.handOffToTerminal(requestId: reqId)
+            if let focus {
+                TerminalLauncher.focusClaudeCode(sessionId: focus.sessionId, sourceBundleId: focus.bundleId,
+                                                 cwd: focus.cwd, sourcePid: focus.pid)
+            }
+        } else {
+            PermissionServer.shared.respond(requestId: reqId, response: response)
+        }
+        dismiss()
+    }
+
     /// Show next queued permission notification (called after responding to current one)
     func showNextQueuedPermission() {
-        guard !permissionQueue.isEmpty else { return }
+        guard !permissionQueue.isEmpty else {
+            // Nothing else waiting: show what arrived meanwhile (the latest only;
+            // older ones are already stale).
+            if activePermissionRequestId == nil, let held = heldCards.popLast() {
+                heldCards.removeAll()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
+                    guard let self, self.activePermissionRequestId == nil else { return }
+                    self.showNotification(held.notification, sessionSourceBundleId: held.meta.sourceBundleId,
+                                          sessionCwd: held.meta.cwd, sessionSourcePid: held.meta.sourcePid)
+                }
+            }
+            return
+        }
         let next = permissionQueue.removeFirst()
         let meta = permissionQueueMeta.removeFirst()
         showNotification(
@@ -457,18 +481,21 @@ class NotchWindowController {
 
     /// Approve the currently visible permission request (global hotkey / UI).
     @MainActor func approveActivePermission() {
-        guard let reqId = activePermissionRequestId else { return }
-        PermissionServer.shared.respond(requestId: reqId, response: .allow)
-        activePermissionRequestId = nil
-        dismiss()
+        guard let reqId = activePermissionRequestId, Date().timeIntervalSince(waitingShownAt) > 0.5 else { return }
+        switch activeNotification?.interaction {
+        case .plan: answer(reqId, .approvePlan(acceptEdits: false))
+        case .question: return          // an answer needs a choice, not a shortcut
+        default: answer(reqId, .allow)
+        }
     }
 
     /// Deny the currently visible permission request (global hotkey / UI).
     @MainActor func denyActivePermission() {
-        guard let reqId = activePermissionRequestId else { return }
-        PermissionServer.shared.respond(requestId: reqId, response: .deny)
-        activePermissionRequestId = nil
-        dismiss()
+        guard let reqId = activePermissionRequestId, Date().timeIntervalSince(waitingShownAt) > 0.5 else { return }
+        switch activeNotification?.interaction {
+        case .plan, .question: answer(reqId, .handOff)
+        default: answer(reqId, .deny)
+        }
     }
 
     /// True while an interactive permission is on screen (hotkeys only fire then).

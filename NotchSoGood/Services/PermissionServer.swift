@@ -1,21 +1,26 @@
 import Foundation
 
-/// Unix domain socket server that receives ALL events from Claude Code hooks.
-/// Replaces the previous TCP server with a more secure, faster Unix socket.
+/// Unix domain socket server that receives every event from the agents' hooks.
 ///
-/// Event types handled:
-/// - PreToolUse: Auto-approve safe tools, show UI for dangerous ones (bidirectional)
-/// - PostToolUse: Update session status back to running
-/// - SessionStart: Start session tracking
-/// - SessionEnd: Clean session end
-/// - Stop: Session completed
-/// - Notification: Show notification in notch
-/// - UserPromptSubmit: User sent a message (session active)
-/// - PreCompact: Context compaction starting
-/// - SubagentStop: Subagent finished
+/// Three events wait for an answer from the notch: `PermissionRequest` (the
+/// agent is about to ask to run a tool, or to leave plan mode) and
+/// `AskUserQuestion` (a multiple-choice question). Everything else reports:
+/// sessions starting and ending, prompts, tools, compaction, stops and errors.
+///
+/// We never answer on the user's behalf. A request nobody answers, or one the
+/// user hands back, gets no reply, and the agent shows its own prompt.
 class PermissionServer {
     static let shared = PermissionServer()
-    static let socketPath = "/tmp/notchsogood.sock"
+    /// One per user: /tmp is shared between accounts.
+    static let socketPath = "/tmp/notchsogood-\(getuid()).sock"
+    /// Where hooks from before 4.7 send their events.
+    static let legacySocketPath = "/tmp/notchsogood.sock"
+
+    /// False when another copy of the app already owns the socket (it keeps
+    /// receiving the events; this one stays quiet rather than steal them).
+    private(set) var isListening = false
+    /// When the last hook event arrived, for diagnostics.
+    private(set) var lastEventAt: Date?
 
     private var serverSocket: Int32 = -1
     private var acceptSource: DispatchSourceRead?
@@ -26,7 +31,7 @@ class PermissionServer {
     struct PendingRequest {
         let id: String
         let toolName: String
-        let toolInput: String
+        let interaction: CardInteraction
         let sessionId: String?
         let clientSocket: Int32
         let receivedAt: Date
@@ -34,6 +39,11 @@ class PermissionServer {
 
     /// Pending permission requests indexed by request ID — supports concurrent requests
     private var pendingRequests: [String: PendingRequest] = [:]
+    /// Sessions whose plan was approved with "Auto-accept": a plan's approval
+    /// can't switch the mode itself, so the session's next file edit does
+    /// (exactly what Claude Code's own "Yes, auto-accept edits" sets).
+    private var autoAcceptEdits: Set<String> = []
+    private static let editTools: Set<String> = ["Edit", "MultiEdit", "Write", "NotebookEdit"]
     private let lock = NSLock()
 
     // MARK: - Payload helpers
@@ -163,66 +173,6 @@ class PermissionServer {
         return settings(cwd: cwd).defaultMode ?? .standard
     }
 
-    // Built-in agent tools that never need user approval. Anything that can
-    // write to disk stays out of this list — NotebookEdit used to be here, which
-    // silently auto-approved notebook writes.
-    static let safeTools: Set<String> = [
-        "Read", "Glob", "Grep", "LSP", "Agent", "ToolSearch",
-        "EnterPlanMode", "ExitPlanMode", "EnterWorktree", "ExitWorktree",
-        "TaskGet", "TaskList", "TaskOutput", "TaskCreate", "TaskUpdate", "TaskStop",
-        "CronList", "ListMcpResourcesTool", "ReadMcpResourceTool",
-        "Skill", "SendMessage", "WebFetch", "WebSearch",
-        "mcp__conductor__AskUserQuestion",
-        "mcp__conductor__DiffComment",
-        "mcp__conductor__GetTerminalOutput",
-        "mcp__conductor__GetWorkspaceDiff",
-    ]
-
-    private static let readOnlyKeywords = [
-        "get_", "list_", "search_", "read_", "find_", "query_",
-        "resolve", "snapshot", "watch", "fetch",
-    ]
-
-    static func isToolApproved(_ toolName: String, toolInput: String, cwd: String? = nil) -> Bool {
-        if safeTools.contains(toolName) { return true }
-        if isAllowedByRules(toolName: toolName, toolInput: toolInput, cwd: cwd) { return true }
-        if toolName.hasPrefix("mcp__") {
-            let parts = toolName.split(separator: "__", omittingEmptySubsequences: true)
-            if let funcName = parts.last {
-                // The verb starts the name: get_issue reads, set_budget_limit doesn't.
-                let lower = funcName.lowercased()
-                if readOnlyKeywords.contains(where: { lower.hasPrefix($0) }) {
-                    return true
-                }
-            }
-        }
-        return false
-    }
-
-    private static func isAllowedByRules(toolName: String, toolInput: String, cwd: String?) -> Bool {
-        let rules = settings(cwd: cwd).allowRules
-        for rule in rules {
-            if let parenIdx = rule.firstIndex(of: "(") {
-                let ruleTool = String(rule[rule.startIndex..<parenIdx])
-                guard toolName == ruleTool else { continue }
-                let patternStart = rule.index(after: parenIdx)
-                guard let parenEnd = rule.lastIndex(of: ")") else { continue }
-                let pattern = String(rule[patternStart..<parenEnd])
-                if pattern == "*" { return true }
-                // `git status; rm -rf ~` must not ride on a `git status` rule.
-                if toolName == "Bash", toolInput.range(of: #"[;&|`\n]|\$\("#, options: .regularExpression) != nil { continue }
-                if pattern.hasSuffix(":*") {
-                    let prefix = String(pattern.dropLast(2))
-                    if toolInput.hasPrefix(prefix) { return true }
-                }
-            } else {
-                if toolName == rule { return true }
-                if toolName.hasPrefix(rule + "__") { return true }
-            }
-        }
-        return false
-    }
-
     // MARK: - Server lifecycle
 
     func start() {
@@ -234,9 +184,18 @@ class PermissionServer {
     private func startServer() {
         guard serverSocket < 0 else { return }
 
-        // Remove stale socket file
+        // Another copy is already listening (a second install, a dev build):
+        // leave it the events rather than silently stealing them.
+        if Self.someoneListening(at: Self.socketPath) {
+            NSLog("NotchSoGood: another copy is listening on %@", Self.socketPath)
+            return
+        }
+        // A stale socket file from a crash, and the pre-4.7 shared path if it's ours.
         unlink(Self.socketPath)
-        // Also clean up legacy TCP port file
+        if let owner = try? FileManager.default.attributesOfItem(atPath: Self.legacySocketPath)[.ownerAccountID] as? NSNumber,
+           owner.uint32Value == getuid() {
+            unlink(Self.legacySocketPath)
+        }
         unlink("/tmp/notchsogood.port")
 
         serverSocket = socket(AF_UNIX, SOCK_STREAM, 0)
@@ -283,6 +242,7 @@ class PermissionServer {
         }
 
         print("PermissionServer: listening on \(Self.socketPath)")
+        isListening = true
 
         acceptSource = DispatchSource.makeReadSource(fileDescriptor: serverSocket, queue: queue)
         acceptSource?.setEventHandler { [weak self] in
@@ -297,10 +257,30 @@ class PermissionServer {
         acceptSource?.resume()
     }
 
+    /// Whether a live server answers at `path`.
+    private static func someoneListening(at path: String) -> Bool {
+        let fd = socket(AF_UNIX, SOCK_STREAM, 0)
+        guard fd >= 0 else { return false }
+        defer { close(fd) }
+        var addr = sockaddr_un()
+        addr.sun_family = sa_family_t(AF_UNIX)
+        path.withCString { ptr in
+            withUnsafeMutablePointer(to: &addr.sun_path) { pathPtr in
+                strcpy(UnsafeMutableRawPointer(pathPtr).assumingMemoryBound(to: CChar.self), ptr)
+            }
+        }
+        return withUnsafePointer(to: &addr) { ptr in
+            ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                connect(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size)) == 0
+            }
+        }
+    }
+
     func stop() {
         acceptSource?.cancel()
         acceptSource = nil
-        unlink(Self.socketPath)
+        if isListening { unlink(Self.socketPath) }
+        isListening = false
 
         lock.lock()
         for (_, pending) in pendingRequests {
@@ -368,16 +348,43 @@ class PermissionServer {
         let agentPid = Self.peer(of: clientSocket)?.agent
         let modeRaw = json["permission_mode"] as? String
         let mode = Self.effectiveMode(payloadMode: modeRaw, cwd: cwd)
+        // Which agent: on every event, so a session first seen mid-flight is
+        // labelled right (only SessionStart used to carry it).
+        let agent = NotchNotification.nonEmpty(json["source_app"] as? String).flatMap { $0.contains(".") ? nil : $0 }
+        lastEventAt = Date()
 
         switch event {
+        case "PermissionRequest":
+            handlePermissionRequest(json: json, clientSocket: clientSocket, agent: agent)
+
+        case "AskUserQuestion":
+            handleQuestion(json: json, clientSocket: clientSocket, agent: agent)
+
         case "PreToolUse":
-            handlePreToolUse(json: json, clientSocket: clientSocket)
+            handlePreToolUse(json: json, clientSocket: clientSocket, agent: agent)
 
         case "PostToolUse":
             close(clientSocket)
             let toolName = json["tool_name"] as? String ?? ""
+            let edited = (json["edited"] as? [String]) ?? []
+            let tests = json["tests"] as? String
             DispatchQueue.main.async {
-                NotificationManager.shared.handlePostToolUse(sessionId: sessionId, toolName: toolName, cwd: cwd)
+                NotificationManager.shared.adoptSession(sessionId: sessionId, cwd: cwd, sourcePid: agentPid, sourceApp: agent)
+                NotificationManager.shared.handlePostToolUse(sessionId: sessionId, toolName: toolName, cwd: cwd,
+                                                             edited: edited, tests: tests)
+            }
+
+        case "PostCompact":
+            close(clientSocket)
+            DispatchQueue.main.async {
+                NotificationManager.shared.compactionFinished(sessionId: sessionId)
+            }
+
+        case "Interrupt":
+            // Codex: Esc on a running turn. It's waiting for you now.
+            close(clientSocket)
+            DispatchQueue.main.async {
+                NotificationManager.shared.handleInterrupt(sessionId: sessionId)
             }
 
         case "SubagentStart":
@@ -392,7 +399,10 @@ class PermissionServer {
             close(clientSocket)
             let model = json["model"] as? String
             let sourceApp = json["source_app"] as? String
+            let source = json["source"] as? String
             DispatchQueue.main.async {
+                // A SessionStart after /compact means compaction is over.
+                if source == "compact" { NotificationManager.shared.compactionFinished(sessionId: sessionId) }
                 NotificationManager.shared.startSession(
                     sessionId: sessionId,
                     displayName: cwd,
@@ -412,13 +422,18 @@ class PermissionServer {
 
         case "Stop":
             close(clientSocket)
+            if let sessionId {
+                lock.lock()
+                autoAcceptEdits.remove(sessionId)
+                lock.unlock()
+            }
             let message = json["last_assistant_message"] as? String ?? "Task completed"
             DispatchQueue.main.async {
                 // Adopt first: handleNotification consults the session's mode, and
                 // an unknown session would read as "standard" and prompt anyway.
                 NotificationManager.shared.adoptSession(
                     sessionId: sessionId, cwd: cwd, sourceBundleId: sourceBundleId,
-                    sourcePid: agentPid, permissionMode: mode
+                    sourcePid: agentPid, permissionMode: mode, sourceApp: agent
                 )
                 let notification = NotchNotification(
                     type: .complete,
@@ -435,7 +450,7 @@ class PermissionServer {
             DispatchQueue.main.async {
                 NotificationManager.shared.adoptSession(
                     sessionId: sessionId, cwd: cwd, sourceBundleId: sourceBundleId,
-                    sourcePid: agentPid, permissionMode: mode
+                    sourcePid: agentPid, permissionMode: mode, sourceApp: agent
                 )
                 let resetsAt = UsageLimitsStore.shared.sessionWindow(for: .claude)?.resetsAt
                 let copy = StopFailure.copy(error: error, details: details,
@@ -463,7 +478,7 @@ class PermissionServer {
             DispatchQueue.main.async {
                 NotificationManager.shared.adoptSession(
                     sessionId: sessionId, cwd: cwd, sourceBundleId: sourceBundleId,
-                    sourcePid: agentPid, permissionMode: mode
+                    sourcePid: agentPid, permissionMode: mode, sourceApp: agent
                 )
                 let notification = NotchNotification(
                     type: type,
@@ -504,26 +519,25 @@ class PermissionServer {
         }
     }
 
-    // MARK: - PreToolUse (bidirectional — keeps socket open for response)
+    // MARK: - PreToolUse (activity only)
 
-    private func handlePreToolUse(json: [String: Any], clientSocket: Int32) {
+    /// What the agent is doing right now, for the pill. Never answered: hooks
+    /// from before 4.7 that still wait get "defer" (the agent decides).
+    private func handlePreToolUse(json: [String: Any], clientSocket: Int32, agent: String?) {
         let toolName = json["tool_name"] as? String ?? "Unknown"
         let toolInput = json["tool_input"] as? String ?? ""
         let sessionId = NotchNotification.nonEmpty(json["session_id"] as? String)
         let cwd = NotchNotification.nonEmpty(json["cwd"] as? String)
         let agentPid = Self.peer(of: clientSocket)?.agent
         let mode = Self.effectiveMode(payloadMode: json["permission_mode"] as? String, cwd: cwd)
-        #if DEBUG
-        let forceTest = json["force_test"] as? Bool ?? false
-        #else
-        let forceTest = false
-        #endif
-
-        // Track active tool for phase labels (even for auto-approved tools).
-        // This also carries cwd / pid / mode, which is how a session the app
-        // never saw start becomes visible and focusable.
+        if json["decision_needed"] as? Bool == false {
+            close(clientSocket)
+        } else {
+            sendSocketResponse(clientSocket: clientSocket, body: "{\"decision\":\"defer\"}")
+        }
         let detail = toolInput.isEmpty ? nil : String(toolInput.prefix(60))
         DispatchQueue.main.async {
+            NotificationManager.shared.adoptSession(sessionId: sessionId, cwd: cwd, sourcePid: agentPid, sourceApp: agent)
             NotificationManager.shared.handlePreToolUse(
                 sessionId: sessionId,
                 toolName: toolName,
@@ -533,71 +547,83 @@ class PermissionServer {
                 permissionMode: mode
             )
         }
+    }
 
-        // The hook already decided locally and is only telling us so the pill's
-        // phase label stays live. Don't hold the socket, don't show anything.
-        if json["decision_needed"] as? Bool == false {
-            close(clientSocket)
-            return
-        }
+    // MARK: - Waiting cards (held open until the user answers)
 
-        if !forceTest {
-            // The agent's own permission mode wins. In bypass / auto / plan it has
-            // already decided, and in acceptEdits it has decided about edits — a
-            // prompt here would be a second gate the user never asked for, and it
-            // blocks the tool until they answer it.
-            // "defer" means: no decision from us, the agent's own rules decide.
-            // We never approve on the user's behalf.
-            if mode.autoApproves(toolName: toolName) {
-                sendSocketResponse(clientSocket: clientSocket, body: "{\"decision\":\"defer\"}")
-                return
-            }
-            if Self.isToolApproved(toolName, toolInput: toolInput, cwd: cwd) {
-                sendSocketResponse(clientSocket: clientSocket, body: "{\"decision\":\"defer\"}")
+    private func handlePermissionRequest(json: [String: Any], clientSocket: Int32, agent: String?) {
+        let toolName = json["tool_name"] as? String ?? "Unknown"
+        if Self.editTools.contains(toolName), let sid = NotchNotification.nonEmpty(json["session_id"] as? String) {
+            lock.lock()
+            let autoAccept = autoAcceptEdits.remove(sid) != nil
+            lock.unlock()
+            if autoAccept {
+                sendSocketResponse(clientSocket: clientSocket, body: #"{"decision":"allow","mode":"acceptEdits"}"#)
                 return
             }
         }
+        let interaction: CardInteraction
+        var detail = json["tool_input"] as? String
+        if toolName == "ExitPlanMode" {
+            interaction = .plan
+            detail = json["plan"] as? String
+        } else if let label = NotchNotification.nonEmpty(json["always_label"] as? String) {
+            interaction = .permission(always: .init(label: label, destination: json["always_destination"] as? String ?? "localSettings"))
+        } else {
+            interaction = .permission(always: nil)
+        }
+        hold(json: json, clientSocket: clientSocket, agent: agent, toolName: toolName, interaction: interaction,
+             detail: detail, description: json["description"] as? String)
+    }
 
-        // Dangerous tool — need user approval
+    private func handleQuestion(json: [String: Any], clientSocket: Int32, agent: String?) {
+        let questions = (json["questions"] as? [[String: Any]] ?? []).compactMap(AgentQuestion.init(json:))
+        guard !questions.isEmpty else { close(clientSocket); return }
+        hold(json: json, clientSocket: clientSocket, agent: agent, toolName: "AskUserQuestion",
+             interaction: .question(Array(questions.prefix(4))), detail: nil, description: nil)
+    }
+
+    /// Keep the hook's connection open and put the card up. The answer (or a
+    /// hand-back, or the 2-minute timeout) closes it.
+    private func hold(json: [String: Any], clientSocket: Int32, agent: String?, toolName: String,
+                      interaction: CardInteraction, detail: String?, description: String?) {
+        let sessionId = NotchNotification.nonEmpty(json["session_id"] as? String)
+        let cwd = NotchNotification.nonEmpty(json["cwd"] as? String)
+        let peer = Self.peer(of: clientSocket)
+        let mode = Self.effectiveMode(payloadMode: json["permission_mode"] as? String, cwd: cwd)
         let requestId = UUID().uuidString
-        let request = PendingRequest(
-            id: requestId,
-            toolName: toolName,
-            toolInput: toolInput,
-            sessionId: sessionId,
-            clientSocket: clientSocket,
-            receivedAt: Date()
-        )
 
         lock.lock()
-        pendingRequests[requestId] = request
+        pendingRequests[requestId] = PendingRequest(
+            id: requestId, toolName: toolName, interaction: interaction,
+            sessionId: sessionId, clientSocket: clientSocket, receivedAt: Date()
+        )
         lock.unlock()
 
         DispatchQueue.main.async {
-            NotificationManager.shared.showPermissionRequest(
-                requestId: requestId,
-                toolName: toolName,
-                toolInput: toolInput,
-                sessionId: sessionId
+            NotificationManager.shared.adoptSession(
+                sessionId: sessionId, cwd: cwd, sourceBundleId: Self.bundleId(from: json),
+                sourcePid: peer?.agent, permissionMode: mode, sourceApp: agent
+            )
+            NotificationManager.shared.showWaitingCard(
+                requestId: requestId, toolName: toolName, interaction: interaction,
+                detail: detail, description: description, sessionId: sessionId
             )
         }
 
-        // Timeout after 2 minutes — close socket so hook outputs nothing
         queue.asyncAfter(deadline: .now() + 120) { [weak self] in
             self?.timeoutRequest(requestId: requestId)
         }
-        watchWaitingHook(pid: Self.peer(of: clientSocket)?.hook, requestId: requestId)
+        watchWaitingHook(pid: peer?.hook, requestId: requestId)
     }
 
-    // MARK: - Permission response
+    // MARK: - Answers
 
-    enum PermissionResponse {
-        case allow
-        case allowAlways
-        case deny
-    }
-
-    func respond(requestId: String, response: PermissionResponse) {
+    func respond(requestId: String, response: CardResponse) {
+        guard let reply = response.reply else {
+            handOffToTerminal(requestId: requestId)
+            return
+        }
         lock.lock()
         guard let request = pendingRequests.removeValue(forKey: requestId) else {
             lock.unlock()
@@ -605,29 +631,24 @@ class PermissionServer {
         }
         lock.unlock()
 
-        switch response {
-        case .allowAlways:
-            let rule = Self.buildAllowRule(toolName: request.toolName, toolInput: request.toolInput)
-            Self.addToAllowList(rule: rule)
-            fallthrough
-        case .allow:
-            queue.async {
-                self.sendSocketResponse(clientSocket: request.clientSocket, body: "{\"decision\":\"approve\"}")
-            }
-        case .deny:
-            queue.async {
-                self.sendSocketResponse(clientSocket: request.clientSocket, body: "{\"decision\":\"deny\",\"reason\":\"Denied from Notch So Good\"}")
-            }
+        if case .approvePlan(acceptEdits: true) = response, let sid = request.sessionId {
+            lock.lock()
+            autoAcceptEdits.insert(sid)
+            lock.unlock()
         }
+        let body = (try? JSONSerialization.data(withJSONObject: reply)).flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
+        queue.async { self.sendSocketResponse(clientSocket: request.clientSocket, body: body) }
 
-        // Update stats/telemetry and check if there's another queued permission to show
         Task { @MainActor in
+            let kind: String
             switch response {
-            case .allow, .allowAlways:
-                Telemetry.shared.trackEvent("permission_responded", props: ["decision": "approve"])
-            case .deny:
-                Telemetry.shared.trackEvent("permission_responded", props: ["decision": "deny"])
+            case .allow, .allowAlways: kind = "approve"
+            case .deny: kind = "deny"
+            case .approvePlan: kind = "plan"
+            case .answer: kind = "answer"
+            case .handOff: kind = "terminal"
             }
+            Telemetry.shared.trackEvent("card_answered", props: ["answer": kind])
             // The session isn't blocked on us any more. PostToolUse would normally
             // flip it back to running, but denials and failed tools never send one.
             NotificationManager.shared.permissionResolved(sessionId: request.sessionId)
@@ -635,16 +656,18 @@ class PermissionServer {
         }
     }
 
-    // Back-compat wrapper
-    func respond(requestId: String, approve: Bool) {
-        respond(requestId: requestId, response: approve ? .allow : .deny)
-    }
-
     /// Get count of pending permission requests (for queue management)
     var pendingCount: Int {
         lock.lock()
         defer { lock.unlock() }
         return pendingRequests.count
+    }
+
+    /// Whether this session has a card waiting on the user.
+    func hasPending(sessionId: String?) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return pendingRequests.values.contains { $0.sessionId == sessionId }
     }
 
     /// Get all pending request IDs for a session
@@ -655,52 +678,6 @@ class PermissionServer {
             .filter { $0.sessionId == sessionId || sessionId == nil }
             .sorted { $0.receivedAt < $1.receivedAt }
             .map { $0.id }
-    }
-
-    // MARK: - Allow list management
-
-    private static func buildAllowRule(toolName: String, toolInput: String) -> String {
-        switch toolName {
-        case "Bash":
-            let cmd = toolInput.trimmingCharacters(in: .whitespacesAndNewlines)
-            let words = cmd.split(separator: " ", maxSplits: 2).map(String.init)
-            if let first = words.first {
-                let prefix = words.count >= 2 ? "\(first) \(words[1])" : first
-                return "Bash(\(prefix):*)"
-            }
-            return "Bash"
-        case "Edit", "Write", "NotebookEdit":
-            return toolName
-        default:
-            return toolName
-        }
-    }
-
-    @discardableResult
-    private static func addToAllowList(rule: String) -> Bool {
-        let path = NSHomeDirectory() + "/.claude/settings.json"
-        guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
-              var json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            return false
-        }
-
-        var permissions = json["permissions"] as? [String: Any] ?? [:]
-        var allow = permissions["allow"] as? [String] ?? []
-        guard !allow.contains(rule) else { return true }
-        allow.append(rule)
-        permissions["allow"] = allow
-        json["permissions"] = permissions
-
-        guard let updated = try? JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted, .sortedKeys]),
-              let str = String(data: updated, encoding: .utf8) else { return false }
-
-        do {
-            try str.write(toFile: path, atomically: true, encoding: .utf8)
-            invalidateSettingsCache()
-            return true
-        } catch {
-            return false
-        }
     }
 
     // MARK: - Timeout & socket I/O

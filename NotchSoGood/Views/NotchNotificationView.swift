@@ -10,8 +10,9 @@ final class NotificationPhase: ObservableObject {
 /// top strip (character on the left, runway on the right), so a card reads as
 /// the pill opening rather than something new arriving.
 ///
-/// Permission requests get an inner card: what's being asked, by whom, the
-/// exact command, and three equal buttons. Everything else is a calm summary.
+/// Cards that wait for an answer get an inner card: what's being asked, by
+/// whom, the exact command (or the plan, or the question's options), and equal
+/// buttons. Everything else is a calm summary.
 struct NotchNotificationView: View {
     let notification: NotchNotification
     let hasNotch: Bool
@@ -19,9 +20,8 @@ struct NotchNotificationView: View {
     let notchHeight: CGFloat
     let onTap: () -> Void
     let onDismiss: () -> Void
-    let onApprove: (() -> Void)?
-    let onAlwaysAllow: (() -> Void)?
-    let onDeny: (() -> Void)?
+    /// How the user answered a waiting card.
+    let onRespond: ((CardResponse) -> Void)?
     @ObservedObject var phase: NotificationPhase
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -29,6 +29,9 @@ struct NotchNotificationView: View {
     @State private var expanded = false
     @State private var contentAppeared = false
     @State private var hovered = false
+    /// Questions: which one is showing, and what's picked so far.
+    @State private var questionIndex = 0
+    @State private var picked: [Int: Set<Int>] = [:]
 
     private let session: NotificationManager.SessionInfo?
     private let branch: String?
@@ -40,9 +43,7 @@ struct NotchNotificationView: View {
         notchHeight: CGFloat,
         onTap: @escaping () -> Void,
         onDismiss: @escaping () -> Void,
-        onApprove: (() -> Void)? = nil,
-        onAlwaysAllow: (() -> Void)? = nil,
-        onDeny: (() -> Void)? = nil,
+        onRespond: ((CardResponse) -> Void)? = nil,
         phase: NotificationPhase = NotificationPhase(),
         session: NotificationManager.SessionInfo? = nil,
         appearImmediately: Bool = false
@@ -53,9 +54,7 @@ struct NotchNotificationView: View {
         self.notchHeight = notchHeight
         self.onTap = onTap
         self.onDismiss = onDismiss
-        self.onApprove = onApprove
-        self.onAlwaysAllow = onAlwaysAllow
-        self.onDeny = onDeny
+        self.onRespond = onRespond
         self.phase = phase
         self.session = session
         self.branch = GitBranch.current(in: session?.cwd)
@@ -98,28 +97,73 @@ struct NotchNotificationView: View {
         static let rowGap: CGFloat = 8
         static let wellPadding: CGFloat = 10
         static let buttonHeight: CGFloat = 32
-        static let maxCommandLines = 3
+        /// The full command always shows: up to this many lines, then it scrolls.
+        static let maxCommandLines = 6
+        static let maxPlanLines = 7
         static let maxMessageLines = 3
+        static let maxQuestionLines = 3
+        static let captionRow: CGFloat = 16
+        static let optionGap: CGFloat = 6
+        static func optionHeight(_ option: AgentQuestion.Option) -> CGFloat { option.description.isEmpty ? 34 : 44 }
 
         static var monoLine: CGFloat { lineHeight(NSFont.monospacedSystemFont(ofSize: Island.monoSize, weight: .regular)) }
         static var bodyLine: CGFloat { lineHeight(NSFont.systemFont(ofSize: Island.bodySize)) + 2 }
 
         /// Height of everything below the header strip.
         static func contentHeight(for notification: NotchNotification, panelWidth: CGFloat) -> CGFloat {
-            if notification.isInteractivePermission {
-                let lines = commandLines(notification, panelWidth: panelWidth)
-                let well = 2*wellPadding + CGFloat(lines)*monoLine
-                let card = Island.cardPadding + titleRow + rowGap + metaRow + 10 + well + 12 + buttonHeight + Island.cardPadding
-                return headerGap + card + Island.inset
+            if let interaction = notification.interaction {
+                let top = Island.cardPadding + titleRow + rowGap + metaRow
+                var card: CGFloat
+                switch interaction {
+                case .permission(let always):
+                    let well = 2*wellPadding + CGFloat(commandLines(notification, panelWidth: panelWidth).shown)*monoLine
+                    card = top + (hasDescription(notification) ? 6 + bodyLine : 0) + 10 + well + 12 + buttonHeight
+                    if always != nil { card += 8 + captionRow }
+                case .plan:
+                    let lines = planLines(notification, panelWidth: panelWidth).shown
+                    card = top + 6 + bodyLine + (lines > 0 ? 10 + 2*wellPadding + CGFloat(lines)*bodyLine : 0) + 12 + buttonHeight
+                case .question(let questions):
+                    // Sized for the tallest question, so stepping through never resizes the card.
+                    let tallest = questions.map { q -> CGFloat in
+                        let lines = CGFloat(questionLines(q.question, panelWidth: panelWidth))
+                        let options = q.options.map(optionHeight).reduce(0, +) + CGFloat(max(0, q.options.count - 1))*optionGap
+                        return 8 + lines*bodyLine + 10 + options + (q.multiSelect ? 12 + buttonHeight : 10 + captionRow)
+                    }.max() ?? 0
+                    card = top + tallest
+                }
+                return headerGap + card + Island.cardPadding + Island.inset
             }
             let lines = messageLines(notification, panelWidth: panelWidth)
             return headerGap + 4 + titleRow + 6 + metaRow + 8 + CGFloat(lines)*bodyLine + 16
         }
 
-        static func commandLines(_ notification: NotchNotification, panelWidth: CGFloat) -> Int {
-            let wellWidth = islandWidth(panelWidth) - 2*(Island.inset + Island.cardPadding) - 2*wellPadding
-            return lineCount(notification.message, font: NSFont.monospacedSystemFont(ofSize: Island.monoSize, weight: .regular),
-                             width: wellWidth, max: maxCommandLines)
+        static func wellWidth(_ panelWidth: CGFloat) -> CGFloat {
+            islandWidth(panelWidth) - 2*(Island.inset + Island.cardPadding) - 2*wellPadding
+        }
+
+        /// Lines shown, and whether there's more (then the well scrolls).
+        static func commandLines(_ notification: NotchNotification, panelWidth: CGFloat) -> (shown: Int, overflows: Bool) {
+            let text = notification.detail ?? notification.message
+            let lines = lineCount(text, font: NSFont.monospacedSystemFont(ofSize: Island.monoSize, weight: .regular),
+                                  width: wellWidth(panelWidth), max: maxCommandLines + 1)
+            return (min(lines, maxCommandLines), lines > maxCommandLines)
+        }
+
+        static func planLines(_ notification: NotchNotification, panelWidth: CGFloat) -> (shown: Int, overflows: Bool) {
+            guard let plan = notification.detail else { return (0, false) }
+            let lines = lineCount(plan, font: NSFont.systemFont(ofSize: Island.bodySize), width: wellWidth(panelWidth), max: maxPlanLines + 1)
+            return (min(lines, maxPlanLines), lines > maxPlanLines)
+        }
+
+        static func questionLines(_ question: String, panelWidth: CGFloat) -> Int {
+            lineCount(question, font: NSFont.systemFont(ofSize: Island.bodySize),
+                      width: islandWidth(panelWidth) - 2*(Island.inset + Island.cardPadding), max: maxQuestionLines)
+        }
+
+        /// Claude's own one-line description of the call ("Remove node_modules"), when it adds something.
+        static func hasDescription(_ notification: NotchNotification) -> Bool {
+            guard let detail = notification.detail, !notification.message.isEmpty else { return false }
+            return !detail.contains(notification.message)
         }
 
         static func messageLines(_ notification: NotchNotification, panelWidth: CGFloat) -> Int {
@@ -157,7 +201,11 @@ struct NotchNotificationView: View {
 
     private var isPermission: Bool { notification.isInteractivePermission }
     private var characterState: CharacterState { CharacterState(notification: notification) }
-    private var isDestructive: Bool { isPermission && CommandRisk.looksDestructive(notification.message) }
+    /// Judged on the full command, never a shortened one.
+    private var isDestructive: Bool {
+        guard isPermission, case .permission = notification.interaction else { return false }
+        return CommandRisk.looksDestructive(notification.detail ?? notification.message)
+    }
     private var accent: Color { isDestructive ? CharacterState.error.color : characterState.color }
     private var headerHeight: CGFloat { Metrics.headerHeight(notchHeight: notchHeight, hasNotch: hasNotch) }
 
@@ -215,7 +263,7 @@ struct NotchNotificationView: View {
                     header(width: width)
                     Group {
                         if isPermission {
-                            permissionCard(panelWidth: panelWidth)
+                            waitingCard(panelWidth: panelWidth)
                                 .padding(.horizontal, Island.inset)
                                 .padding(.top, Metrics.headerGap)
                         } else {
@@ -242,7 +290,7 @@ struct NotchNotificationView: View {
             .onHover { hovered = $0 }
             .accessibilityElement(children: isPermission ? .contain : .combine)
             .accessibilityLabel("\(title). \(notification.message)")
-            .accessibilityHint(isPermission ? "Control Option A to allow, Control Option D to deny" : "Opens the session in its terminal")
+            .accessibilityHint(accessibilityHint)
         }
         .onAppear(perform: animateIn)
         .onChange(of: phase.dismissing) { _, dismissing in
@@ -275,80 +323,29 @@ struct NotchNotificationView: View {
         .opacity(contentAppeared ? 1 : 0)
     }
 
-    // MARK: - Permission card
+    // MARK: - Waiting cards
 
-    private func permissionCard(panelWidth: CGFloat) -> some View {
-        let lines = Metrics.commandLines(notification, panelWidth: panelWidth)
-        return VStack(alignment: .leading, spacing: 0) {
-            // Title row: what's being asked, and how long it's been waiting.
-            HStack(spacing: 8) {
-                StatusDot(color: accent)
-                Text(title)
-                    .font(Island.title)
-                    .foregroundColor(Island.primary)
-                    .lineLimit(1)
-                if isDestructive {
-                    Text("Destructive")
-                        .font(.system(size: 10.5, weight: .semibold))
-                        .foregroundColor(Color(hex: "FF8A80"))
-                        .padding(.horizontal, 7)
-                        .frame(height: 18)
-                        .background(Capsule().fill(CharacterState.error.color.opacity(0.16)))
-                }
-                Spacer(minLength: 8)
-                TimelineView(.periodic(from: .now, by: 1)) { ctx in
-                    Text(Self.waitLabel(ctx.date.timeIntervalSince(notification.timestamp)))
-                        .font(Island.numeric)
-                        .foregroundColor(Island.tertiary)
-                }
-                .accessibilityLabel("waiting")
+    private var accessibilityHint: String {
+        switch notification.interaction {
+        case .permission: return "Control Option A to allow, Control Option D to deny"
+        case .plan: return "Control Option A to approve the plan"
+        case .question: return "Choose an answer"
+        case nil: return "Opens the session in its terminal"
+        }
+    }
+
+    private func waitingCard(panelWidth: CGFloat) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            titleRow
+            metaRow.padding(.top, Metrics.rowGap)
+            switch notification.interaction {
+            case .plan:
+                planBody(panelWidth: panelWidth)
+            case .question(let questions):
+                questionBody(questions, panelWidth: panelWidth)
+            default:
+                permissionBody(panelWidth: panelWidth)
             }
-            .frame(height: Metrics.titleRow)
-
-            // Who's asking.
-            HStack(spacing: 8) {
-                if let session {
-                    Circle().fill(session.color).frame(width: 7, height: 7)
-                }
-                if let toolChip { Chip(text: toolChip) }
-                if let projectName {
-                    Text(projectName)
-                        .font(Island.meta)
-                        .foregroundColor(Island.secondary)
-                        .lineLimit(1)
-                }
-                if let branch { BranchLabel(branch: branch).layoutPriority(-1) }
-                Spacer(minLength: 0)
-            }
-            .frame(height: Metrics.metaRow)
-            .padding(.top, Metrics.rowGap)
-
-            // The exact command, in a recessed well.
-            Text(notification.message)
-                .font(Island.mono)
-                .foregroundColor(Color.white.opacity(0.9))
-                .lineLimit(lines)
-                .truncationMode(.tail)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .topLeading)
-                .frame(height: CGFloat(lines)*Metrics.monoLine, alignment: .topLeading)
-                .padding(Metrics.wellPadding)
-                .background(
-                    RoundedRectangle(cornerRadius: Island.wellRadius, style: .continuous)
-                        .fill(Island.well)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: Island.wellRadius, style: .continuous)
-                                .strokeBorder(isDestructive ? CharacterState.error.color.opacity(0.35) : Island.hairline, lineWidth: 1)
-                        )
-                )
-                .padding(.top, 10)
-
-            HStack(spacing: 8) {
-                IslandButton(label: "Deny", shortcut: "⌃⌥D", style: .secondary, hint: "Blocks this tool call") { onDeny?() }
-                IslandButton(label: "Always allow", shortcut: nil, style: .secondary, hint: "Adds a permanent allow rule to your settings") { onAlwaysAllow?() }
-                IslandButton(label: "Allow", shortcut: "⌃⌥A", style: .primary, hint: "Allows this tool call once") { onApprove?() }
-            }
-            .padding(.top, 12)
         }
         .padding(Island.cardPadding)
         .background(
@@ -359,6 +356,251 @@ struct NotchNotificationView: View {
                         .strokeBorder(Island.hairline, lineWidth: 1)
                 )
         )
+    }
+
+    /// What's being asked, and how long it's been waiting.
+    private var titleRow: some View {
+        HStack(spacing: 8) {
+            StatusDot(color: accent)
+            Text(title)
+                .font(Island.title)
+                .foregroundColor(Island.primary)
+                .lineLimit(1)
+            if isDestructive {
+                Text("Destructive")
+                    .font(.system(size: 10.5, weight: .semibold))
+                    .foregroundColor(Color(hex: "FF8A80"))
+                    .padding(.horizontal, 7)
+                    .frame(height: 18)
+                    .background(Capsule().fill(CharacterState.error.color.opacity(0.16)))
+            }
+            if case .question(let questions) = notification.interaction, questions.count > 1 {
+                Text("\(questionIndex + 1) of \(questions.count)")
+                    .font(Island.numeric)
+                    .foregroundColor(Island.tertiary)
+            }
+            Spacer(minLength: 8)
+            TimelineView(.periodic(from: .now, by: 1)) { ctx in
+                Text(Self.waitLabel(ctx.date.timeIntervalSince(notification.timestamp)))
+                    .font(Island.numeric)
+                    .foregroundColor(Island.tertiary)
+            }
+            .accessibilityLabel("waiting")
+        }
+        .frame(height: Metrics.titleRow)
+    }
+
+    /// Who's asking.
+    private var metaRow: some View {
+        HStack(spacing: 8) {
+            if let session {
+                Circle().fill(session.color).frame(width: 7, height: 7)
+            }
+            if let toolChip, case .permission = notification.interaction { Chip(text: toolChip) }
+            if let session, session.agentSource != .claude { Chip(text: session.agentSource.displayName, mono: false) }
+            if let projectName {
+                Text(session?.taskTitle ?? projectName)
+                    .font(Island.meta)
+                    .foregroundColor(Island.secondary)
+                    .lineLimit(1)
+            }
+            if let branch { BranchLabel(branch: branch).layoutPriority(-1) }
+            Spacer(minLength: 0)
+        }
+        .frame(height: Metrics.metaRow)
+    }
+
+    private func well<Content: View>(lines: Int, lineHeight: CGFloat, scrolls: Bool, danger: Bool = false,
+                                     @ViewBuilder content: () -> Content) -> some View {
+        Group {
+            if scrolls {
+                ScrollView(.vertical) { content().frame(maxWidth: .infinity, alignment: .topLeading) }
+                    .scrollIndicators(.visible)
+            } else {
+                content().frame(maxWidth: .infinity, alignment: .topLeading)
+            }
+        }
+        .frame(height: CGFloat(lines)*lineHeight, alignment: .topLeading)
+        .padding(Metrics.wellPadding)
+        .background(
+            RoundedRectangle(cornerRadius: Island.wellRadius, style: .continuous)
+                .fill(Island.well)
+                .overlay(
+                    RoundedRectangle(cornerRadius: Island.wellRadius, style: .continuous)
+                        .strokeBorder(danger ? CharacterState.error.color.opacity(0.35) : Island.hairline, lineWidth: 1)
+                )
+        )
+    }
+
+    // A tool call: Claude's description, the exact command, Deny / (Always) / Allow.
+    @ViewBuilder
+    private func permissionBody(panelWidth: CGFloat) -> some View {
+        let lines = Metrics.commandLines(notification, panelWidth: panelWidth)
+        if Metrics.hasDescription(notification) {
+            Text(notification.message)
+                .font(Island.body)
+                .foregroundColor(Island.secondary)
+                .lineLimit(1)
+                .frame(height: Metrics.bodyLine, alignment: .leading)
+                .padding(.top, 6)
+        }
+        well(lines: lines.shown, lineHeight: Metrics.monoLine, scrolls: lines.overflows, danger: isDestructive) {
+            Text(Self.commandText(notification.detail ?? notification.message, isEdit: isFileChange))
+                .font(Island.mono)
+                .fixedSize(horizontal: false, vertical: true)
+                .textSelection(.enabled)
+        }
+        .padding(.top, 10)
+
+        let always: CardInteraction.AlwaysRule? = {
+            if case .permission(let rule) = notification.interaction { return rule }
+            return nil
+        }()
+        HStack(spacing: 8) {
+            IslandButton(label: "Deny", shortcut: "⌃⌥D", style: .secondary, hint: "Blocks this tool call") { onRespond?(.deny) }
+            if let always {
+                IslandButton(label: "Always allow", shortcut: nil, style: .secondary,
+                             hint: "Saves \(always.label) for \(always.scope)") { onRespond?(.allowAlways) }
+            }
+            IslandButton(label: "Allow", shortcut: "⌃⌥A", style: .primary, hint: "Allows this tool call once") { onRespond?(.allow) }
+        }
+        .padding(.top, 12)
+        if let always {
+            // Exactly what "Always allow" saves, and where: no surprises.
+            Text("Always allow saves \(always.label) for \(always.scope)")
+                .font(Island.caption)
+                .foregroundColor(Island.tertiary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .frame(height: Metrics.captionRow)
+                .padding(.top, 8)
+        }
+    }
+
+    private var isFileChange: Bool {
+        ["Edit", "MultiEdit", "Write", "NotebookEdit"].contains(notification.toolName ?? "")
+    }
+
+    /// The command as is; a file change as its path, then removed lines in
+    /// red and added lines in green.
+    static func commandText(_ text: String, isEdit: Bool) -> AttributedString {
+        guard isEdit else {
+            var plain = AttributedString(text)
+            plain.foregroundColor = Color.white.opacity(0.9)
+            return plain
+        }
+        var out = AttributedString()
+        for (i, line) in text.components(separatedBy: "\n").enumerated() {
+            var part = AttributedString((i > 0 ? "\n" : "") + line)
+            if i == 0 { part.foregroundColor = Island.secondary }
+            else if line.hasPrefix("- ") { part.foregroundColor = Color(hex: "FF8A80") }
+            else if line.hasPrefix("+ ") { part.foregroundColor = Color(hex: "7FE0A6") }
+            else { part.foregroundColor = Color.white.opacity(0.9) }
+            out += part
+        }
+        return out
+    }
+
+    // A plan: its title, the start of it, and how to go ahead.
+    @ViewBuilder
+    private func planBody(panelWidth: CGFloat) -> some View {
+        Text(notification.message)
+            .font(Island.body.weight(.medium))
+            .foregroundColor(Island.primary)
+            .lineLimit(1)
+            .frame(height: Metrics.bodyLine, alignment: .leading)
+            .padding(.top, 6)
+        let lines = Metrics.planLines(notification, panelWidth: panelWidth)
+        if lines.shown > 0, let plan = notification.detail {
+            well(lines: lines.shown, lineHeight: Metrics.bodyLine, scrolls: lines.overflows) {
+                Text(plan)
+                    .font(Island.body)
+                    .foregroundColor(Color.white.opacity(0.74))
+                    .lineSpacing(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.top, 10)
+        }
+        HStack(spacing: 8) {
+            IslandButton(label: "In terminal", shortcut: "⌃⌥D", style: .secondary, hint: "Answer in the terminal, to give feedback") { onRespond?(.handOff) }
+            IslandButton(label: "Auto-accept", shortcut: nil, style: .secondary, hint: "Approve, and accept its edits without asking") { onRespond?(.approvePlan(acceptEdits: true)) }
+            IslandButton(label: "Approve", shortcut: "⌃⌥A", style: .primary, hint: "Approve the plan") { onRespond?(.approvePlan(acceptEdits: false)) }
+        }
+        .padding(.top, 12)
+    }
+
+    // Questions: the options as buttons, one question at a time.
+    @ViewBuilder
+    private func questionBody(_ questions: [AgentQuestion], panelWidth: CGFloat) -> some View {
+        let index = min(questionIndex, questions.count - 1)
+        let question = questions[index]
+        let selected = picked[index] ?? []
+        Text(question.question)
+            .font(Island.body)
+            .foregroundColor(Color.white.opacity(0.86))
+            .lineSpacing(2)
+            .lineLimit(Metrics.maxQuestionLines)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.top, 8)
+        VStack(spacing: Metrics.optionGap) {
+            ForEach(Array(question.options.enumerated()), id: \.offset) { offset, option in
+                OptionRow(option: option, multiSelect: question.multiSelect, selected: selected.contains(offset)) {
+                    choose(offset, in: questions)
+                }
+            }
+        }
+        .padding(.top, 10)
+        if question.multiSelect {
+            HStack(spacing: 8) {
+                IslandButton(label: "In terminal", shortcut: nil, style: .secondary, hint: "Answer in the terminal") { onRespond?(.handOff) }
+                IslandButton(label: index + 1 < questions.count ? "Next" : "Send", shortcut: nil, style: .primary, hint: "Send these answers") {
+                    advance(in: questions)
+                }
+                .disabled(selected.isEmpty)
+                .opacity(selected.isEmpty ? 0.5 : 1)
+            }
+            .padding(.top, 12)
+        } else {
+            HStack {
+                Spacer()
+                Button { onRespond?(.handOff) } label: {
+                    Text("Answer in terminal")
+                        .font(Island.caption)
+                        .foregroundColor(Island.tertiary)
+                }
+                .buttonStyle(.plain)
+                .help("Hand this question back to the terminal (for a typed answer)")
+            }
+            .frame(height: Metrics.captionRow)
+            .padding(.top, 10)
+        }
+    }
+
+    private func choose(_ option: Int, in questions: [AgentQuestion]) {
+        let index = min(questionIndex, questions.count - 1)
+        if questions[index].multiSelect {
+            var set = picked[index] ?? []
+            if set.contains(option) { set.remove(option) } else { set.insert(option) }
+            picked[index] = set
+        } else {
+            picked[index] = [option]
+            advance(in: questions)
+        }
+    }
+
+    /// Next question, or send every answer once the last one is in.
+    private func advance(in questions: [AgentQuestion]) {
+        if questionIndex + 1 < questions.count {
+            withAnimation(Island.press) { questionIndex += 1 }
+            return
+        }
+        var answers: [String: String] = [:]
+        for (i, q) in questions.enumerated() {
+            let labels = (picked[i] ?? []).sorted().map { q.options[$0].label }
+            guard !labels.isEmpty else { return }
+            answers[q.question] = AgentQuestion.answer(labels)
+        }
+        onRespond?(.answer(answers))
     }
 
     // MARK: - Summary (done, questions, heads-ups)
@@ -503,5 +745,55 @@ struct IslandButton: View {
         .help(shortcut.map { "\(label) (\($0))" } ?? label)
         .accessibilityLabel(label)
         .accessibilityHint(hint ?? "")
+    }
+}
+
+/// One answer to a question: its label, what it means, and (multi-select) a tick.
+struct OptionRow: View {
+    let option: AgentQuestion.Option
+    let multiSelect: Bool
+    let selected: Bool
+    let action: () -> Void
+
+    @State private var hovered = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                if multiSelect {
+                    Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(selected ? Island.primary : Island.tertiary)
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(option.label)
+                        .font(.system(size: 12.5, weight: .semibold))
+                        .foregroundColor(Island.primary)
+                        .lineLimit(1)
+                    if !option.description.isEmpty {
+                        Text(option.description)
+                            .font(.system(size: 11.5))
+                            .foregroundColor(Island.tertiary)
+                            .lineLimit(1)
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 12)
+            .frame(height: NotchNotificationView.Metrics.optionHeight(option))
+            .frame(maxWidth: .infinity)
+            .background(
+                RoundedRectangle(cornerRadius: Island.wellRadius, style: .continuous)
+                    .fill(selected ? Color.white.opacity(0.16) : (hovered ? Island.controlHover : Island.control))
+            )
+            .contentShape(RoundedRectangle(cornerRadius: Island.wellRadius, style: .continuous))
+        }
+        .buttonStyle(IslandPressStyle())
+        .onHover { hovered = $0 }
+        .animation(Island.press, value: hovered)
+        .animation(Island.press, value: selected)
+        .help(option.description.isEmpty ? option.label : option.description)
+        .accessibilityLabel(option.description.isEmpty ? option.label : "\(option.label), \(option.description)")
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }

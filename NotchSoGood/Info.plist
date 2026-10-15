@@ -18,17 +18,6 @@
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
 	<string>4.6.0</string>
-	<key>CFBundleURLTypes</key>
-	<array>
-		<dict>
-			<key>CFBundleURLName</key>
-			<string>com.notchsogood.notification</string>
-			<key>CFBundleURLSchemes</key>
-			<array>
-				<string>notchsogood</string>
-			</array>
-		</dict>
-	</array>
 	<key>CFBundleVersion</key>
 	<string>22</string>
 	<key>LSMinimumSystemVersion</key>

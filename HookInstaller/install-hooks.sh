@@ -7,10 +7,11 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SETTINGS_FILE="$HOME/.claude/settings.json"
+CLAUDE_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+SETTINGS_FILE="$CLAUDE_DIR/settings.json"
 BRIDGE_DIR="$HOME/.notchsogood"
 BRIDGE="$BRIDGE_DIR/hook.py"
-SOCKET_PATH="/tmp/notchsogood.sock"
+SOCKET_PATH="/tmp/notchsogood-$(id -u).sock"
 
 if ! command -v python3 &> /dev/null; then
     echo "Error: python3 is required (should be pre-installed on macOS)."
@@ -34,7 +35,7 @@ if ! python3 -c "import py_compile,sys; py_compile.compile(sys.argv[1], doraise=
 fi
 
 # --- Prepare settings ---
-mkdir -p "$HOME/.claude"
+mkdir -p "$CLAUDE_DIR"
 if [ ! -f "$SETTINGS_FILE" ]; then
     echo '{}' > "$SETTINGS_FILE"
 fi
@@ -62,11 +63,18 @@ FIRE_AND_FORGET = [
     "PostToolUse",
 ]
 
-# Hook events newer than the rest, with the Claude Code version that added
-# each. Claude Code skips a whole settings file it can't validate, so an event
-# it doesn't know would switch off every hook; these are only added once the
-# installed Claude Code is known to support them.
-VERSIONED = {"StopFailure": (2, 1, 78)}
+# Everything newer than the rest, with the Claude Code version that added it.
+# Claude Code skips a whole settings file it can't validate, so an event (or a
+# hook field) it doesn't know would switch off every hook: each of these is
+# only used once the installed Claude Code is known to support it.
+VERSIONED = {
+    "PermissionRequest": (2, 0, 45),
+    "StopFailure": (2, 1, 78),
+    "PostCompact": (2, 1, 76),
+    "PostToolUseFailure": (2, 1, 119),
+}
+ASYNC_SINCE = (2, 1, 23)            # "async": true on command hooks
+ANSWERS_SINCE = (2, 1, 85)          # PreToolUse can answer AskUserQuestion / ExitPlanMode
 
 def claude_version():
     """The installed Claude Code's version, or None. The app runs this with a
@@ -87,15 +95,20 @@ def claude_version():
     return None
 
 version = claude_version()
-SUPPORTED = [event for event, since in VERSIONED.items() if version and version >= since]
+def supports(since):
+    return bool(version) and version >= since
 
-def entry(event, timeout):
-    command = 'python3 %s %s' % (json.dumps(bridge), event)
-    return [{
-        "matcher": "",
-        "hooks": [{"type": "command", "command": command, "timeout": timeout}],
-    }]
+SUPPORTED = [event for event, since in VERSIONED.items() if supports(since)]
+background = supports(ASYNC_SINCE)
 
+def handler(event, timeout, run_async=False):
+    hook = {"type": "command", "command": 'python3 %s %s' % (json.dumps(bridge), event), "timeout": timeout}
+    if run_async:
+        hook["async"] = True
+    return hook
+
+def group(event, timeout, matcher="", run_async=False):
+    return {"matcher": matcher, "hooks": [handler(event, timeout, run_async)]}
 
 def ours(hook):
     return "notchsogood" in str(hook.get("command", "")).lower()
@@ -103,13 +116,13 @@ def ours(hook):
 def merged(existing, new_groups):
     """The user's own hooks for this event, minus any of ours, plus ours."""
     kept = []
-    for group in existing if isinstance(existing, list) else []:
-        if not isinstance(group, dict):
-            kept.append(group)
+    for item in existing if isinstance(existing, list) else []:
+        if not isinstance(item, dict):
+            kept.append(item)
             continue
-        inner = [h for h in group.get("hooks", []) if not (isinstance(h, dict) and ours(h))]
+        inner = [h for h in item.get("hooks", []) if not (isinstance(h, dict) and ours(h))]
         if inner:
-            kept.append(dict(group, hooks=inner))
+            kept.append(dict(item, hooks=inner))
     return kept + new_groups
 
 with open(settings_path) as handle:
@@ -119,18 +132,29 @@ hooks = settings.get("hooks")
 if not isinstance(hooks, dict):
     hooks = {}
 
+ours_by_event = {}
+# Reporting events never answer anything: in the background, so they never
+# slow the agent down. SessionEnd stays synchronous (the session is closing).
+for event in FIRE_AND_FORGET + [e for e in ("StopFailure", "PostCompact", "PostToolUseFailure") if e in SUPPORTED]:
+    ours_by_event[event] = [group(event, 5, run_async=background and event != "SessionEnd")]
+# What the agent is doing right now, for the pill; plus, where Claude Code can
+# take the answer from a hook, questions and plans answered in the notch.
+pre = [group("PreToolUse", 5, run_async=background)]
+if supports(ANSWERS_SINCE):
+    pre.append(group("Interactive", 130, matcher="AskUserQuestion|ExitPlanMode"))
+ours_by_event["PreToolUse"] = pre
+# The one place we ever answer for the user: when Claude Code is about to ask
+# them. Has to outlast the app's own 120 s decision window.
+if "PermissionRequest" in SUPPORTED:
+    ours_by_event["PermissionRequest"] = [group("PermissionRequest", 130)]
+
 # Never touch the user's own hooks: replace only entries that are ours.
-for event in FIRE_AND_FORGET + SUPPORTED:
-    hooks[event] = merged(hooks.get(event), entry(event, 5))
-# An event this Claude Code doesn't know: take ours out, leave the user's.
-for event in VERSIONED:
-    if event not in SUPPORTED and event in hooks:
-        kept = merged(hooks[event], [])
-        if kept:
-            hooks[event] = kept
-        else:
-            del hooks[event]
-hooks["PreToolUse"] = merged(hooks.get("PreToolUse"), entry("PreToolUse", 130))
+for event in set(list(ours_by_event) + list(VERSIONED)):
+    kept = merged(hooks.get(event), ours_by_event.get(event, []))
+    if kept:
+        hooks[event] = kept
+    elif event in hooks:
+        del hooks[event]
 
 settings["hooks"] = hooks
 print(json.dumps(settings, indent=2))
@@ -154,9 +178,10 @@ done
 echo "Claude Code hooks installed!"
 echo "  Settings: $SETTINGS_FILE"
 echo "  Bridge:   $BRIDGE"
-echo "  Hooks:    SessionStart, SessionEnd, Stop, Notification, PreToolUse, PostToolUse,"
-echo "            UserPromptSubmit, PreCompact, SubagentStart, SubagentStop"
-echo "            (and StopFailure, on Claude Code 2.1.78 or later)"
+echo "  Hooks:    PermissionRequest (approvals), PreToolUse (activity, questions),"
+echo "            SessionStart, SessionEnd, Stop, StopFailure, Notification, UserPromptSubmit,"
+echo "            PreCompact, PostCompact, SubagentStart, SubagentStop, PostToolUse(Failure)"
+echo "            (each only where the installed Claude Code supports it)"
 echo "  Socket:   $SOCKET_PATH"
 echo ""
 echo "  Make sure Notch So Good is running to receive notifications."

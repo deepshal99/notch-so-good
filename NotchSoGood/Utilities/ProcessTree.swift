@@ -65,6 +65,28 @@ enum ProcessTree {
         return nil
     }
 
+    /// The controlling terminal of a process ("/dev/ttys003"), or nil.
+    static func tty(of pid: pid_t) -> String? {
+        var info = kinfo_proc()
+        var size = MemoryLayout<kinfo_proc>.stride
+        var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, pid]
+        guard sysctl(&mib, 4, &info, &size, nil, 0) == 0, size > 0 else { return nil }
+        let dev = info.kp_eproc.e_tdev
+        guard dev != -1, dev != 0, let name = devname(dev, S_IFCHR) else { return nil }
+        return "/dev/" + String(cString: name)
+    }
+
+    /// Whether `pid` runs inside tmux (a tmux server is among its ancestors).
+    static func isUnderTmux(_ pid: pid_t, maxDepth: Int = 16) -> Bool {
+        var current = pid
+        for _ in 0..<maxDepth {
+            if let name = name(of: current), name.hasPrefix("tmux") { return true }
+            guard let parent = parentPid(of: current), parent != current else { return false }
+            current = parent
+        }
+        return false
+    }
+
     /// Convenience: bundle identifier of the owning app.
     static func owningAppBundleId(of pid: pid_t) -> String? {
         owningApp(of: pid)?.bundleIdentifier

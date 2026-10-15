@@ -3,9 +3,9 @@
 
 Run: python3 HookInstaller/test_hook.py
 
-Covers the permission-mode matrix (the bypass-mode double-prompt bug), the
-pre-approval paths, allow-rule matching including project-local settings, and
-payload shaping. Uses a fake socket server so no app instance is needed.
+Covers the answers the bridge gives each agent (permission requests, plans,
+questions), that it never answers on its own, and payload shaping. Uses a fake
+socket server so no app instance is needed.
 """
 
 import json
@@ -88,14 +88,7 @@ def run_hook(event, payload, agent=None, socket_path=None, reply=None):
         args += ["--agent", agent]
 
     # Point the bridge at the fake socket without touching the real one.
-    source = open(HOOK).read().replace(
-        'SOCKET_PATH = "/tmp/notchsogood.sock"',
-        "SOCKET_PATH = %r" % path,
-    )
-    with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as tmp:
-        tmp.write(source)
-        temp_hook = tmp.name
-    args[1] = temp_hook
+    env = dict(os.environ, NOTCHSOGOOD_SOCKET=path)
 
     proc = subprocess.run(
         args,
@@ -103,8 +96,8 @@ def run_hook(event, payload, agent=None, socket_path=None, reply=None):
         capture_output=True,
         text=True,
         timeout=30,
+        env=env,
     )
-    os.unlink(temp_hook)
     events = list(app.received) if app else []
     if app:
         # Give the server thread a moment to record a fire-and-forget event.
@@ -117,248 +110,140 @@ def run_hook(event, payload, agent=None, socket_path=None, reply=None):
     return proc.returncode, proc.stdout, proc.stderr, events
 
 
-def decision(stdout):
-    if not stdout.strip():
-        return None
-    parsed = json.loads(stdout)
-    specific = parsed.get("hookSpecificOutput")
-    if isinstance(specific, dict):
-        return specific.get("permissionDecision")
-    return parsed.get("permissionDecision")
+def output(stdout):
+    return json.loads(stdout) if stdout.strip() else None
 
 
-class PermissionModeMatrix(unittest.TestCase):
-    """The reported bug: bypass / auto still prompted."""
+BASH = {"session_id": "s", "cwd": "/repo", "permission_mode": "default",
+        "tool_name": "Bash", "tool_input": {"command": "git status && rm -rf ~/x", "description": "Check, then clean"}}
+SUGGESTION = {"type": "addRules", "rules": [{"toolName": "Bash", "ruleContent": "npm test"}],
+              "behavior": "allow", "destination": "localSettings"}
 
-    def test_bypass_auto_plan_never_prompt(self):
-        for mode in ("bypassPermissions", "auto", "plan"):
-            for tool in ("Bash", "Edit", "Write", "mcp__whatever__destroy"):
-                self.assertTrue(
-                    hook.auto_approves(mode, tool),
-                    "%s should be auto-approved in %s" % (tool, mode),
-                )
 
-    def test_accept_edits_covers_only_edits(self):
-        for tool in ("Edit", "MultiEdit", "Write", "NotebookEdit"):
-            self.assertTrue(hook.auto_approves("acceptEdits", tool))
-        for tool in ("Bash", "mcp__x__deploy"):
-            self.assertFalse(hook.auto_approves("acceptEdits", tool))
+class PermissionRequests(unittest.TestCase):
+    def test_sends_the_full_command(self):
+        long = "cd /repo && " + "x" * 3000
+        _, _, _, events = run_hook("PermissionRequest", dict(BASH, tool_input={"command": long}), reply={})
+        self.assertEqual(events[0]["event"], "PermissionRequest")
+        self.assertEqual(events[0]["tool_input"], long)
 
-    def test_default_mode_prompts(self):
-        for tool in ("Bash", "Edit", "Write"):
-            self.assertFalse(hook.auto_approves("default", tool))
+    def test_allow(self):
+        _, out, _, _ = run_hook("PermissionRequest", BASH, reply={"decision": "allow"})
+        self.assertEqual(output(out), {"hookSpecificOutput": {"hookEventName": "PermissionRequest",
+                                                              "decision": {"behavior": "allow"}}})
 
-    def test_bypass_approves_without_touching_socket(self):
-        code, out, _, events = run_hook(
-            "PreToolUse",
-            {
-                "session_id": "s1",
-                "cwd": "/tmp",
-                "permission_mode": "bypassPermissions",
-                "tool_name": "Bash",
-                "tool_input": {"command": "rm -rf build"},
-            },
-            reply={"decision": "deny", "reason": "should never be consulted"},
-        )
-        self.assertEqual(code, 0)
-        # No decision: the agent's own permission rules decide, never us.
-        self.assertIsNone(decision(out))
-        # The event is still reported so the pill stays accurate…
-        self.assertEqual(len(events), 1)
-        # …but explicitly marked as needing no decision.
-        self.assertIs(events[0]["decision_needed"], False)
+    def test_deny_carries_a_reason(self):
+        _, out, _, _ = run_hook("PermissionRequest", BASH, reply={"decision": "deny", "reason": "No"})
+        decision = output(out)["hookSpecificOutput"]["decision"]
+        self.assertEqual(decision, {"behavior": "deny", "message": "No"})
 
-    def test_default_mode_waits_for_the_app(self):
-        code, out, _, events = run_hook(
-            "PreToolUse",
-            {
-                "session_id": "s1",
-                "cwd": "/tmp",
-                "permission_mode": "default",
-                "tool_name": "Bash",
-                "tool_input": {"command": "rm -rf build"},
-            },
-            reply={"decision": "deny", "reason": "Denied from Notch So Good"},
-        )
-        self.assertEqual(code, 0)
-        self.assertEqual(decision(out), "deny")
-        self.assertNotIn("decision_needed", events[0])
-
-    def test_approval_from_app(self):
-        _, out, _, _ = run_hook(
-            "PreToolUse",
-            {"session_id": "s", "cwd": "/tmp", "permission_mode": "default",
-             "tool_name": "Bash", "tool_input": {"command": "ls"}},
-            reply={"decision": "approve"},
-        )
-        self.assertEqual(decision(out), "allow")
+    def test_no_answer_says_nothing(self):
+        for reply in ({}, {"decision": "defer"}, None):
+            _, out, _, _ = run_hook("PermissionRequest", BASH, reply=reply)
+            self.assertEqual(out.strip(), "")
 
     def test_silent_when_app_is_absent(self):
-        # No output at all → the agent falls back to its own prompt.
-        code, out, err, _ = run_hook(
-            "PreToolUse",
-            {"session_id": "s", "cwd": "/tmp", "permission_mode": "default",
-             "tool_name": "Bash", "tool_input": {"command": "ls"}},
-            socket_path="/tmp/notchsogood-does-not-exist.sock",
-        )
-        self.assertEqual(code, 0)
-        self.assertEqual(out.strip(), "")
-        self.assertEqual(err.strip(), "")
+        code, out, _, _ = run_hook("PermissionRequest", BASH, socket_path="/tmp/nonexistent-%d.sock" % os.getpid())
+        self.assertEqual((code, out.strip()), (0, ""))
 
+    def test_always_saves_exactly_claudes_suggestion(self):
+        payload = dict(BASH, permission_suggestions=[SUGGESTION, {"type": "setMode", "mode": "acceptEdits", "destination": "session"}])
+        _, out, _, events = run_hook("PermissionRequest", payload, reply={"decision": "allow", "always": True})
+        self.assertEqual(events[0]["always_label"], "Bash(npm test)")
+        self.assertEqual(events[0]["always_destination"], "localSettings")
+        decision = output(out)["hookSpecificOutput"]["decision"]
+        self.assertEqual(decision["updatedPermissions"], [SUGGESTION])
 
-class CodexOutputFormat(unittest.TestCase):
-    def test_codex_allow_shape(self):
-        _, out, _, _ = run_hook(
-            "PreToolUse",
-            {"session_id": "s", "cwd": "/tmp", "permission_mode": "default",
-             "tool_name": "Bash", "tool_input": {"command": "ls"}},
-            agent="codex",
-            reply={"decision": "approve"},
-        )
-        self.assertEqual(json.loads(out)["permissionDecision"], "allow")
+    def test_always_without_a_suggestion_is_a_plain_allow(self):
+        _, out, _, events = run_hook("PermissionRequest", BASH, reply={"decision": "allow", "always": True})
+        self.assertNotIn("always_label", events[0])
+        self.assertEqual(output(out)["hookSpecificOutput"]["decision"], {"behavior": "allow"})
 
-    def test_pre_approved_says_nothing(self):
-        # Plan mode, auto mode, safe tools: the agent decides, the hook stays silent.
-        for mode, tool in (("plan", "Edit"), ("auto", "Bash"), ("default", "Read")):
-            code, out, _, _ = run_hook(
-                "PreToolUse",
-                {"session_id": "s", "cwd": "/tmp", "permission_mode": mode,
-                 "tool_name": tool, "tool_input": {"command": "ls", "file_path": "/tmp/a"}},
-                reply={"decision": "approve"},
-            )
-            self.assertEqual(code, 0)
-            self.assertEqual(out.strip(), "", "%s in %s must not print a decision" % (tool, mode))
-
-    def test_app_defer_says_nothing(self):
-        _, out, _, _ = run_hook(
-            "PreToolUse",
-            {"session_id": "s", "cwd": "/tmp", "permission_mode": "default",
-             "tool_name": "Bash", "tool_input": {"command": "rm -rf build"}},
-            reply={"decision": "defer"},
-        )
-        self.assertEqual(out.strip(), "")
-
-    def test_codex_deny_exits_2_with_stderr(self):
-        code, out, err, _ = run_hook(
-            "PreToolUse",
-            {"session_id": "s", "cwd": "/tmp", "permission_mode": "default",
-             "tool_name": "Bash", "tool_input": {"command": "rm -rf /"}},
-            agent="codex",
-            reply={"decision": "deny", "reason": "Denied from Notch So Good"},
-        )
-        self.assertEqual(code, 2)
-        self.assertEqual(out.strip(), "")
-        self.assertIn("Denied", err)
-
-    def test_codex_tags_itself_as_the_agent(self):
-        _, _, _, events = run_hook(
-            "SessionStart",
-            {"session_id": "s", "cwd": "/tmp", "model": "gpt-5-codex"},
-            agent="codex",
-        )
+    def test_codex_never_gets_permission_updates(self):
+        payload = dict(BASH, permission_suggestions=[SUGGESTION])
+        _, out, _, events = run_hook("PermissionRequest", payload, agent="codex",
+                                     reply={"decision": "allow", "always": True, "mode": "acceptEdits"})
+        self.assertNotIn("always_label", events[0])
         self.assertEqual(events[0]["source_app"], "codex")
-        self.assertEqual(events[0]["model"], "gpt-5-codex")
+        self.assertEqual(output(out), {"hookSpecificOutput": {"hookEventName": "PermissionRequest",
+                                                              "decision": {"behavior": "allow"}}})
+
+    def test_plan_approval_echoes_the_plan(self):
+        plan = {"session_id": "s", "cwd": "/repo", "tool_name": "ExitPlanMode",
+                "tool_input": {"plan": "# Fix it\n1. Do the thing", "planFilePath": "/p.md"}}
+        _, out, _, events = run_hook("Interactive", plan, reply={"decision": "allow", "mode": "acceptEdits"})
+        self.assertEqual(events[0]["plan"], "# Fix it\n1. Do the thing")
+        specific = output(out)["hookSpecificOutput"]
+        self.assertEqual((specific["permissionDecision"], specific["updatedInput"]), ("allow", plan["tool_input"]))
+        # Through PermissionRequest an allow would be ignored: never asked there.
+        _, out, _, events = run_hook("PermissionRequest", plan, reply={"decision": "allow"})
+        self.assertEqual((out.strip(), events), ("", []))
+
+    def test_file_edits_show_the_change(self):
+        edit = {"session_id": "s", "cwd": "/repo", "tool_name": "Edit",
+                "tool_input": {"file_path": "/repo/a.swift", "old_string": "retry(1)", "new_string": "retry(backoff)"}}
+        _, _, _, events = run_hook("PermissionRequest", edit, reply={})
+        self.assertEqual(events[0]["tool_input"], "/repo/a.swift\n- retry(1)\n+ retry(backoff)")
 
 
-class PreApproval(unittest.TestCase):
-    def test_safe_tools(self):
-        for tool in ("Read", "Grep", "Glob", "WebSearch"):
-            self.assertIn(tool, hook.SAFE_TOOLS)
+class Questions(unittest.TestCase):
+    QUESTION = {"session_id": "s", "cwd": "/repo", "tool_name": "AskUserQuestion", "tool_input": {"questions": [
+        {"question": "Which cache?", "header": "Cache", "multiSelect": False,
+         "options": [{"label": "Redis", "description": "Shared"}, {"label": "SQLite", "description": "File"}]}]}}
 
-    def test_notebook_edit_is_not_safe(self):
-        # It writes to disk; it used to be auto-approved.
-        self.assertNotIn("NotebookEdit", hook.SAFE_TOOLS)
+    def test_answer_from_the_notch(self):
+        _, out, _, events = run_hook("Interactive", self.QUESTION, reply={"answers": {"Which cache?": "SQLite"}})
+        self.assertEqual(events[0]["questions"][0]["options"][1]["label"], "SQLite")
+        specific = output(out)["hookSpecificOutput"]
+        self.assertEqual(specific["permissionDecision"], "allow")
+        self.assertEqual(specific["updatedInput"]["answers"], {"Which cache?": "SQLite"})
+        self.assertEqual(specific["updatedInput"]["questions"], self.QUESTION["tool_input"]["questions"])
 
-    def test_mcp_read_only_heuristic(self):
-        self.assertTrue(hook.mcp_read_only("mcp__linear__list_issues"))
-        self.assertTrue(hook.mcp_read_only("mcp__gh__get_pull_request"))
-        self.assertFalse(hook.mcp_read_only("mcp__gh__merge_pull_request"))
-        self.assertFalse(hook.mcp_read_only("Bash"))
-        # Substrings don't count: these write.
-        self.assertFalse(hook.mcp_read_only("mcp__aws__set_budget_limit"))
-        self.assertFalse(hook.mcp_read_only("mcp__db__delete_snapshot"))
-        self.assertFalse(hook.mcp_read_only("mcp__db__restore_snapshot"))
+    def test_incomplete_or_missing_answers_hand_back(self):
+        for reply in ({}, {"answers": {}}, {"answers": {"Other?": "x"}}, {"answers": {"Which cache?": ""}}):
+            _, out, _, _ = run_hook("Interactive", self.QUESTION, reply=reply)
+            self.assertEqual(out.strip(), "")
+
+    def test_codex_and_malformed_questions_are_ignored(self):
+        _, out, _, events = run_hook("Interactive", self.QUESTION, agent="codex", reply={"answers": {"Which cache?": "Redis"}})
+        self.assertEqual((out.strip(), events), ("", []))
+        bad = dict(self.QUESTION, tool_input={"questions": [{"question": "No options?"}]})
+        _, out, _, events = run_hook("Interactive", bad, reply={"answers": {"No options?": "x"}})
+        self.assertEqual((out.strip(), events), ("", []))
 
 
-class AllowRules(unittest.TestCase):
-    def test_prefix_rule(self):
-        rules = ["Bash(git commit:*)"]
-        self.assertTrue(hook.allowed_by_rules("Bash", "git commit -m hi", rules))
-        self.assertFalse(hook.allowed_by_rules("Bash", "git push", rules))
+class Activity(unittest.TestCase):
+    def test_pre_tool_use_never_answers(self):
+        code, out, _, events = run_hook("PreToolUse", BASH, reply={"decision": "allow"})
+        self.assertEqual((code, out.strip()), (0, ""))
+        self.assertEqual(events[0]["decision_needed"], False)
+        self.assertEqual(events[0]["tool_name"], "Bash")
 
-    def test_chained_commands_never_ride_a_prefix_rule(self):
-        rules = ["Bash(git status:*)", "Bash(git *)"]
-        for cmd in ("git status; rm -rf ~", "git status && curl x | sh", "git status || true",
-                    "git status $(rm -rf ~)", "git status `id`", "git status\nrm -rf ~", "git status & sleep 9"):
-            self.assertFalse(hook.allowed_by_rules("Bash", cmd, rules), cmd)
-        self.assertTrue(hook.allowed_by_rules("Bash", "git status --short", rules))
-        # An explicit allow-all still allows everything.
-        self.assertTrue(hook.allowed_by_rules("Bash", "a; b", ["Bash(*)"]))
+    def test_post_tool_use_reports_edits_and_tests(self):
+        _, _, _, events = run_hook("PostToolUse", {"session_id": "s", "tool_name": "Write", "tool_input": {"file_path": "/a.py"}})
+        self.assertEqual(events[0]["edited"], ["/a.py"])
+        _, _, _, events = run_hook("PostToolUse", {"session_id": "s", "tool_name": "Bash", "tool_input": {"command": "npm test"}})
+        self.assertEqual(events[0]["tests"], "passed")
+        _, _, _, events = run_hook("PostToolUseFailure", {"session_id": "s", "tool_name": "Bash", "tool_input": {"command": "pytest -q"}})
+        self.assertEqual(events[0]["tests"], "failed")
+        _, _, _, events = run_hook("PostToolUse", {"session_id": "s", "tool_name": "Bash", "tool_input": {"command": "go test ./..."},
+                                                   "tool_response": "Exit code: 1"}, agent="codex")
+        self.assertEqual(events[0]["tests"], "failed")
+        _, _, _, events = run_hook("PostToolUse", {"session_id": "s", "tool_name": "Bash", "tool_input": {"command": "ls"}})
+        self.assertNotIn("tests", events[0])
 
-    def test_wildcard_and_bare_rules(self):
-        self.assertTrue(hook.allowed_by_rules("Bash", "anything", ["Bash(*)"]))
-        self.assertTrue(hook.allowed_by_rules("Edit", "/tmp/a.txt", ["Edit"]))
-        self.assertTrue(hook.allowed_by_rules("mcp__x__y", "", ["mcp__x"]))
-        self.assertFalse(hook.allowed_by_rules("Write", "/tmp/a", ["Edit"]))
+    def test_test_command_detection(self):
+        for command in ("npm test", "cd x && npm run test", "pytest -q", "swift test", "bash run-tests.sh", "go test ./..."):
+            self.assertTrue(hook.is_test_command(command), command)
+        for command in ("npm install", "git status", "echo test", "cat tests.md"):
+            self.assertFalse(hook.is_test_command(command), command)
 
-    def test_glob_rule(self):
-        self.assertTrue(hook.allowed_by_rules("Edit", "/repo/src/a.swift", ["Edit(*.swift)"]))
+    def test_session_start_carries_its_source(self):
+        _, _, _, events = run_hook("SessionStart", {"session_id": "s", "source": "compact"})
+        self.assertEqual(events[0]["source"], "compact")
 
-    def test_project_local_settings_are_read(self):
-        project = tempfile.mkdtemp()
-        os.makedirs(os.path.join(project, ".claude"))
-        with open(os.path.join(project, ".claude", "settings.local.json"), "w") as handle:
-            json.dump({"permissions": {"allow": ["Bash(pytest:*)"]}}, handle)
-        with isolated_home():
-            _, allow = hook.load_claude_settings(project)
-        self.assertEqual(allow, ["Bash(pytest:*)"])
-
-    def test_project_default_mode_is_read(self):
-        project = tempfile.mkdtemp()
-        os.makedirs(os.path.join(project, ".claude"))
-        with open(os.path.join(project, ".claude", "settings.json"), "w") as handle:
-            json.dump({"permissions": {"defaultMode": "bypassPermissions"}}, handle)
-        with isolated_home():
-            mode, _ = hook.load_claude_settings(project)
-        self.assertEqual(mode, "bypassPermissions")
-
-    def test_project_settings_override_global_default_mode(self):
-        home = tempfile.mkdtemp()
-        os.makedirs(os.path.join(home, ".claude"))
-        with open(os.path.join(home, ".claude", "settings.json"), "w") as handle:
-            json.dump({"permissions": {"defaultMode": "default"}}, handle)
-        project = tempfile.mkdtemp()
-        os.makedirs(os.path.join(project, ".claude"))
-        with open(os.path.join(project, ".claude", "settings.json"), "w") as handle:
-            json.dump({"permissions": {"defaultMode": "acceptEdits"}}, handle)
-        with mock.patch.dict(os.environ, {"HOME": home}):
-            mode, _ = hook.load_claude_settings(project)
-        self.assertEqual(mode, "acceptEdits")
-
-    def test_legacy_dangerous_flag_maps_to_bypass(self):
-        home = tempfile.mkdtemp()
-        os.makedirs(os.path.join(home, ".claude"))
-        with open(os.path.join(home, ".claude", "settings.json"), "w") as handle:
-            json.dump({"dangerouslySkipPermissions": True}, handle)
-        with mock.patch.dict(os.environ, {"HOME": home}):
-            mode, _ = hook.load_claude_settings(None)
-        self.assertEqual(mode, "bypassPermissions")
-
-    def test_malformed_settings_are_ignored(self):
-        project = tempfile.mkdtemp()
-        os.makedirs(os.path.join(project, ".claude"))
-        with open(os.path.join(project, ".claude", "settings.json"), "w") as handle:
-            handle.write("{ not json")
-        with isolated_home():
-            mode, allow = hook.load_claude_settings(project)
-        self.assertIsNone(mode)
-        self.assertEqual(allow, [])
-
-    def test_relative_cwd_is_not_probed(self):
-        # Only absolute cwds get project-local lookups; a relative path would
-        # resolve against whatever directory the hook happens to run in.
-        self.assertEqual(len(hook.claude_settings_paths("relative/dir")), 2)
-        self.assertEqual(len(hook.claude_settings_paths("/abs/dir")), 4)
+    def test_socket_is_per_user(self):
+        self.assertTrue(hook.SOCKET_PATH.endswith("-%d.sock" % os.getuid()) or "NOTCHSOGOOD_SOCKET" in os.environ)
 
 
 class PayloadShaping(unittest.TestCase):

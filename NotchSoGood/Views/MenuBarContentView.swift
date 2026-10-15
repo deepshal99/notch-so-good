@@ -214,6 +214,12 @@ struct MenuBarContentView: View {
         return VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 10) {
                 Text(agent == .claude ? "Claude Code" : agent.displayName)
+                // Numbers that couldn't be refreshed lately say how old they are.
+                if let oldest = windows.map(\.fetchedAt).min(), now.timeIntervalSince(oldest) > 25*60 {
+                    Text("· \(UsageLimitsStore.duration(now.timeIntervalSince(oldest))) ago")
+                        .foregroundColor(Island.tertiary.opacity(0.8))
+                        .help("Couldn't refresh lately; showing the last numbers")
+                }
                 Spacer(minLength: 8)
                 Text("resets").frame(minWidth: Self.resetColumn, alignment: .trailing)
                 Text("left").frame(minWidth: Self.percentColumn, alignment: .trailing)
@@ -266,7 +272,8 @@ struct MenuBarContentView: View {
     private var placeholderText: String {
         switch limits.status {
         case .loading: return "Checking your limits…"
-        case .signedOut: return "Run /login in Claude Code to see your limits."
+        case .signedOut: return "Limits show for Claude Pro and Max sign-ins. Run /login in Claude Code."
+        case .expired: return "Claude Code's sign-in expired. Open it once to refresh."
         case .unavailable, .ready: return "Couldn't reach the usage service."
         }
     }

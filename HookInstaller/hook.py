@@ -2,63 +2,52 @@
 """Notch So Good — hook bridge for Claude Code and OpenAI Codex CLI.
 
 Reads one hook payload on stdin and forwards a compact event to the app over a
-Unix domain socket. For PreToolUse it can wait for the user's allow/deny from the
-notch and translate that into the agent's own hook-output format.
+Unix domain socket. For the events that need an answer (a permission request, a
+plan to approve, a question) it waits for the user's choice in the notch and
+translates it into the agent's own hook-output format.
 
     usage: hook.py <EventName> [--agent claude|codex]
 
 Design rules:
 
-* Never fail loudly. If the app isn't running we print nothing and exit 0, and
-  the agent falls back to its own built-in permission flow.
-* Never prompt when the agent has already decided. `permission_mode` is part of
-  every Claude Code hook payload; in bypassPermissions / auto / plan the agent
-  is deciding for itself, and in acceptEdits it has decided about file edits.
-  Raising a prompt there is a second gate the user never asked for — and it
-  *blocks* the tool until they answer.
+* Never decide for the user. Approvals only ever come from a click in the notch;
+  the bridge never approves anything on its own.
+* Only ask when the agent would. Permission cards come from the agents'
+  `PermissionRequest` hook, which fires exactly when the agent is about to show
+  its own prompt, so the agent's modes and rules always decide first.
+* Never fail loudly. If the app isn't running, or the user doesn't answer, we
+  print nothing and exit 0, and the agent shows its own prompt as usual.
 * Stay Python 3.9-compatible: that's what ships with macOS.
 """
 
-import fnmatch
 import json
 import os
 import re
 import sys
 
-SOCKET_PATH = "/tmp/notchsogood.sock"
+# One socket per user: /tmp is shared, and a second account's app must never
+# receive (or answer) our hooks. Tests point it elsewhere.
+SOCKET_PATH = os.environ.get("NOTCHSOGOOD_SOCKET") or "/tmp/notchsogood-%d.sock" % os.getuid()
 
 # Fire-and-forget events only need enough time to hand off a few hundred bytes.
 SEND_TIMEOUT = 2.0
 # Must stay under the app's own 120s pending-request timeout.
 DECISION_TIMEOUT = 120.0
 
-# Built-in agent tools that never need approval. Anything that can write to disk
-# is deliberately absent — this list must mirror PermissionServer.safeTools.
-SAFE_TOOLS = {
-    "Read", "Glob", "Grep", "LSP", "Agent", "ToolSearch",
-    "EnterPlanMode", "ExitPlanMode", "EnterWorktree", "ExitWorktree",
-    "TaskGet", "TaskList", "TaskOutput", "TaskCreate", "TaskUpdate", "TaskStop",
-    "CronList", "ListMcpResourcesTool", "ReadMcpResourceTool",
-    "Skill", "SendMessage", "WebFetch", "WebSearch",
-    "mcp__conductor__AskUserQuestion",
-    "mcp__conductor__DiffComment",
-    "mcp__conductor__GetTerminalOutput",
-    "mcp__conductor__GetWorkspaceDiff",
-}
-
-READ_ONLY_KEYWORDS = (
-    "get_", "list_", "search_", "read_", "find_", "query_",
-    "resolve", "snapshot", "watch", "fetch",
-)
-
-# Tools that acceptEdits mode covers.
-EDIT_TOOLS = {"Edit", "MultiEdit", "Write", "NotebookEdit"}
-
-# Modes where the agent handles permissions itself.
-MODES_WITHOUT_PROMPTS = {"bypassPermissions", "auto", "plan"}
-
 MAX_SUMMARY = 200
 MAX_MESSAGE = 300
+# Shown in full on the card: the user must see exactly what they're approving.
+MAX_COMMAND = 4000
+MAX_PLAN = 4000
+
+# Test runners, for "tests passed / failed" on the finished card.
+TEST_COMMAND = re.compile(
+    r"(^|[\s;&|(])("
+    r"(npm|pnpm|yarn|bun)( run)? test|npx (jest|vitest|playwright)|jest|vitest|pytest|python3? -m (pytest|unittest)"
+    r"|go test|cargo test|swift test|xcodebuild[^;&|]* test|mix test|rspec|bundle exec rspec|phpunit|dotnet test"
+    r"|gradle(w)? test|\./gradlew test|mvn test|make test|bash [^;&|]*test[^;&|]*\.sh|ctest"
+    r")(\s|$)"
+)
 
 
 # --------------------------------------------------------------------------- io
@@ -83,7 +72,7 @@ def send(event, wait=False):
 
     sock = None
     try:
-        # /tmp is shared: only talk to a socket our own user created.
+        # Only talk to a socket our own user created.
         if os.stat(SOCKET_PATH).st_uid != os.getuid():
             return None
         sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -144,12 +133,17 @@ def base_event(payload, agent):
     }
 
 
+def emit(output):
+    print(json.dumps(output))
+    sys.exit(0)
+
+
 # ---------------------------------------------------------------- tool summary
 
-def tool_summary(tool_name, tool_input):
-    """One short human-readable line describing what the tool will do."""
+def tool_summary(tool_name, tool_input, limit=MAX_SUMMARY):
+    """One human-readable line describing what the tool will do."""
     if isinstance(tool_input, dict):
-        if tool_name == "Bash":
+        if tool_name in ("Bash", "apply_patch"):
             keys = ("command",)
         elif tool_name == "Grep":
             keys = ("pattern",)
@@ -159,213 +153,270 @@ def tool_summary(tool_name, tool_input):
             keys = ("file_path", "notebook_path", "path", "command", "pattern")
         for key in keys:
             value = tool_input.get(key)
+            if isinstance(value, list):
+                value = " ".join(str(part) for part in value)
             if isinstance(value, str) and value:
-                return value[:MAX_SUMMARY]
+                return value[:limit]
         try:
-            return json.dumps(tool_input)[:MAX_SUMMARY]
+            return json.dumps(tool_input)[:limit]
         except Exception:
             return ""
     if tool_input is None:
         return ""
-    return str(tool_input)[:MAX_SUMMARY]
+    return str(tool_input)[:limit]
 
 
-# -------------------------------------------------------------------- settings
-
-def claude_settings_paths(cwd):
-    """Global settings plus the project-local pair.
-
-    Project-local files matter: most people keep `permissions.allow` in the
-    repo's .claude/settings.local.json, and only reading the global files meant
-    already-allowed tools still raised a prompt.
-    """
-    home = os.path.expanduser("~")
-    paths = [
-        os.path.join(home, ".claude", "settings.json"),
-        os.path.join(home, ".claude", "settings.local.json"),
-    ]
-    if cwd and os.path.isabs(cwd):
-        paths.append(os.path.join(cwd, ".claude", "settings.json"))
-        paths.append(os.path.join(cwd, ".claude", "settings.local.json"))
-    return paths
+def edited_paths(tool_name, tool_input):
+    """Files a tool call wrote, for "4 files edited" on the finished card."""
+    if not isinstance(tool_input, dict):
+        return []
+    if tool_name in ("Edit", "MultiEdit", "Write", "NotebookEdit"):
+        path = tool_input.get("file_path") or tool_input.get("notebook_path")
+        return [path] if isinstance(path, str) and path else []
+    if tool_name == "apply_patch":
+        patch = tool_input.get("command")
+        if isinstance(patch, list):
+            patch = " ".join(str(part) for part in patch)
+        if isinstance(patch, str):
+            return re.findall(r"^\*\*\* (?:Add|Update|Delete) File: (.+)$", patch, re.MULTILINE)[:50]
+    return []
 
 
-def load_claude_settings(cwd):
-    """Returns (default_mode, allow_rules)."""
-    default_mode = None
-    allow = []
-    for path in claude_settings_paths(cwd):
-        try:
-            with open(path) as handle:
-                data = json.load(handle)
-        except Exception:
-            continue
-        if not isinstance(data, dict):
-            continue
-        perms = data.get("permissions")
-        if isinstance(perms, dict):
-            mode = perms.get("defaultMode")
-            if isinstance(mode, str) and mode:
-                default_mode = mode
-            rules = perms.get("allow")
-            if isinstance(rules, list):
-                allow.extend(rule for rule in rules if isinstance(rule, str))
-        if data.get("dangerouslySkipPermissions") or data.get("skipDangerousModePermissionPrompt"):
-            default_mode = "bypassPermissions"
-    return default_mode, allow
+def is_test_command(command):
+    return isinstance(command, str) and bool(TEST_COMMAND.search(command))
 
 
-def codex_never_asks():
-    """True when Codex CLI is configured to approve without asking.
-
-    Parsed with a regex on purpose: macOS ships Python 3.9, which has no tomllib.
-    """
-    path = os.path.join(os.path.expanduser("~"), ".codex", "config.toml")
-    try:
-        with open(path) as handle:
-            text = handle.read()
-    except Exception:
-        return False
-    match = re.search(r'^\s*approval_policy\s*=\s*["\']([^"\']+)["\']', text, re.MULTILINE)
-    return bool(match) and match.group(1) == "never"
-
-
-# A shell command that chains or substitutes more commands can't be judged by
-# its first words: `git status; rm -rf ~` must not ride on a `git status` rule.
-SHELL_CHAINING = re.compile(r"[;&|`\n]|\$\(")
-
-
-def allowed_by_rules(tool_name, summary, rules):
-    """Whether one of the user's own allow rules covers this call.
-
-    Only ever used to decide not to ask; the final word stays with the agent.
-    """
-    for rule in rules:
-        if "(" in rule and rule.endswith(")"):
-            head, _, tail = rule.partition("(")
-            pattern = tail[:-1]
-            if tool_name != head:
-                continue
-            if pattern == "*":
-                return True
-            if tool_name == "Bash" and SHELL_CHAINING.search(summary):
-                continue
-            if pattern.endswith(":*") and summary.startswith(pattern[:-2]):
-                return True
-            if fnmatch.fnmatch(summary, pattern):
-                return True
-        elif tool_name == rule or tool_name.startswith(rule + "__"):
-            return True
-    return False
-
-
-def mcp_read_only(tool_name):
-    if not tool_name.startswith("mcp__"):
-        return False
-    parts = tool_name.split("__")
-    if len(parts) < 3:
-        return False
-    # The verb starts the name: get_issue is read-only, set_budget_limit isn't.
-    func = parts[-1].lower()
-    return any(func.startswith(keyword) for keyword in READ_ONLY_KEYWORDS)
-
-
-# -------------------------------------------------------------------- decisions
-
-def emit_allow(agent, reason):
-    if agent == "codex":
-        print(json.dumps({"permissionDecision": "allow"}))
-    else:
-        print(json.dumps({"hookSpecificOutput": {
-            "hookEventName": "PreToolUse",
-            "permissionDecision": "allow",
-            "permissionDecisionReason": reason,
-        }}))
-    sys.exit(0)
-
-
-def emit_deny(agent, reason):
-    if agent == "codex":
-        # Codex reads a non-zero exit plus stderr as a block.
-        sys.stderr.write(reason)
-        sys.exit(2)
-    print(json.dumps({"hookSpecificOutput": {
-        "hookEventName": "PreToolUse",
-        "permissionDecision": "deny",
-        "permissionDecisionReason": reason,
-    }}))
-    sys.exit(0)
-
-
-def auto_approves(mode, tool_name):
-    if mode in MODES_WITHOUT_PROMPTS:
-        return True
-    return mode == "acceptEdits" and tool_name in EDIT_TOOLS
-
-
-def effective_mode(payload, agent, cwd):
-    """The mode to trust: whatever the payload says, else the configured default.
-
-    Claude's settings are never consulted for a Codex session and vice versa —
-    they're unrelated configs.
-    """
-    mode = str(payload.get("permission_mode") or "")
-    if mode:
-        return mode
-    if agent == "codex":
-        return "bypassPermissions" if codex_never_asks() else "default"
-    default_mode, _ = load_claude_settings(cwd)
-    return default_mode or "default"
+def exit_code(tool_response):
+    """Codex reports a shell command's status in its model-facing output."""
+    if isinstance(tool_response, dict):
+        for key in ("exit_code", "exitCode", "status"):
+            value = tool_response.get(key)
+            if isinstance(value, int):
+                return value
+        tool_response = json.dumps(tool_response)
+    if isinstance(tool_response, str):
+        match = re.search(r"(?:exit(?:ed)?(?: with)? code|Exit code)[:\s]+(-?\d+)", tool_response)
+        if match:
+            return int(match.group(1))
+    return None
 
 
 # ---------------------------------------------------------------------- events
 
-def handle_pre_tool_use(payload, agent):
+def allow_rules(suggestions):
+    """The "always allow" rules Claude Code itself suggests for this request:
+    its own judgement of what to save, and where (usually this project only)."""
+    rules = []
+    for entry in suggestions if isinstance(suggestions, list) else []:
+        if (isinstance(entry, dict) and entry.get("type") == "addRules"
+                and entry.get("behavior") == "allow" and isinstance(entry.get("rules"), list)):
+            rules.append(entry)
+    return rules
+
+
+def rule_label(entry):
+    """`Bash(npm test)` for the card, with where it'll be saved."""
+    parts = []
+    for rule in entry.get("rules", []):
+        if not isinstance(rule, dict):
+            continue
+        name = str(rule.get("toolName") or "")
+        content = rule.get("ruleContent")
+        parts.append("%s(%s)" % (name, content) if isinstance(content, str) and content else name)
+    return ", ".join(parts)
+
+
+def change_preview(tool_name, tool_input):
+    """For a file edit: the path, then the change as -/+ lines, so the card
+    shows exactly what will be written."""
+    if not isinstance(tool_input, dict):
+        return None
+    path = tool_input.get("file_path") or tool_input.get("notebook_path")
+    if not isinstance(path, str) or not path:
+        return None
+    def lines(prefix, text):
+        if not isinstance(text, str) or not text:
+            return []
+        return [prefix + line for line in text.splitlines()[:60]]
+    out = []
+    if tool_name == "Edit":
+        out = lines("- ", tool_input.get("old_string")) + lines("+ ", tool_input.get("new_string"))
+    elif tool_name == "MultiEdit":
+        for edit in tool_input.get("edits") or []:
+            if isinstance(edit, dict):
+                out += lines("- ", edit.get("old_string")) + lines("+ ", edit.get("new_string"))
+    elif tool_name == "Write":
+        out = lines("+ ", tool_input.get("content"))
+    elif tool_name == "NotebookEdit":
+        out = lines("+ ", tool_input.get("new_source"))
+    return "\n".join([path] + out)[:MAX_COMMAND]
+
+
+def handle_permission_request(payload, agent):
+    """The agent is about to ask for permission: ask in the notch instead."""
     tool_name = str(payload.get("tool_name") or "")
     tool_input = payload.get("tool_input")
-    summary = tool_summary(tool_name, tool_input)
-    cwd = str(payload.get("cwd") or "")
-    # Rules are matched against the whole command, never the shortened summary.
-    full = summary
-    if tool_name == "Bash" and isinstance(tool_input, dict) and isinstance(tool_input.get("command"), str):
-        full = tool_input["command"].strip()
+    if tool_name in ("ExitPlanMode", "AskUserQuestion"):
+        # These need their answer through PreToolUse (see handle_interactive);
+        # an allow here is ignored and the terminal dialog shows anyway.
+        sys.exit(0)
+    event = base_event(payload, agent)
+    event.update({
+        "event": "PermissionRequest",
+        "tool_name": tool_name,
+        "tool_input": change_preview(tool_name, tool_input) or tool_summary(tool_name, tool_input, MAX_COMMAND),
+    })
+    if isinstance(tool_input, dict):
+        description = tool_input.get("description")
+        if isinstance(description, str):
+            event["description"] = description[:MAX_MESSAGE]
+    suggestions = allow_rules(payload.get("permission_suggestions")) if agent == "claude" else []
+    if suggestions:
+        event["always_label"] = "; ".join(filter(None, (rule_label(entry) for entry in suggestions)))
+        event["always_destination"] = str(suggestions[0].get("destination") or "")
 
+    reply = send(event, wait=True)
+    if not reply:
+        sys.exit(0)
+    decision = reply.get("decision")
+    if decision == "allow":
+        result = {"behavior": "allow"}
+        updates = []
+        # Codex reserves updatedPermissions; only Claude gets rules or modes.
+        if agent == "claude":
+            if reply.get("always") and suggestions:
+                updates.extend(suggestions)
+            mode = reply.get("mode")
+            if mode in ("default", "acceptEdits"):
+                updates.append({"type": "setMode", "mode": mode, "destination": "session"})
+        if updates:
+            result["updatedPermissions"] = updates
+        emit({"hookSpecificOutput": {"hookEventName": "PermissionRequest", "decision": result}})
+    if decision == "deny":
+        emit({"hookSpecificOutput": {"hookEventName": "PermissionRequest", "decision": {
+            "behavior": "deny",
+            "message": str(reply.get("reason") or "Denied from Notch So Good"),
+        }}})
+    # Handed back to the terminal: say nothing, the agent asks as usual.
+    sys.exit(0)
+
+
+def clean_questions(raw):
+    """AskUserQuestion's questions, reduced to what the card shows."""
+    questions = []
+    for item in raw if isinstance(raw, list) else []:
+        if not isinstance(item, dict) or not isinstance(item.get("question"), str):
+            continue
+        options = []
+        for option in item.get("options") if isinstance(item.get("options"), list) else []:
+            if isinstance(option, dict) and isinstance(option.get("label"), str):
+                description = option.get("description")
+                options.append({
+                    "label": option["label"][:120],
+                    "description": description[:200] if isinstance(description, str) else "",
+                })
+        if not options:
+            return []
+        questions.append({
+            "question": item["question"][:MAX_MESSAGE],
+            "header": str(item.get("header") or "")[:40],
+            "multiSelect": bool(item.get("multiSelect")),
+            "options": options[:6],
+        })
+    return questions[:4]
+
+
+def handle_interactive(payload, agent):
+    """The tools Claude Code can only run with a person's answer: questions and
+    plans. Answered in the notch, the tool runs with the answer and the
+    terminal dialog never appears; otherwise it shows as usual."""
+    tool_name = str(payload.get("tool_name") or "")
+    tool_input = payload.get("tool_input")
+    if agent != "claude" or not isinstance(tool_input, dict):
+        sys.exit(0)
+    if tool_name == "ExitPlanMode":
+        handle_plan(payload, agent, tool_input)
+    if tool_name == "AskUserQuestion":
+        handle_ask_user_question(payload, agent, tool_input)
+    sys.exit(0)
+
+
+def handle_plan(payload, agent, tool_input):
+    plan = tool_input.get("plan")
+    event = base_event(payload, agent)
+    event.update({
+        "event": "PermissionRequest",
+        "tool_name": "ExitPlanMode",
+        "plan": plan[:MAX_PLAN] if isinstance(plan, str) else "",
+    })
+    reply = send(event, wait=True)
+    if reply and reply.get("decision") == "allow":
+        # Approving needs the plan echoed back as updatedInput. Auto-accept
+        # edits can't ride on this answer; the app applies it to the next edit.
+        emit({"hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "allow",
+            "updatedInput": dict(tool_input),
+        }})
+    sys.exit(0)
+
+
+def handle_ask_user_question(payload, agent, tool_input):
+    """Claude wants to ask a multiple-choice question: offer it in the notch."""
+    questions = clean_questions(tool_input.get("questions"))
+    if not questions:
+        sys.exit(0)
+    event = base_event(payload, agent)
+    event.update({"event": "AskUserQuestion", "questions": questions})
+    reply = send(event, wait=True)
+    answers = reply.get("answers") if reply else None
+    asked = [q["question"] for q in questions]
+    if (isinstance(answers, dict) and asked
+            and all(isinstance(answers.get(q), str) and answers.get(q) for q in asked)):
+        updated = dict(tool_input)
+        updated["answers"] = {q: answers[q] for q in asked}
+        emit({"hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "allow",
+            "updatedInput": updated,
+        }})
+    sys.exit(0)
+
+
+def handle_pre_tool_use(payload, agent):
+    """Activity only: what the agent is doing right now, for the pill. Runs in
+    the background where the agent supports it, and never answers."""
+    tool_name = str(payload.get("tool_name") or "")
     event = base_event(payload, agent)
     event.update({
         "event": "PreToolUse",
         "tool_name": tool_name,
-        "tool_input": summary,
+        "tool_input": tool_summary(tool_name, payload.get("tool_input")),
+        "decision_needed": False,
     })
+    send(event)
+    sys.exit(0)
 
-    mode = effective_mode(payload, agent, cwd)
-    allow_rules = [] if agent == "codex" else load_claude_settings(cwd)[1]
 
-    pre_approved = (
-        auto_approves(mode, tool_name)
-        or tool_name in SAFE_TOOLS
-        or mcp_read_only(tool_name)
-        or allowed_by_rules(tool_name, full, allow_rules)
-    )
-
-    if pre_approved:
-        # Nothing to ask the user. Tell the app (so the pill stays live) and say
-        # nothing to the agent: its own permission rules decide, exactly as if
-        # this hook weren't installed. An explicit "allow" here would override
-        # them (plan mode, auto mode's checks, its own command splitting).
-        event["decision_needed"] = False
-        send(event)
-        sys.exit(0)
-
-    reply = send(event, wait=True)
-    if reply:
-        decision = reply.get("decision")
-        if decision == "approve":
-            emit_allow(agent, "Approved from Notch So Good")
-        if decision == "deny":
-            emit_deny(agent, str(reply.get("reason") or "Denied from Notch So Good"))
-
-    # App not running, or the request timed out: say nothing and let the agent
-    # use its own permission flow.
+def handle_post_tool_use(event_name, payload, agent):
+    tool_name = str(payload.get("tool_name") or "")
+    tool_input = payload.get("tool_input")
+    event = base_event(payload, agent)
+    event.update({"event": "PostToolUse", "tool_name": tool_name})
+    paths = edited_paths(tool_name, tool_input)
+    if paths:
+        event["edited"] = paths
+    command = tool_input.get("command") if isinstance(tool_input, dict) else None
+    if isinstance(command, list):
+        command = " ".join(str(part) for part in command)
+    if tool_name == "Bash" and is_test_command(command):
+        if event_name == "PostToolUseFailure":
+            event["tests"] = "failed"
+        else:
+            code = exit_code(payload.get("tool_response")) if agent == "codex" else 0
+            if code is not None:
+                event["tests"] = "passed" if code == 0 else "failed"
+    send(event)
     sys.exit(0)
 
 
@@ -457,6 +508,8 @@ def handle_simple(event_name, payload, agent):
 
     if event_name == "SessionStart":
         event["model"] = str(payload.get("model") or "")
+        # startup, resume, clear or compact: a compact means compaction is over.
+        event["source"] = str(payload.get("source") or "")[:20]
     elif event_name == "Stop":
         event["last_assistant_message"] = (last_assistant_message(payload) or "Task completed")[:MAX_MESSAGE]
     elif event_name == "StopFailure":
@@ -470,8 +523,6 @@ def handle_simple(event_name, payload, agent):
         event["title"] = str(payload.get("title") or "")
     elif event_name == "UserPromptSubmit":
         event["prompt_title"] = prompt_title(payload.get("prompt"))
-    elif event_name == "PostToolUse":
-        event["tool_name"] = str(payload.get("tool_name") or "")
     elif event_name in ("SubagentStart", "SubagentStop"):
         event["subagent_id"] = subagent_id(payload)
         if event_name == "SubagentStart":
@@ -496,8 +547,14 @@ def main():
 
     payload = read_payload()
 
-    if event_name == "PreToolUse":
+    if event_name == "PermissionRequest":
+        handle_permission_request(payload, agent)
+    elif event_name in ("Interactive", "AskUserQuestion"):
+        handle_interactive(payload, agent)
+    elif event_name == "PreToolUse":
         handle_pre_tool_use(payload, agent)
+    elif event_name in ("PostToolUse", "PostToolUseFailure"):
+        handle_post_tool_use(event_name, payload, agent)
     else:
         handle_simple(event_name, payload, agent)
 

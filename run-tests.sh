@@ -40,7 +40,7 @@ echo -e "\n${BOLD}5/10  Multi-display routing${RESET}"
 TMP=$(mktemp -d)
 swiftc -O NotchSoGood/Utilities/DisplayRouter.swift NotchSoGood/Utilities/NotchGeometry.swift \
   NotchSoGood/Utilities/ProcessTree.swift NotchSoGood/Models/NotchNotification.swift \
-  NotchSoGood/Models/NotificationType.swift NotchSoGood/Utilities/ColorHex.swift \
+  NotchSoGood/Models/NotificationType.swift NotchSoGood/Models/AgentRequest.swift NotchSoGood/Utilities/ColorHex.swift \
   Tests/DisplayTests/main.swift -o "$TMP/display"
 "$TMP/display" | tail -3 || fail=1
 rm -rf "$TMP"
@@ -55,7 +55,7 @@ echo -e "\n${BOLD}7/10  Character engine${RESET}"
 TMP=$(mktemp -d)
 swiftc -O NotchSoGood/Character/CharacterModel.swift NotchSoGood/Character/CharacterEngine.swift \
   NotchSoGood/Character/CharacterStateMapping.swift NotchSoGood/Models/NotchNotification.swift \
-  NotchSoGood/Models/NotificationType.swift NotchSoGood/Models/StopFailure.swift NotchSoGood/Utilities/ColorHex.swift \
+  NotchSoGood/Models/NotificationType.swift NotchSoGood/Models/StopFailure.swift NotchSoGood/Models/AgentRequest.swift NotchSoGood/Utilities/ColorHex.swift \
   Tests/CharacterEngineTests/main.swift -o "$TMP/character"
 "$TMP/character" | tail -6 || fail=1
 rm -rf "$TMP"

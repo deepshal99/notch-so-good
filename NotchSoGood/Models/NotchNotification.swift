@@ -9,9 +9,13 @@ struct NotchNotification: Identifiable {
     let sourceBundleId: String?
     let timestamp = Date()
 
-    // Permission approval fields (non-nil when this is an interactive permission request)
+    // Waiting-card fields (non-nil when the card asks for an answer)
     let permissionRequestId: String?
     let toolName: String?
+    /// The full command, file or plan, untruncated (the message is capped for layout).
+    let detail: String?
+    /// What the card asks and how it can be answered.
+    let interaction: CardInteraction?
 
     /// Ingress limits. Hook payloads and URL parameters are untrusted input:
     /// a 50 KB assistant message or a control-character-laden path would wreck
@@ -27,7 +31,9 @@ struct NotchNotification: Identifiable {
         sessionId: String? = nil,
         sourceBundleId: String? = nil,
         permissionRequestId: String? = nil,
-        toolName: String? = nil
+        toolName: String? = nil,
+        detail: String? = nil,
+        interaction: CardInteraction? = nil
     ) {
         self.type = type
         self.message = Self.clean(message, limit: Self.messageLimit) ?? type.defaultTitle
@@ -36,6 +42,8 @@ struct NotchNotification: Identifiable {
         self.sourceBundleId = Self.nonEmpty(sourceBundleId)
         self.permissionRequestId = Self.nonEmpty(permissionRequestId)
         self.toolName = Self.nonEmpty(toolName)
+        self.detail = CardText.clean(detail)
+        self.interaction = interaction ?? (permissionRequestId != nil ? .permission(always: nil) : nil)
     }
 
     /// Collapse whitespace runs, strip control characters, clamp length.
@@ -65,6 +73,7 @@ struct NotchNotification: Identifiable {
     /// Titles the app itself uses for its own heads-ups; the character keys off them.
     static let limitsTitle = "Running low"
     static let limitsOutTitle = "Out of usage"
+    static let limitsBackTitle = "Usage is back"
     static let nudgeTitle = "Still waiting on you"
 
     var displayTitle: String {

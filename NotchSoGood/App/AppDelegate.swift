@@ -4,9 +4,6 @@ import Sparkle
 @MainActor
 class AppDelegate: NSObject, NSApplicationDelegate {
     let updaterController: SPUStandardUpdaterController
-    /// Track the last known frontmost app so we can yield focus back after URL scheme activates us.
-    private var lastFrontmostApp: NSRunningApplication?
-    private var frontmostObserver: NSObjectProtocol?
 
     override init() {
         #if DEBUG
@@ -73,85 +70,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             Task { @MainActor in
                 NotificationManager.shared.windowController.handleScreenChange()
             }
-        }
-
-        // Observe app deactivation to track the last active app before us
-        frontmostObserver = NSWorkspace.shared.notificationCenter.addObserver(
-            forName: NSWorkspace.didActivateApplicationNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] notif in
-            guard let app = notif.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
-                  app.bundleIdentifier != Bundle.main.bundleIdentifier else { return }
-            Task { @MainActor in
-                self?.lastFrontmostApp = app
-            }
-        }
-    }
-
-    func application(_ application: NSApplication, open urls: [URL]) {
-        let appToRestore = lastFrontmostApp
-
-        for url in urls {
-            guard url.scheme == "notchsogood" else { continue }
-            handleNotchURL(url)
-        }
-
-        // Immediately yield focus back to whatever the user was using
-        if let appToRestore, appToRestore.isTerminated == false {
-            DispatchQueue.main.async {
-                appToRestore.activate()
-            }
-        }
-    }
-
-    private func handleNotchURL(_ url: URL) {
-        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
-              let host = components.host else { return }
-
-        var params: [String: String] = [:]
-        for item in components.queryItems ?? [] {
-            if let value = item.value, !value.isEmpty {
-                params[item.name] = value
-            }
-        }
-
-        let sessionId = params["session_id"]
-
-        switch host {
-        case "notify":
-            let type = NotificationType(rawValue: params["type"] ?? "general") ?? .general
-            let message = params["message"] ?? "Claude Code needs your attention"
-            let title = params["title"]
-            let sourceBundleId = params["source_app"]
-
-            let notification = NotchNotification(
-                type: type,
-                message: message,
-                title: title,
-                sessionId: sessionId,
-                sourceBundleId: sourceBundleId
-            )
-
-            NotificationManager.shared.handleNotification(notification)
-
-        case "session_start":
-            let displayName = params["cwd"]
-            let sourceBundleId = params["source_app"]
-            let mode = params["permission_mode"].map(PermissionMode.from)
-            NotificationManager.shared.startSession(
-                sessionId: sessionId,
-                displayName: displayName,
-                sourceBundleId: sourceBundleId,
-                permissionMode: mode
-            )
-
-        case "session_end":
-            // endSession ignores a missing id, so this can't wipe every session
-            NotificationManager.shared.endSession(sessionId: sessionId)
-
-        default:
-            break
         }
     }
 }

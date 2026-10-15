@@ -80,6 +80,10 @@ class NotificationManager: ObservableObject {
         /// Which of `Island.sessionColors` marks this session. Unique among
         /// live sessions while a free colour exists.
         var colorIndex = 0
+        /// This turn's work, for the finished card: files written, and how the
+        /// last test run went ("passed" / "failed").
+        var turnEdited: Set<String> = []
+        var turnTests: String?
 
         var color: Color { Island.sessionColors[colorIndex % Island.sessionColors.count] }
     }
@@ -359,7 +363,15 @@ class NotificationManager: ObservableObject {
         sessionTimeoutTimers[sid]?.invalidate()
         sessionTimeoutTimers[sid] = Timer.scheduledTimer(withTimeInterval: sessionTimeoutInterval, repeats: false) { [weak self] _ in
             Task { @MainActor in
-                self?.endSession(sessionId: sid)
+                guard let self else { return }
+                // A session whose agent we can see is alive isn't a zombie, however
+                // quiet (a long build, a wait on you): the sweep ends it when the
+                // agent exits. The timeout is only for sessions we can't check.
+                if let pid = self.activeSessions.first(where: { $0.id == sid })?.sourcePid, pid > 1, kill(pid, 0) == 0 {
+                    self.resetSessionTimeout(sessionId: sid)
+                } else {
+                    self.endSession(sessionId: sid)
+                }
             }
         }
     }
@@ -460,6 +472,7 @@ class NotificationManager: ObservableObject {
     /// User clicked or explicitly dismissed a popup — stay quiet about this
     /// session+type until the session actually moves on.
     func muteRepeats(sessionId: String?, type: NotificationType) {
+        guard sessionId != nil else { return }
         mutedKeys.insert(popupKey(sessionId, type))
     }
 
@@ -481,8 +494,10 @@ class NotificationManager: ObservableObject {
 
     /// Should this popup be suppressed as a repeat of one already shown/addressed?
     private func isRepeatPopup(_ notification: NotchNotification) -> Bool {
-        // Interactive permission cards are always distinct real requests
-        guard !notification.isInteractivePermission else { return false }
+        // Interactive permission cards are always distinct real requests, and
+        // the app's own heads-ups (no session) are each distinct news: muting
+        // one must never silence the next ("80% used", then "used up").
+        guard !notification.isInteractivePermission, notification.sessionId != nil else { return false }
         let key = popupKey(notification.sessionId, notification.type)
         if mutedKeys.contains(key) { return true }
         if let last = lastPopupAt[key], Date().timeIntervalSince(last) < repeatPopupCooldown {
@@ -576,7 +591,9 @@ class NotificationManager: ObservableObject {
             return
         }
 
-        lastPopupAt[popupKey(notification.sessionId, notification.type)] = Date()
+        if notification.sessionId != nil {
+            lastPopupAt[popupKey(notification.sessionId, notification.type)] = Date()
+        }
 
         let session = activeSessions.first(where: { $0.id == notification.sessionId })
         Telemetry.shared.trackEvent("notification_shown", props: ["type": notification.type.rawValue])
@@ -654,12 +671,16 @@ class NotificationManager: ObservableObject {
         refreshPill()
     }
 
-    /// PostToolUse: tool finished running — clear active tool, update status
-    func handlePostToolUse(sessionId: String?, toolName: String, cwd: String? = nil) {
+    /// PostToolUse: tool finished running — clear active tool, update status,
+    /// and note what it changed for the finished card.
+    func handlePostToolUse(sessionId: String?, toolName: String, cwd: String? = nil,
+                           edited: [String] = [], tests: String? = nil) {
         guard let sid = NotchNotification.nonEmpty(sessionId),
               let idx = adoptSession(sessionId: sid, cwd: cwd) else { return }
         activeSessions[idx].activeToolName = nil
         activeSessions[idx].activeToolDetail = nil
+        if !edited.isEmpty { activeSessions[idx].turnEdited.formUnion(edited.prefix(200)) }
+        if tests == "passed" || tests == "failed" { activeSessions[idx].turnTests = tests }
         let current = activeSessions[idx].status
         if current == .needsPermission || current == .compacting {
             activeSessions[idx].status = .running
@@ -724,16 +745,42 @@ class NotificationManager: ObservableObject {
         // New user turn — clear previous tool state and any popup mutes
         activeSessions[idx].activeToolName = nil
         activeSessions[idx].activeToolDetail = nil
+        activeSessions[idx].turnEdited = []
+        activeSessions[idx].turnTests = nil
+        // Claude writes the transcript on the first prompt; if the watcher gave
+        // up waiting for it, this starts it (a no-op when already watching).
+        if activeSessions[idx].agentSource == .claude {
+            SessionFileWatcher.shared.startWatching(sessionId: sid, cwd: activeSessions[idx].cwd)
+        }
         clearPopupState(sessionId: sid)
 
         updateSessionStatus(sessionId: sid, status: .running)
+    }
+
+    /// Compaction is over (PostCompact, or the SessionStart that follows /compact).
+    func compactionFinished(sessionId: String?) {
+        guard let sid = NotchNotification.nonEmpty(sessionId),
+              let idx = activeSessions.firstIndex(where: { $0.id == sid }),
+              activeSessions[idx].status == .compacting else { return }
+        updateSessionStatus(sessionId: sid, status: .running)
+    }
+
+    /// The user pressed Esc on a running turn: drop its waiting cards (the
+    /// agent has already cancelled them) and show it waiting on you.
+    func handleInterrupt(sessionId: String?) {
+        guard let sid = NotchNotification.nonEmpty(sessionId),
+              activeSessions.contains(where: { $0.id == sid }) else { return }
+        for reqId in PermissionServer.shared.pendingRequestIds(for: sid) {
+            PermissionServer.shared.handOffToTerminal(requestId: reqId)
+        }
+        updateSessionStatus(sessionId: sid, status: .needsInput)
     }
 
     // MARK: - Auto-setup
 
     /// Bump when the hook bridge's wire format or command line changes, so an
     /// upgrade reinstalls hooks even if the app version didn't move.
-    private static let hooksSchemaVersion = 5
+    private static let hooksSchemaVersion = 6
 
     /// Install hooks on first launch, on version updates, and whenever the hook
     /// bridge itself changes shape.
@@ -785,38 +832,55 @@ class NotificationManager: ObservableObject {
 
     // MARK: - Permission requests (from PermissionServer)
 
-    func showPermissionRequest(requestId: String, toolName: String, toolInput: String, sessionId: String?) {
-        let (action, detail) = Self.sanitizePermission(toolName: toolName, toolInput: toolInput)
-
-        // Belt and braces: the server already filters these out, but never let a
-        // bypass/auto/plan session get a blocking prompt, and never mark it as
-        // "needs approval" — it doesn't.
-        if permissionMode(for: sessionId).autoApproves(toolName: toolName) {
-            PermissionServer.shared.handOffToTerminal(requestId: requestId)
-            return
+    /// A card that waits for an answer: a tool to approve, a plan, a question.
+    func showWaitingCard(requestId: String, toolName: String, interaction: CardInteraction,
+                         detail: String?, description: String?, sessionId: String?) {
+        let enabled: Bool
+        let title: String
+        let message: String
+        var body = detail
+        switch interaction {
+        case .permission:
+            enabled = showOnPermission
+            let (action, short) = Self.sanitizePermission(toolName: toolName, toolInput: detail ?? "")
+            title = action
+            message = NotchNotification.nonEmpty(description) ?? short
+            if body == nil { body = short }
+        case .plan:
+            enabled = showOnQuestion
+            let summary = CardText.planSummary(detail ?? "")
+            title = "Plan ready"
+            message = summary.title ?? "Ready to start"
+            body = summary.body.isEmpty ? nil : summary.body
+        case .question(let questions):
+            enabled = showOnQuestion
+            title = questions.first.map { $0.header.isEmpty ? "Question" : $0.header } ?? "Question"
+            message = questions.first?.question ?? "A question for you"
         }
 
-        guard showOnPermission else {
+        guard enabled else {
             // Cards are off: the agent asks in its own terminal, as if we weren't here.
             PermissionServer.shared.handOffToTerminal(requestId: requestId)
             return
         }
 
-        // Only now is the session genuinely blocked on the user
+        // Only now is the session genuinely blocked on the user.
         if sessionId != nil {
-            updateSessionStatus(sessionId: sessionId, status: .needsPermission, message: action)
+            updateSessionStatus(sessionId: sessionId, status: .needsPermission, message: title)
         }
 
         let notification = NotchNotification(
             type: .permission,
-            message: detail,
-            title: action,
+            message: message,
+            title: title,
             sessionId: sessionId,
             permissionRequestId: requestId,
-            toolName: toolName
+            toolName: toolName,
+            detail: body,
+            interaction: interaction
         )
         let session = activeSessions.first(where: { $0.id == sessionId })
-        Telemetry.shared.trackEvent("notification_shown", props: ["type": notification.type.rawValue])
+        Telemetry.shared.trackEvent("notification_shown", props: ["type": "waiting"])
         windowController.showNotification(
             notification,
             sessionSourceBundleId: session?.sourceBundleId,
@@ -826,10 +890,8 @@ class NotificationManager: ObservableObject {
         )
     }
 
-    // MARK: - Permission sanitization
-
-    /// Returns a human-readable (action, detail) pair for a tool permission request.
-    /// Action = short verb phrase for the title, Detail = the most useful context.
+    /// Action label and a one-line summary for a tool. The card shows the full
+    /// command or path separately; this is only the title and fallback text.
     static func sanitizePermission(toolName: String, toolInput: String) -> (action: String, detail: String) {
         switch toolName {
         case "Bash":

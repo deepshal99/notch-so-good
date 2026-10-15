@@ -15,7 +15,9 @@ import Security
 ///    "limit_window_seconds":18000},"secondary_window":{...}}} where
 /// primary_window is the rolling 5-hour "Session" window and secondary_window
 /// is the rolling weekly "Weekly" window.
-/// Everything is best-effort: any failure quietly clears the windows.
+/// Everything is best-effort. A source that fails keeps its last numbers,
+/// marked with their age; a window whose reset time passes is treated as fresh
+/// at once and re-fetched.
 @MainActor
 final class UsageLimitsStore: ObservableObject {
     static let shared = UsageLimitsStore()
@@ -23,9 +25,14 @@ final class UsageLimitsStore: ObservableObject {
     struct LimitWindow: Identifiable {
         let label: String        // "Session", "Weekly", "Weekly · Opus", ...
         let percentLeft: Int     // 0–100
-        let resetsAt: Date?
+        var resetsAt: Date?
         var source: AgentSource = .claude
+        /// When these numbers were read: the menu says so once they're old.
+        var fetchedAt = Date()
         var id: String { "\(source.rawValue)_\(label)" }
+
+        /// Older than two refreshes: shown, but marked with its age.
+        var isStale: Bool { Date().timeIntervalSince(fetchedAt) > 25*60 }
     }
 
     /// Why the card has nothing to show. Surfaced in the menu instead of hiding
@@ -34,7 +41,8 @@ final class UsageLimitsStore: ObservableObject {
     enum Status: Equatable {
         case loading
         case ready
-        case signedOut        // no OAuth token we can read
+        case signedOut        // no OAuth token we can read (or an API-key / cloud setup)
+        case expired          // the sign-in was rejected: Claude Code will refresh it
         case unavailable      // network error, non-200, or unparseable response
     }
 
@@ -43,6 +51,8 @@ final class UsageLimitsStore: ObservableObject {
     @Published var status: Status = .loading
 
     private var refreshTimer: Timer?
+    /// Fires when the next window resets, so the numbers move at once.
+    private var resetTimer: Timer?
     private var lastFetchAt: Date?
     private var isFetching = false
     /// resets_at values we've already alerted for — one low-limit nudge per window.
@@ -88,12 +98,21 @@ final class UsageLimitsStore: ObservableObject {
             guard let self else { return }
             self.isFetching = false
 
-            // Ordering contract: all Claude windows first, then Codex.
-            let combined = (claude.windows ?? []) + (codex.windows ?? [])
+            // Ordering contract: all Claude windows first, then Codex. A source
+            // that failed this time keeps what it last showed (marked by age);
+            // one that's signed out loses it.
+            let previous = self.windows
+            let merged = { (result: FetchResult, source: AgentSource) -> [LimitWindow] in
+                if let fresh = result.windows { return fresh }
+                if result.signedOut || result.expired { return [] }
+                return previous.filter { $0.source == source }
+            }
+            let combined = merged(claude, .claude) + merged(codex, .codex)
             if !combined.isEmpty {
                 self.windows = combined
                 self.lastUpdated = Date()
                 self.status = .ready
+                self.scheduleResetTimer()
                 self.checkLowSessionLimit()
                 // The pill's drop-down grows a runway footer once usage is known.
                 NotificationManager.shared.limitsDidChange()
@@ -103,8 +122,42 @@ final class UsageLimitsStore: ObservableObject {
             // Nothing came back. Keep whatever we last showed rather than
             // blanking the card because of one flaky request, but record why so
             // the menu can say something instead of silently hiding the card.
-            self.status = (claude.signedOut && codex.signedOut) ? .signedOut : .unavailable
+            self.status = claude.expired ? .expired : ((claude.signedOut && codex.signedOut) ? .signedOut : .unavailable)
         }
+    }
+
+    // MARK: - Resets
+
+    private func scheduleResetTimer() {
+        resetTimer?.invalidate()
+        guard let next = windows.compactMap(\.resetsAt).filter({ $0 > Date() }).min() else { return }
+        resetTimer = Timer.scheduledTimer(withTimeInterval: next.timeIntervalSinceNow + 1, repeats: false) { _ in
+            Task { @MainActor in UsageLimitsStore.shared.windowsDidReset() }
+        }
+    }
+
+    /// A reset time passed: that window starts over at 100% now, whatever the
+    /// last fetch said. An exhausted one gets a "usage is back". Then fetch
+    /// the real numbers (and the next reset time) a moment later.
+    func windowsDidReset(now: Date = Date()) {
+        var changed = false
+        for i in windows.indices {
+            guard let resetsAt = windows[i].resetsAt, resetsAt <= now else { continue }
+            if windows[i].label == "Session", windows[i].percentLeft <= 5 {
+                let agent = windows[i].source == .claude ? "" : "\(windows[i].source.displayName): "
+                NotificationManager.shared.handleNotification(NotchNotification(
+                    type: .general,
+                    message: "\(agent)Your 5-hour window just reset. Back to it.",
+                    title: NotchNotification.limitsBackTitle
+                ))
+            }
+            windows[i] = LimitWindow(label: windows[i].label, percentLeft: 100, resetsAt: nil,
+                                     source: windows[i].source, fetchedAt: now)
+            changed = true
+        }
+        if changed { NotificationManager.shared.limitsDidChange() }
+        scheduleResetTimer()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 20) { UsageLimitsStore.shared.refresh(force: true) }
     }
 
     // MARK: - Low-limit warning
@@ -144,8 +197,11 @@ final class UsageLimitsStore: ObservableObject {
     // MARK: - Formatting
 
     /// "4h 30m" / "45m" countdown until a window resets.
-    static func resetCountdown(_ date: Date) -> String {
-        let secs = max(0, Int(date.timeIntervalSinceNow))
+    static func resetCountdown(_ date: Date) -> String { duration(date.timeIntervalSinceNow) }
+
+    /// "2d 3h" / "4h 30m" / "45m".
+    static func duration(_ seconds: TimeInterval) -> String {
+        let secs = max(0, Int(seconds))
         let days = secs / 86400
         let hours = (secs % 86400) / 3600
         let minutes = (secs % 3600) / 60
@@ -161,6 +217,7 @@ final class UsageLimitsStore: ObservableObject {
     struct FetchResult {
         var windows: [LimitWindow]?
         var signedOut: Bool = false
+        var expired: Bool = false
     }
 
     nonisolated private static func fetchWindows() async -> FetchResult {
@@ -180,6 +237,9 @@ final class UsageLimitsStore: ObservableObject {
 
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
+            if (response as? HTTPURLResponse)?.statusCode == 401 {
+                return FetchResult(windows: nil, expired: true)
+            }
             guard let http = response as? HTTPURLResponse, http.statusCode == 200,
                   let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
                 return FetchResult(windows: nil)
@@ -210,7 +270,12 @@ final class UsageLimitsStore: ObservableObject {
         task.standardOutput = pipe
         task.standardError = FileHandle.nullDevice
         if (try? task.run()) != nil {
+            // A Keychain prompt nobody answers must not hold every later
+            // refresh hostage: give up after 20 s and try the file instead.
+            let watchdog = DispatchWorkItem { if task.isRunning { task.terminate() } }
+            DispatchQueue.global().asyncAfter(deadline: .now() + 20, execute: watchdog)
             task.waitUntilExit()
+            watchdog.cancel()
             if task.terminationStatus == 0 {
                 let out = pipe.fileHandleForReading.readDataToEndOfFile()
                 if let raw = String(data: out, encoding: .utf8)?
