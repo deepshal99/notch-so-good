@@ -5,14 +5,14 @@
         <link>https://github.com/deepshal99/notch-so-good</link>
         <language>en</language>
         <item>
-            <title>Version 4.7.0</title>
-            <pubDate>Thu, 15 Oct 2026 16:48:01 +0000</pubDate>
-            <sparkle:version>23</sparkle:version>
-            <sparkle:shortVersionString>4.7.0</sparkle:shortVersionString>
-            <description><![CDATA[<h2>Notch So Good 4.7.0</h2><ul><li>Answer from the notch: approvals now come from Claude Code&#x27;s and Codex&#x27;s own permission hooks, so a card appears exactly when the agent would ask; questions and plans can be answered there too</li><li>See what you approve: the full command, file edits as a diff, and Always allow saves Claude&#x27;s own suggested rule for this project</li><li>Updates itself from now on: new versions download quietly and wait for a restart</li><li>Finished cards show files edited and test results; jump to the exact tab and tmux pane</li><li>Usage that&#x27;s out of date says so, and &quot;usage is back&quot; when a window resets</li><li>Quieter: only blockers over full-screen apps, sound for blockers only, optional hiding from screen sharing</li><li>Gemini CLI (beta), Conductor questions shown in the notch, and a health check in Settings</li><li>Peek has a new icon, tricks between tasks, and dozes when things go quiet</li></ul>
+            <title>Version 4.7.1</title>
+            <pubDate>Thu, 15 Oct 2026 17:00:00 +0000</pubDate>
+            <sparkle:version>24</sparkle:version>
+            <sparkle:shortVersionString>4.7.1</sparkle:shortVersionString>
+            <description><![CDATA[<h2>Notch So Good 4.7.1</h2><ul><li>Fixes the anonymous counts never being sent (the analytics library only sends while an app is &quot;active&quot;, which a menu bar app rarely is)</li><li>The pill stays visible over the full-screen app your agents run in</li></ul>
             <p><b>Install this one by hand</b>: run <code>brew upgrade notch-so-good</code>, or download it from the release page.
-            From 4.7.0 on, updates install themselves.</p>]]></description>
-            <link>https://github.com/deepshal99/notch-so-good/releases/tag/v4.7.0</link>
+            From 4.7.1 on, updates install themselves.</p>]]></description>
+            <link>https://github.com/deepshal99/notch-so-good/releases/tag/v4.7.1</link>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
         </item>
     </channel>

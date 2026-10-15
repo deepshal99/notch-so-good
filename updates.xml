@@ -5,6 +5,15 @@
         <link>https://github.com/deepshal99/notch-so-good</link>
         <language>en</language>
         <item>
+            <title>Version 4.7.1</title>
+            <pubDate>Thu, 15 Oct 2026 17:00:00 +0000</pubDate>
+            <sparkle:version>24</sparkle:version>
+            <sparkle:shortVersionString>4.7.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[<ul><li>Fixes the anonymous counts never being sent (the analytics library only sends while an app is &quot;active&quot;, which a menu bar app rarely is)</li><li>The pill stays visible over the full-screen app your agents run in</li></ul>]]></description>
+            <enclosure url="https://github.com/deepshal99/notch-so-good/releases/download/v4.7.1/NotchSoGood-4.7.1.zip" sparkle:edSignature="gj5UcR0bZbCY0MaDBqRiq3VH9aB2YsxQxLoibXxlgWGgs6gIXl80P2odS5Uq3J+JXhniY9V0O2nQ0xBlmqWZDg==" length="3805363" type="application/octet-stream"/>
+        </item>
+        <item>
             <title>Version 4.7.0</title>
             <pubDate>Thu, 15 Oct 2026 16:48:01 +0000</pubDate>
             <sparkle:version>23</sparkle:version>
