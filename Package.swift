@@ -18,10 +18,7 @@ let package = Package(
                 .product(name: "Aptabase", package: "aptabase-swift")
             ],
             path: "NotchSoGood",
-            exclude: ["Info.plist"],
-            resources: [
-                .copy("Assets.xcassets"),
-            ]
+            exclude: ["Info.plist"]
         )
     ]
 )

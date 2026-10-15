@@ -1,14 +1,8 @@
 #!/bin/bash
-# Quick rebuild and relaunch — run after any code change
+# Rebuild and relaunch from the repo, signed with $CODESIGN_IDENTITY when set
+# (a stable identity keeps Accessibility granted across rebuilds).
 set -e
 cd "$(dirname "$0")"
-
-echo "Building..."
-bash build-app.sh 2>&1 | tail -1
-
-pkill -9 "Notch So Good" 2>/dev/null || true
-sleep 0.5
-rm -rf "/Applications/Notch So Good.app"
-cp -r NotchSoGood.app "/Applications/Notch So Good.app"
-open "/Applications/Notch So Good.app"
-echo "Relaunched!"
+bash build-app.sh | tail -1
+pkill -x NotchSoGood 2>/dev/null && sleep 0.5 || true
+open NotchSoGood.app

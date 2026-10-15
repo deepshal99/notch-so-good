@@ -156,6 +156,11 @@ private struct GeneralPane: View {
                          subtitle: "Show up on the screen your terminal is on.") {
                     Toggle("", isOn: $notificationManager.followActiveDisplay).labelsHidden()
                 }
+                PanelDivider()
+                PanelRow(icon: "eye.slash", title: "Hide from screen sharing",
+                         subtitle: "Keeps the notch out of screen shares, recordings and screenshots.") {
+                    Toggle("", isOn: $notificationManager.hideFromCapture).labelsHidden()
+                }
             }
 
             PanelSection("General") {
@@ -227,8 +232,16 @@ private struct AlertsPane: View {
                 }
                 PanelDivider()
                 PanelRow(icon: "speaker.wave.2.fill", title: "Sound",
-                         subtitle: "A short cue when an agent needs you or finishes.") {
-                    Toggle("", isOn: $notificationManager.soundEnabled).labelsHidden()
+                         subtitle: notificationManager.soundOnlyWhenBlocked
+                            ? "Only when an agent is blocked on you."
+                            : "A short cue when an agent needs you or finishes.") {
+                    PanelSegmented(options: [("all", "All"), ("blocked", "Blocked"), ("off", "Off")], selection: Binding(
+                        get: { notificationManager.soundEnabled ? (notificationManager.soundOnlyWhenBlocked ? "blocked" : "all") : "off" },
+                        set: { mode in
+                            notificationManager.soundEnabled = mode != "off"
+                            notificationManager.soundOnlyWhenBlocked = mode == "blocked"
+                        }
+                    ))
                 }
             }
         }
@@ -394,18 +407,55 @@ private struct AboutPane: View {
     @ObservedObject var notificationManager: NotificationManager
     let updater: SPUUpdater?
 
+    @State private var checks: [Health.Check] = []
+    @State private var copied = false
+
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
+            PanelSection("Health") {
+                ForEach(Array(checks.enumerated()), id: \.element.id) { index, check in
+                    if index > 0 { PanelDivider() }
+                    HStack(spacing: 10) {
+                        StatusDot(color: check.level == .good ? CharacterState.done.color
+                                  : (check.level == .warning ? CharacterState.need.color : Panel.tertiary), size: 7)
+                            .frame(width: Panel.iconColumn)
+                        Text(check.title).font(Panel.title).foregroundColor(Panel.primary)
+                        Spacer(minLength: 12)
+                        Text(check.detail)
+                            .font(Panel.subtitle)
+                            .foregroundColor(Panel.secondary)
+                            .multilineTextAlignment(.trailing)
+                    }
+                    .padding(.horizontal, Panel.rowPadding)
+                    .padding(.vertical, 11)
+                    .accessibilityElement(children: .combine)
+                }
+                PanelDivider()
+                HStack {
+                    Spacer()
+                    Button(copied ? "Copied" : "Copy report") {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(Health.report(), forType: .string)
+                        copied = true
+                    }
+                    .buttonStyle(PanelButtonStyle(kind: .quiet))
+                    .help("Copies these checks as text, for a bug report")
+                }
+                .padding(.horizontal, Panel.rowPadding)
+                .padding(.vertical, 9)
+            }
+            .onAppear { checks = Health.checks() }
+
             PanelSection {
                 PanelRow(icon: "arrow.triangle.2.circlepath", title: "Updates",
-                         subtitle: "New versions install when you say so.") {
+                         subtitle: "New versions download quietly; restart when it suits you.") {
                     Button("Check now") { updater?.checkForUpdates() }
                         .buttonStyle(PanelButtonStyle(kind: .outline))
                         .disabled(updater == nil)
                 }
                 PanelDivider()
                 PanelRow(icon: "chart.bar.fill", title: "Share anonymous usage data",
-                         subtitle: "Counts only, like how many cards were shown. Never your code or prompts.") {
+                         subtitle: "Three anonymous counts: installed, open today, used with an agent today. No IDs, never your code or prompts.") {
                     Toggle("", isOn: $notificationManager.telemetryEnabled).labelsHidden()
                 }
             }

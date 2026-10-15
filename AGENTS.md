@@ -6,8 +6,8 @@ The world's smallest coworker lives in your Mac's notch. A tiny 3D character cal
 - Swift / SwiftUI, macOS 14+ (Sonoma)
 - Swift Package Manager (no Xcode required for pre-built installs)
 - Custom NSPanel for floating window
-- Canvas-based pixel art rendering
-- Codex / Codex CLI hook integration over a local Unix socket (`/tmp/notchsogood.sock`), plus a legacy `notchsogood://` URL scheme
+- Peek: a signed-distance-field character raymarched in Metal (`NotchSoGood/Character/`)
+- Claude Code / Codex CLI hook integration over a per-user Unix socket (`/tmp/notchsogood-<uid>.sock`)
 
 ## Build
 ```bash

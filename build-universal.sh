@@ -61,14 +61,9 @@ cp "NotchSoGood/Info.plist" "$CONTENTS/Info.plist"
 
 # Hook installers + the shared Python bridge. The Codex installer used to be
 # missing here, so universal builds silently shipped without Codex support.
-for f in install-hooks.sh install-codex-hooks.sh hook.py; do
+for f in install-hooks.sh install-codex-hooks.sh install-gemini-hooks.sh hook.py; do
     cp "HookInstaller/$f" "$RESOURCES/$f"
     chmod +x "$RESOURCES/$f"
-done
-
-# SwiftPM resource bundle (Assets.xcassets), if present
-for bundle in .build/arm64-apple-macosx/release/*.bundle; do
-    [ -e "$bundle" ] && cp -R "$bundle" "$RESOURCES/"
 done
 
 if [ -f "AppIcon.icns" ]; then
@@ -85,15 +80,22 @@ else
     echo -e "  ${DIM}Warning: Sparkle.framework not found${RESET}"
 fi
 
-# Code-sign the app bundle (ad-hoc) so Sparkle can validate updates
-codesign --force --deep --sign - "$APP_BUNDLE"
-echo -e "  ${GREEN}✓${RESET} Code-signed (ad-hoc)"
+# Anonymous counts (see Telemetry.swift): only when a key is provided.
+if [ -n "$APTABASE_APP_KEY" ]; then
+    plutil -replace AptabaseAppKey -string "$APTABASE_APP_KEY" "$CONTENTS/Info.plist"
+    echo -e "  ${GREEN}✓${RESET} Analytics key set"
+fi
 
-# Remove quarantine flag
+# Sign. Releases use the Notch So Good release certificate (RELEASE_IDENTITY,
+# a SHA-1 hash): one stable identity, so macOS keeps Accessibility granted
+# across updates and Sparkle sees every update as the same app. Without it the
+# build is ad-hoc signed, which is fine for trying things locally.
+IDENTITY="${RELEASE_IDENTITY:--}"
+codesign --force --deep --sign "$IDENTITY" "$APP_BUNDLE"
+codesign --verify --deep --strict "$APP_BUNDLE"
+echo -e "  ${GREEN}✓${RESET} Signed ($([ "$IDENTITY" = "-" ] && echo ad-hoc || echo release certificate))"
+
 xattr -cr "$APP_BUNDLE" 2>/dev/null || true
-
-# Register URL scheme
-/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$APP_BUNDLE" 2>/dev/null || true
 
 echo -e "  ${GREEN}✓${RESET} App bundle ready"
 

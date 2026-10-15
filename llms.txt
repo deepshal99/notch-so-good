@@ -34,7 +34,7 @@ Or: curl -fsSL https://raw.githubusercontent.com/deepshal99/notch-so-good/main/g
 
 ## How it works
 
-Claude Code / Codex hooks run a small Python bridge (~/.notchsogood/hook.py) that sends events over a local Unix domain socket (/tmp/notchsogood.sock, owner-only) the app listens on. Every event carries the agent's live permission_mode. Permission checks are bidirectional: the hook waits for your answer from the notch. Usage limits are read from your own local logins (Claude Code's OAuth credentials in the Keychain, Codex CLI's ~/.codex/auth.json). No server, no accounts, nothing leaves your Mac.
+Claude Code / Codex hooks run a small Python bridge (~/.notchsogood/hook.py) that sends events over a local Unix domain socket (/tmp/notchsogood-<uid>.sock, owner-only) the app listens on. Every event carries the agent's live permission_mode. Approvals come from the agents' own permission hooks, so a card appears only when the agent would ask; the hook waits for your click. Usage limits are read from your own local logins (Claude Code's OAuth credentials in the Keychain, Codex CLI's ~/.codex/auth.json). No server, no accounts, nothing leaves your Mac.
 
 ## Links
 

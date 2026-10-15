@@ -12,11 +12,14 @@ cask "notch-so-good" do
     strategy :github_latest
   end
 
+  # It updates itself (Sparkle); brew upgrade still works.
+  auto_updates true
   depends_on macos: :sonoma
 
   app "NotchSoGood.app"
 
-  # App is ad-hoc signed (not notarized) — clear quarantine so Gatekeeper lets it launch
+  # Not notarized (no Apple Developer account): clear the download flag so
+  # Gatekeeper opens it without the "unidentified developer" detour.
   postflight do
     system_command "/usr/bin/xattr",
                    args: ["-dr", "com.apple.quarantine", "#{appdir}/NotchSoGood.app"],

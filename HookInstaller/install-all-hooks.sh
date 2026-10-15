@@ -1,10 +1,10 @@
 #!/bin/bash
-# Installs NotchSoGood hooks for all supported AI coding agents
+# Installs Notch So Good hooks for all supported AI coding agents
 set -e
 
 DIR="$(cd "$(dirname "$0")" && pwd)"
 
-echo "Installing NotchSoGood hooks..."
+echo "Installing Notch So Good hooks..."
 echo ""
 
 # Claude Code
@@ -25,4 +25,13 @@ else
     echo "· Codex CLI not found (skipping)"
 fi
 
-echo "Done! All detected agents are now connected to NotchSoGood."
+# Gemini CLI (watching only)
+if command -v gemini &> /dev/null || [ -d "$HOME/.gemini" ]; then
+    echo "→ Gemini CLI detected"
+    bash "$DIR/install-gemini-hooks.sh"
+    echo ""
+else
+    echo "· Gemini CLI not found (skipping)"
+fi
+
+echo "Done! All detected agents are now connected to Notch So Good."

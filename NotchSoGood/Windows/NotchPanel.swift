@@ -23,6 +23,16 @@ class TransparentHostingView: NSHostingView<AnyView> {
 class NotchPanel: NSPanel {
     var onCancel: (() -> Void)?
 
+    /// Whether this panel appears over another app's full-screen space. Only
+    /// what needs you does; the pill and finished cards stay out of the way.
+    var showsOverFullScreen = true {
+        didSet {
+            collectionBehavior = showsOverFullScreen
+                ? [.stationary, .canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
+                : [.stationary, .canJoinAllSpaces, .ignoresCycle]
+        }
+    }
+
     init(contentRect: NSRect) {
         super.init(
             contentRect: contentRect,
@@ -34,6 +44,7 @@ class NotchPanel: NSPanel {
         isFloatingPanel = true
         level = .statusBar + 1
         collectionBehavior = [.stationary, .canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
+        sharingType = NotificationManager.hiddenFromCapture ? .none : .readOnly
         isOpaque = false
         backgroundColor = .clear
         hasShadow = false

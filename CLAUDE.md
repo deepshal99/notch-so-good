@@ -11,7 +11,8 @@ The world's smallest coworker lives in your Mac's notch. A little 3D character (
 - Hooks: Notch So Good only answers "allow" after a user click; anything it wouldn't ask about gets no decision so the agent's own rules decide. Installers merge with the user's own hooks
 - Notch characters (Peek, Tail, Roost, Bubble) are signed-distance fields raymarched in a Metal shader (`NotchSoGood/Character/`), compiled from source at runtime because `swift build` doesn't compile `.metal` files. Choreography and Bubble's physics live in `CharacterEngine.swift`.
 - Debug builds can render offscreen snapshots: `.build/out/Products/Debug/NotchSoGood --snapshots <dir>` (runs alongside an installed copy, starts no servers)
-- Claude Code / Codex CLI hook integration over a local Unix socket (`/tmp/notchsogood.sock`), plus a legacy `notchsogood://` URL scheme
+- Claude Code / Codex CLI hook integration over a per-user Unix socket (`/tmp/notchsogood-<uid>.sock`). Approvals come from the agents' `PermissionRequest` hook; questions and plans from PreToolUse with `updatedInput`
+- Updates: Sparkle with our own EdDSA key and a self-signed release certificate (no Apple Developer account); `release.sh` publishes
 
 ## Build
 ```bash
@@ -26,7 +27,7 @@ bash HookInstaller/install-all-hooks.sh  # install hooks for every detected agen
 Developers using Claude Code in their terminal. They tab away while Claude works and need a glanceable, delightful way to know when Claude needs them — without intrusive OS notifications. The notification appears at the notch and should feel native to macOS.
 
 ### Brand Voice
-**Weird, warm, technically precise.** The character is the personality: a character, not a mascot. Copy should be conversational and slightly absurd ("He has no chill", "Chawd built himself") while the product itself is Apple-level polished. Never corporate. Never boring. The kind of tool you tell your friends about because it made you smile.
+**Weird, warm, technically precise.** The character is the personality: a character, not a mascot. Copy should be conversational and slightly absurd ("He has no chill") while the product itself is Apple-level polished. Never corporate. Never boring. The kind of tool you tell your friends about because it made you smile.
 
 ### Aesthetic Direction
 - **Primary reference:** Apple Dynamic Island — black, seamless notch integration, precise animations, feels like part of the hardware

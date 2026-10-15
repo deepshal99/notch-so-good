@@ -1,19 +1,20 @@
 import Foundation
 import Aptabase
 
-/// Thin, privacy-first wrapper around Aptabase (open-source, EU-hostable analytics).
+/// Anonymous counts, nothing more: how many people installed the app, how many
+/// had it open on a given day, and how many used it with an agent that day.
 ///
-/// - Fully opt-out: gated behind `NotificationManager.shared.telemetryEnabled`.
-/// - Fully no-op if no app key is configured (Info.plist has no "AptabaseAppKey"
-///   entry by default — that's intentional until a key is issued).
-/// - Never tracks message contents, file paths, session IDs, or anything else
-///   that could identify a user or their work. Event names and small enum-like
-///   properties only.
+/// - No identifiers of any kind (no install id, no user id), no file paths, no
+///   project names, no prompts, no commands. Aptabase adds only the app
+///   version, macOS version and locale, and doesn't store IP addresses.
+/// - Each daily count is sent at most once per day per Mac.
+/// - Off with Settings → About → "Share anonymous usage data".
+/// - A no-op until a key is set (`AptabaseAppKey` in Info.plist, filled in by
+///   the release build from `APTABASE_APP_KEY`).
 @MainActor
 final class Telemetry {
     static let shared = Telemetry()
 
-    /// True only when a non-empty app key was found and Aptabase initialized successfully.
     private let isConfigured: Bool
 
     private init() {
@@ -26,8 +27,30 @@ final class Telemetry {
         isConfigured = true
     }
 
+    /// `install` once ever, `active_day` once a day.
+    func noteLaunch() {
+        if !UserDefaults.standard.bool(forKey: "telemetry.installed") {
+            UserDefaults.standard.set(true, forKey: "telemetry.installed")
+            trackEvent("install")
+        }
+        once(per: "active_day")
+    }
+
+    /// `session_day` once a day, with which agent ("claude" / "codex"), the
+    /// first time a session shows up that day.
+    func noteSession(agent: AgentSource) {
+        once(per: "session_day", props: ["agent": agent.rawValue])
+    }
+
+    private func once(per event: String, props: [String: Any] = [:]) {
+        let today = ISO8601DateFormatter.string(from: Date(), timeZone: .current, formatOptions: [.withFullDate])
+        let key = "telemetry.\(event)"
+        guard UserDefaults.standard.string(forKey: key) != today else { return }
+        UserDefaults.standard.set(today, forKey: key)
+        trackEvent(event, props: props)
+    }
+
     /// Track an event, if telemetry is configured and the user hasn't opted out.
-    /// Safe to call unconditionally from anywhere — this is a no-op otherwise.
     func trackEvent(_ name: String, props: [String: Any] = [:]) {
         guard isConfigured, NotificationManager.shared.telemetryEnabled else { return }
         Aptabase.shared.trackEvent(name, with: props)

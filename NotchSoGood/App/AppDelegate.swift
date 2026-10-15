@@ -1,4 +1,5 @@
 import AppKit
+import ServiceManagement
 import Sparkle
 
 @MainActor
@@ -11,14 +12,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         #endif
         updaterController = SPUStandardUpdaterController(
             startingUpdater: true,
-            updaterDelegate: nil,
-            userDriverDelegate: nil
+            updaterDelegate: Updates.shared,
+            userDriverDelegate: Updates.shared
         )
         super.init()
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         SettingsWindowController.shared.updater = updaterController.updater
+        Updates.shared.updater = updaterController.updater
         MenuBarController.shared.install()
         // Auto-install hooks on first launch / version update
         NotificationManager.shared.installHooksIfNeeded()
@@ -34,7 +36,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Compile the character shader now so the first notification shows it instantly.
         CharacterRenderer.shared.prepare(warm: [(CharacterSettings.shared.kind, CharacterSettings.shared.finish)])
 
-        Telemetry.shared.trackEvent("app_launched")
+        Telemetry.shared.noteLaunch()
+        Self.setUpLoginItem()
 
         // First run: say hello from the notch, so a new install shows where it
         // lives and what it does instead of sitting silent until a session starts.
@@ -71,5 +74,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 NotificationManager.shared.windowController.handleScreenChange()
             }
         }
+    }
+
+    /// Open at login is on from the first launch (a menu bar coworker that
+    /// doesn't come back after a restart isn't much of one); Settings turns it
+    /// off. Installers before 4.7 added their own LaunchAgent for this, which
+    /// would open a second copy: it goes.
+    private static func setUpLoginItem() {
+        let legacy = NSHomeDirectory() + "/Library/LaunchAgents/com.notchsogood.app.plist"
+        if FileManager.default.fileExists(atPath: legacy) {
+            try? FileManager.default.removeItem(atPath: legacy)
+        }
+        guard !UserDefaults.standard.bool(forKey: "loginItemConfigured") else { return }
+        UserDefaults.standard.set(true, forKey: "loginItemConfigured")
+        if SMAppService.mainApp.status != .enabled { try? SMAppService.mainApp.register() }
     }
 }

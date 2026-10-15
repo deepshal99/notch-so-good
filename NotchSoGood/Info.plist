@@ -30,9 +30,13 @@
 	<string>Copyright © 2026 Notch So Good. All rights reserved.</string>
 	<key>SUEnableAutomaticChecks</key>
 	<true/>
+	<key>SUAutomaticallyUpdate</key>
+	<true/>
+	<key>SUScheduledCheckInterval</key>
+	<integer>3600</integer>
 	<key>SUFeedURL</key>
-	<string>https://raw.githubusercontent.com/deepshal99/notch-so-good/main/appcast.xml</string>
+	<string>https://raw.githubusercontent.com/deepshal99/notch-so-good/main/updates.xml</string>
 	<key>SUPublicEDKey</key>
-	<string>5vdUWlthEz9q9czlyFOINzMA4nELfpQfnrhzzClMjN8=</string>
+	<string>fC18bLpS30RBmwb2ssk8SOUseRio2dN/qyzB7LK1a6U=</string>
 </dict>
 </plist>

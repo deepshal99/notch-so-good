@@ -10,8 +10,25 @@ class NotificationManager: ObservableObject {
         didSet {
             UserDefaults.standard.set(soundEnabled, forKey: "soundEnabled")
             SoundManager.shared.isEnabled = soundEnabled
+        SoundManager.shared.onlyWhenBlocked = soundOnlyWhenBlocked
         }
     }
+    /// Sound only for what blocks an agent (approvals, questions, errors).
+    @Published var soundOnlyWhenBlocked: Bool {
+        didSet {
+            UserDefaults.standard.set(soundOnlyWhenBlocked, forKey: "soundOnlyWhenBlocked")
+            SoundManager.shared.onlyWhenBlocked = soundOnlyWhenBlocked
+        }
+    }
+    /// Keep the notch UI out of screen shares, recordings and screenshots.
+    @Published var hideFromCapture: Bool {
+        didSet {
+            UserDefaults.standard.set(hideFromCapture, forKey: "hideFromCapture")
+            windowController.applyCaptureVisibility()
+            MenuBarController.shared.applyCaptureVisibility()
+        }
+    }
+    nonisolated static var hiddenFromCapture: Bool { UserDefaults.standard.bool(forKey: "hideFromCapture") }
     @Published var showOnComplete: Bool {
         didSet { UserDefaults.standard.set(showOnComplete, forKey: "showOnComplete") }
     }
@@ -193,6 +210,8 @@ class NotificationManager: ObservableObject {
         }
 
         soundEnabled = defaults.bool(forKey: "soundEnabled")
+        soundOnlyWhenBlocked = defaults.bool(forKey: "soundOnlyWhenBlocked")
+        hideFromCapture = defaults.bool(forKey: "hideFromCapture")
         showOnComplete = defaults.bool(forKey: "showOnComplete")
         showOnQuestion = defaults.bool(forKey: "showOnQuestion")
         showOnPermission = defaults.bool(forKey: "showOnPermission")
@@ -328,6 +347,7 @@ class NotificationManager: ObservableObject {
         if let permissionMode { session.permissionMode = permissionMode }
         session.colorIndex = freeColorIndex()
         activeSessions.append(session)
+        Telemetry.shared.noteSession(agent: session.agentSource)
 
         // Start watching JSONL file for interrupts
         SessionFileWatcher.shared.startWatching(sessionId: sid, cwd: resolvedCwd)
@@ -394,6 +414,8 @@ class NotificationManager: ObservableObject {
 
         if activeSessions.isEmpty {
             windowController.hideSessionPill()
+            // The last session is over: a good moment for "update ready".
+            DispatchQueue.main.asyncAfter(deadline: .now() + 8) { Updates.shared.announceIfQuiet() }
         } else {
             refreshPill()
         }
@@ -429,14 +451,10 @@ class NotificationManager: ObservableObject {
         guard let sid = NotchNotification.nonEmpty(sessionId),
               let idx = adoptSession(sessionId: sid) else { return }
         let oldStatus = activeSessions[idx].status
-        let wasCompleted = oldStatus == .completed
         activeSessions[idx].status = status
         // Session moved on — the previous waiting spell is over, unmute its alerts
         if status == .running || status == .completed {
             clearPopupState(sessionId: sid)
-        }
-        if status == .completed && !wasCompleted {
-            Telemetry.shared.trackEvent("session_completed")
         }
         if let msg = message {
             activeSessions[idx].lastMessage = msg
@@ -596,7 +614,6 @@ class NotificationManager: ObservableObject {
         }
 
         let session = activeSessions.first(where: { $0.id == notification.sessionId })
-        Telemetry.shared.trackEvent("notification_shown", props: ["type": notification.type.rawValue])
         windowController.showNotification(
             notification,
             sessionSourceBundleId: session?.sourceBundleId,
@@ -804,7 +821,7 @@ class NotificationManager: ObservableObject {
     /// Runs both installers off the main thread and reports whether they
     /// succeeded. The Codex one skips itself when Codex isn't installed.
     func installHooks(completion: ((Bool) -> Void)? = nil) {
-        let scripts = ["install-hooks", "install-codex-hooks"].compactMap {
+        let scripts = ["install-hooks", "install-codex-hooks", "install-gemini-hooks"].compactMap {
             Bundle.main.path(forResource: $0, ofType: "sh")
         }
         DispatchQueue.global(qos: .utility).async {
@@ -842,7 +859,9 @@ class NotificationManager: ObservableObject {
         switch interaction {
         case .permission:
             enabled = showOnPermission
-            let (action, short) = Self.sanitizePermission(toolName: toolName, toolInput: detail ?? "")
+            // A file change's detail is its path, then the -/+ lines: summarise the path.
+            let firstLine = (detail ?? "").components(separatedBy: "\n").first ?? ""
+            let (action, short) = Self.sanitizePermission(toolName: toolName, toolInput: firstLine)
             title = action
             message = NotchNotification.nonEmpty(description) ?? short
             if body == nil { body = short }
@@ -880,7 +899,6 @@ class NotificationManager: ObservableObject {
             interaction: interaction
         )
         let session = activeSessions.first(where: { $0.id == sessionId })
-        Telemetry.shared.trackEvent("notification_shown", props: ["type": "waiting"])
         windowController.showNotification(
             notification,
             sessionSourceBundleId: session?.sourceBundleId,

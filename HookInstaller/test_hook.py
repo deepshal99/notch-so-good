@@ -246,6 +246,35 @@ class Activity(unittest.TestCase):
         self.assertTrue(hook.SOCKET_PATH.endswith("-%d.sock" % os.getuid()) or "NOTCHSOGOOD_SOCKET" in os.environ)
 
 
+class Gemini(unittest.TestCase):
+    def test_events_map_onto_ours(self):
+        _, out, _, events = run_hook("AfterAgent", {"session_id": "g", "cwd": "/r", "prompt_response": "Done."}, agent="gemini")
+        self.assertEqual((out.strip(), events[0]["event"], events[0]["last_assistant_message"], events[0]["source_app"]),
+                         ("", "Stop", "Done.", "gemini"))
+        _, _, _, events = run_hook("BeforeAgent", {"session_id": "g", "prompt": "Fix the flaky test"}, agent="gemini")
+        self.assertEqual((events[0]["event"], events[0]["prompt_title"]), ("UserPromptSubmit", "Fix the flaky test"))
+
+    def test_tools_are_renamed_and_tests_read(self):
+        _, out, _, events = run_hook("BeforeTool", {"session_id": "g", "tool_name": "run_shell_command",
+                                                    "tool_input": {"command": "npm test"}}, agent="gemini", reply={"decision": "allow"})
+        self.assertEqual((out.strip(), events[0]["tool_name"]), ("", "Bash"))
+        _, _, _, events = run_hook("AfterTool", {"session_id": "g", "tool_name": "run_shell_command", "tool_input": {"command": "npm test"},
+                                                 "tool_response": {"error": "exit 1"}}, agent="gemini")
+        self.assertEqual(events[0]["tests"], "failed")
+        _, _, _, events = run_hook("AfterTool", {"session_id": "g", "tool_name": "write_file", "tool_input": {"file_path": "/r/a.py"},
+                                                 "tool_response": {}}, agent="gemini")
+        self.assertEqual(events[0]["edited"], ["/r/a.py"])
+
+    def test_permission_is_a_notification_never_an_answer(self):
+        _, out, _, events = run_hook("Notification", {"session_id": "g", "notification_type": "ToolPermission",
+                                                      "message": "Allow run_shell_command?"}, agent="gemini")
+        self.assertEqual((out.strip(), events[0]["notification_type"]), ("", "permission_prompt"))
+
+    def test_unknown_gemini_events_are_ignored(self):
+        _, out, _, events = run_hook("BeforeModel", {"session_id": "g"}, agent="gemini")
+        self.assertEqual((out.strip(), events), ("", []))
+
+
 class PayloadShaping(unittest.TestCase):
     def test_tool_summary_picks_the_useful_field(self):
         self.assertEqual(hook.tool_summary("Bash", {"command": "ls -la"}), "ls -la")

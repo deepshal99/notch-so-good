@@ -74,6 +74,7 @@ struct NotchNotification: Identifiable {
     static let limitsTitle = "Running low"
     static let limitsOutTitle = "Out of usage"
     static let limitsBackTitle = "Usage is back"
+    static let updateTitle = "Update ready"
     static let nudgeTitle = "Still waiting on you"
 
     var displayTitle: String {

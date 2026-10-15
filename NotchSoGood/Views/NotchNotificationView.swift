@@ -623,9 +623,13 @@ struct NotchNotificationView: View {
                     .foregroundColor(Island.primary)
                     .lineLimit(1)
                 Spacer(minLength: 8)
-                Text("just now")
-                    .font(Island.numeric)
-                    .foregroundColor(Island.tertiary)
+                if characterState == .done, let session, !session.turnEdited.isEmpty || session.turnTests != nil {
+                    TurnStats(edited: session.turnEdited.count, tests: session.turnTests)
+                } else {
+                    Text("just now")
+                        .font(Island.numeric)
+                        .foregroundColor(Island.tertiary)
+                }
             }
             .frame(height: Metrics.titleRow)
 
@@ -795,5 +799,33 @@ struct OptionRow: View {
         .help(option.description.isEmpty ? option.label : option.description)
         .accessibilityLabel(option.description.isEmpty ? option.label : "\(option.label), \(option.description)")
         .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+}
+
+/// What a finished turn did, at a glance: files it wrote, and how the last
+/// test run went.
+struct TurnStats: View {
+    let edited: Int
+    let tests: String?
+
+    var body: some View {
+        HStack(spacing: 10) {
+            if edited > 0 {
+                Text(edited == 1 ? "1 file" : "\(edited) files")
+                    .font(Island.numeric)
+                    .foregroundColor(Island.secondary)
+            }
+            if let tests {
+                let passed = tests == "passed"
+                HStack(spacing: 4) {
+                    Image(systemName: passed ? "checkmark" : "xmark")
+                        .font(.system(size: 9.5, weight: .bold))
+                    Text(passed ? "Tests pass" : "Tests fail")
+                        .font(Island.numeric)
+                }
+                .foregroundColor(passed ? CharacterState.done.color : CharacterState.error.color)
+            }
+        }
+        .accessibilityElement(children: .combine)
     }
 }

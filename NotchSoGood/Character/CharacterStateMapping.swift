@@ -11,7 +11,7 @@ extension CharacterState {
             switch notification.title {
             case NotchNotification.limitsTitle: self = .warn
             case NotchNotification.limitsOutTitle: self = .error
-            case NotchNotification.limitsBackTitle: self = .done
+            case NotchNotification.limitsBackTitle, NotchNotification.updateTitle: self = .done
             case NotchNotification.nudgeTitle: self = .need
             default: self = .work
             }

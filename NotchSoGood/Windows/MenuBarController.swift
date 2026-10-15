@@ -168,11 +168,16 @@ final class MenuBarController: NSObject, NSWindowDelegate {
         panel.hasShadow = false
         panel.level = .popUpMenu
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
+        panel.sharingType = NotificationManager.hiddenFromCapture ? .none : .readOnly
         panel.isReleasedWhenClosed = false
         panel.hidesOnDeactivate = false
         panel.appearance = NSAppearance(named: .darkAqua)
         panel.delegate = self
         return panel
+    }
+
+    func applyCaptureVisibility() {
+        panel?.sharingType = NotificationManager.hiddenFromCapture ? .none : .readOnly
     }
 
     nonisolated func windowDidResignKey(_ notification: Notification) {

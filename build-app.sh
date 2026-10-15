@@ -38,14 +38,9 @@ cp "$BUILD_DIR/$APP_NAME" "$MACOS/$APP_NAME"
 cp "NotchSoGood/Info.plist" "$CONTENTS/Info.plist"
 
 # Copy hook installers and the shared Python bridge they install
-for f in install-hooks.sh install-codex-hooks.sh hook.py; do
+for f in install-hooks.sh install-codex-hooks.sh install-gemini-hooks.sh hook.py; do
     cp "HookInstaller/$f" "$RESOURCES/$f"
     chmod +x "$RESOURCES/$f"
-done
-
-# Copy the SwiftPM resource bundle (Assets.xcassets) if the build produced one
-for bundle in "$BUILD_DIR"/*.bundle; do
-    [ -e "$bundle" ] && cp -R "$bundle" "$RESOURCES/"
 done
 
 # Copy app icon
@@ -76,7 +71,7 @@ else
     echo "Code-signed app bundle ($IDENTITY)"
 fi
 
-# Register URL scheme by touching the app
+# Tell Launch Services about this copy (icon, name) right away.
 /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$APP_BUNDLE" 2>/dev/null || true
 
 echo ""
@@ -88,3 +83,4 @@ echo ""
 echo "After running, install hooks for your agents:"
 echo "  bash HookInstaller/install-hooks.sh        # Claude Code"
 echo "  bash HookInstaller/install-codex-hooks.sh  # Codex CLI"
+echo "  bash HookInstaller/install-gemini-hooks.sh # Gemini CLI"

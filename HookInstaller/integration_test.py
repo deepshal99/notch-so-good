@@ -16,44 +16,13 @@ import os
 import socket
 import subprocess
 import sys
+import threading
 import time
 
-SOCKET_PATH = "/tmp/notchsogood.sock"
+SOCKET_PATH = "/tmp/notchsogood-%d.sock" % os.getuid()
 APP_BINARY = "NotchSoGood.app/Contents/MacOS/NotchSoGood"
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import hook  # reuse the bridge's rule logic so expectations match this machine
-
 results = []
-
-
-def user_allow_rules():
-    return hook.load_claude_settings(None)[1]
-
-
-def is_pre_approved(tool, tool_input):
-    """Would this tool be approved before any prompt, on THIS machine?"""
-    if tool in hook.SAFE_TOOLS or hook.mcp_read_only(tool):
-        return True
-    return hook.allowed_by_rules(tool, tool_input, user_allow_rules())
-
-
-def pick_gated_tool():
-    """A (tool, input) pair this machine will definitely prompt for.
-
-    Derived rather than hard-coded: a developer's own allow list may already
-    cover Bash or Write, and the test must not read that as a regression.
-    """
-    candidates = [
-        ("Write", "/tmp/nsg-integration-probe.txt"),
-        ("Edit", "/tmp/nsg-integration-probe.txt"),
-        ("NotebookEdit", "/tmp/nsg-integration-probe.ipynb"),
-        ("Bash", "nsg-integration-probe --version"),
-    ]
-    for tool, tool_input in candidates:
-        if not is_pre_approved(tool, tool_input):
-            return tool, tool_input
-    return None, None
 
 
 def restart_app():
@@ -167,83 +136,67 @@ def test_socket_is_up():
     return check("socket accepts connections", ok)
 
 
-def test_bypass_mode_never_prompts():
-    """Bypass mode: no card, and no decision from us either (the agent decides)."""
-    reply, elapsed = send(
-        pre_tool("bypass-1", "Bash", "rm -rf node_modules", mode="bypassPermissions"),
-        wait=True, timeout=8,
-    )
-    approved = isinstance(reply, dict) and reply.get("decision") == "defer"
-    fast = elapsed < 1.0
-    wait_ui(0.8)
-    shot("bypass-no-card")
-    return (check("bypass mode leaves Bash to the agent (no prompt, no approval)", approved, "reply=%r" % (reply,))
-            and check("bypass mode answers immediately", fast, "%.3fs" % elapsed))
+def hotkey(letter):
+    """Press Control-Option-<letter>, the app's global answer keys."""
+    code = {"A": 0, "D": 2}[letter]
+    subprocess.run(["osascript", "-e",
+                    'tell application "System Events" to key code %d using {control down, option down}' % code],
+                   capture_output=True)
 
 
-def test_auto_and_plan_modes():
-    ok = True
-    for mode in ("auto", "plan"):
-        reply, elapsed = send(
-            pre_tool("mode-%s" % mode, "Write", "/tmp/x.txt", mode=mode),
-            wait=True, timeout=8,
-        )
-        approved = isinstance(reply, dict) and reply.get("decision") == "defer"
-        ok &= check("%s mode leaves Write to the agent in %.3fs" % (mode, elapsed), approved,
-                    "reply=%r" % (reply,))
-    return ok
+def permission_request(session, tool, tool_input, **extra):
+    event = base(session)
+    event.update({"event": "PermissionRequest", "tool_name": tool, "tool_input": tool_input})
+    event.update(extra)
+    return event
 
 
-def test_accept_edits_scope():
-    reply, _ = send(pre_tool("ae-1", "Edit", "/tmp/a.swift", mode="acceptEdits"),
-                    wait=True, timeout=8)
-    edits_ok = check("acceptEdits leaves Edit to the agent",
-                     isinstance(reply, dict) and reply.get("decision") == "defer",
-                     "reply=%r" % (reply,))
-
-    # A non-edit tool is NOT covered by acceptEdits: the app must hold it open.
-    tool, tool_input = "Bash", "nsg-integration-probe --version"
-    if is_pre_approved(tool, tool_input):
-        return edits_ok and check("acceptEdits still gates non-edits", True,
-                                  "skipped: %s is in your allow list" % tool)
-    reply, elapsed = send(pre_tool("ae-2", tool, tool_input, mode="acceptEdits"),
-                          wait=True, timeout=3)
-    held = reply == "TIMEOUT"
-    wait_ui(0.8)
-    shot("acceptEdits-gates-non-edits")
-    ok = check("acceptEdits still gates %s" % tool, held,
-               "reply=%r after %.1fs" % (reply, elapsed))
-    restart_app()   # clear the card this deliberately raised
-    return edits_ok and ok
+def answered_with(event, key):
+    """Send a request that waits, press a hotkey once its card is up, return the reply."""
+    box = {}
+    worker = threading.Thread(target=lambda: box.update(reply=send(event, wait=True, timeout=10)))
+    worker.start()
+    wait_ui(1.4)          # the card appears, and hotkeys ignore its first half second
+    shot("card-%s" % event["tool_name"])
+    hotkey(key)
+    worker.join(12)
+    return box.get("reply", (None, 0))[0]
 
 
-def test_safe_tool_autoapproved():
-    reply, elapsed = send(pre_tool("safe-1", "Read", "/tmp/file"), wait=True, timeout=8)
-    return check("safe tool (Read) left to the agent in default mode",
-                 isinstance(reply, dict) and reply.get("decision") == "defer",
-                 "%.3fs reply=%r" % (elapsed, reply))
+def test_old_pre_tool_use_is_never_gated():
+    """Hooks from before 4.7 still wait on PreToolUse: they get "defer" at once."""
+    reply, elapsed = send(pre_tool("old-1", "Bash", "rm -rf node_modules"), wait=True, timeout=5)
+    return (check("old PreToolUse gets defer (the agent decides)",
+                  isinstance(reply, dict) and reply.get("decision") == "defer", "reply=%r" % (reply,))
+            and check("and at once", elapsed < 1.0, "%.3fs" % elapsed))
 
 
-def test_write_tools_are_gated():
-    """Anything that writes to disk must reach the user, not be auto-approved."""
-    tool, tool_input = pick_gated_tool()
-    if tool is None:
-        return check("write tools are gated", True,
-                     "skipped: every candidate is in your allow list")
-    reply, elapsed = send(pre_tool("gate-1", tool, tool_input), wait=True, timeout=3)
-    ok = check("%s is gated in default mode" % tool, reply == "TIMEOUT",
-               "reply=%r after %.1fs" % (reply, elapsed))
-    wait_ui(0.8)
-    shot("default-mode-card")
+def test_permission_request_allow_hotkey():
+    reply = answered_with(permission_request("perm-1", "Bash", "git status && rm -rf ~/nsg-probe",
+                                             description="Check, then clean"), "A")
+    return check("PermissionRequest waits for the user; ⌃⌥A allows",
+                 isinstance(reply, dict) and reply.get("decision") == "allow", "reply=%r" % (reply,))
+
+
+def test_permission_request_deny_hotkey():
+    reply = answered_with(permission_request("perm-2", "Write", "/tmp/nsg-probe.txt\n+ hello",
+                                             always_label="Write(/tmp/nsg-probe.txt)",
+                                             always_destination="localSettings"), "D")
+    return check("⌃⌥D denies", isinstance(reply, dict) and reply.get("decision") == "deny",
+                 "reply=%r" % (reply,))
+
+
+def test_question_waits():
+    event = base("ask-1")
+    event.update({"event": "AskUserQuestion", "questions": [{
+        "question": "Which cache?", "header": "Cache", "multiSelect": False,
+        "options": [{"label": "Redis", "description": "Shared"}, {"label": "SQLite", "description": "File"}]}]})
+    reply, elapsed = send(event, wait=True, timeout=3)
+    wait_ui(0.4)
+    shot("question-card")
+    ok = check("a question waits for an answer", reply == "TIMEOUT", "reply=%r after %.1fs" % (reply, elapsed))
     restart_app()   # clear the card this deliberately raised
     return ok
-
-
-def test_notebook_edit_not_in_safe_list():
-    # Mirrors PermissionServer.safeTools; it used to include NotebookEdit, which
-    # silently auto-approved notebook writes.
-    return check("NotebookEdit is not in the safe-tool list",
-                 "NotebookEdit" not in hook.SAFE_TOOLS)
 
 
 def test_decision_not_needed_is_non_blocking():
@@ -383,8 +336,7 @@ def test_long_message_is_clamped():
 
 def test_cleanup():
     for sid in ("adopt-1", "status-1", "bypass-notif", "keep-a", "keep-b",
-                "prio-working", "prio-blocked", "long-1", "gate-1",
-                "bypass-1", "mode-auto", "mode-plan", "ae-1", "ae-2", "safe-1"):
+                "prio-working", "prio-blocked", "long-1", "old-1", "perm-1", "perm-2", "ask-1"):
         event = base(sid)
         event["event"] = "SessionEnd"
         send(event)
@@ -413,12 +365,10 @@ def main():
         print("\nApp is not listening — start it first.")
         return 1
 
-    test_bypass_mode_never_prompts()
-    test_auto_and_plan_modes()
-    test_accept_edits_scope()
-    test_safe_tool_autoapproved()
-    test_write_tools_are_gated()
-    test_notebook_edit_not_in_safe_list()
+    test_old_pre_tool_use_is_never_gated()
+    test_permission_request_allow_hotkey()
+    test_permission_request_deny_hotkey()
+    test_question_waits()
     test_decision_not_needed_is_non_blocking()
     test_session_adopted_without_session_start()
     test_status_transitions()

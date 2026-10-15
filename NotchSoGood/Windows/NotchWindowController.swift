@@ -114,6 +114,7 @@ class NotchWindowController {
 
         if pillPanel == nil {
             pillPanel = NotchPanel(contentRect: panelFrame)
+            pillPanel?.showsOverFullScreen = false
             pillPanel?.level = .popUpMenu
 
             let pillView = SessionPillView(
@@ -160,6 +161,13 @@ class NotchWindowController {
         }
 
         pillHoverMonitor.start(panel: pillPanel)
+    }
+
+    /// The "Hide from screen sharing" setting, applied to the open panels.
+    func applyCaptureVisibility() {
+        let type: NSWindow.SharingType = NotificationManager.hiddenFromCapture ? .none : .readOnly
+        panel?.sharingType = type
+        pillPanel?.sharingType = type
     }
 
     func hideSessionPill() {
@@ -321,6 +329,8 @@ class NotchWindowController {
             panel?.setFrame(frame, display: true)
         }
 
+        // Over someone's full-screen app, only a card that needs an answer shows.
+        panel?.showsOverFullScreen = isPermission
         let resolvedBundleId = notification.sourceBundleId ?? sessionSourceBundleId
         let resolvedCwd = sessionCwd
 
@@ -338,6 +348,10 @@ class NotchWindowController {
             notchHeight: notchH,
             onTap: { [weak self] in
                 self?.dismiss()
+                if notification.title == NotchNotification.updateTitle {
+                    Task { @MainActor in Updates.shared.installAndRestart() }
+                    return
+                }
                 Task { @MainActor in
                     NotificationManager.shared.muteRepeats(sessionId: notification.sessionId, type: notification.type)
                 }

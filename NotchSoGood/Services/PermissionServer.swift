@@ -196,7 +196,6 @@ class PermissionServer {
            owner.uint32Value == getuid() {
             unlink(Self.legacySocketPath)
         }
-        unlink("/tmp/notchsogood.port")
 
         serverSocket = socket(AF_UNIX, SOCK_STREAM, 0)
         guard serverSocket >= 0 else {
@@ -264,7 +263,7 @@ class PermissionServer {
         defer { close(fd) }
         var addr = sockaddr_un()
         addr.sun_family = sa_family_t(AF_UNIX)
-        path.withCString { ptr in
+        _ = path.withCString { ptr in
             withUnsafeMutablePointer(to: &addr.sun_path) { pathPtr in
                 strcpy(UnsafeMutableRawPointer(pathPtr).assumingMemoryBound(to: CChar.self), ptr)
             }

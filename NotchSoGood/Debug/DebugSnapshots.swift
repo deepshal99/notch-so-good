@@ -229,6 +229,8 @@ enum DebugSnapshots {
         var session = NotificationManager.SessionInfo(id: "s", startTime: Date(), projectName: "api", status: .needsPermission, cwd: repo)
         session.taskTitle = "Fix the flaky websocket reconnect"
         session.colorIndex = 1
+        session.turnEdited = ["a.swift", "b.swift", "c.swift"]
+        session.turnTests = "passed"
         let always = CardInteraction.AlwaysRule(label: "Bash(git push origin fix/ws-reconnect)", destination: "localSettings")
         let plan = """
         # Make reconnects back off
@@ -265,7 +267,7 @@ enum DebugSnapshots {
         ]
         let s: CGFloat = 2
         var images: [(CGImage, CGSize)] = []
-        for (i, (n, t)) in cards.enumerated() {
+        for (n, t) in cards {
             let h = notchH + NotchNotificationView.Metrics.contentHeight(for: n, panelWidth: panelW)
             let view = NotchNotificationView(notification: n, hasNotch: true, notchWidth: notchW, notchHeight: notchH, onTap: {}, onDismiss: {},
                                              onRespond: { _ in },

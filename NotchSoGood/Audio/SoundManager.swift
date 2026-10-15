@@ -4,11 +4,14 @@ import AppKit
 class SoundManager {
     static let shared = SoundManager()
     var isEnabled = true
+    /// Only approvals, questions and errors make a sound.
+    var onlyWhenBlocked = false
 
     private init() {}
 
     func play(for type: NotificationType) {
         guard isEnabled else { return }
+        if onlyWhenBlocked, ![.permission, .question, .error].contains(type) { return }
 
         let soundName = type.soundName
 

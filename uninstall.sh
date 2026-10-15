@@ -35,7 +35,7 @@ if [ -f "$PLIST" ]; then
 fi
 
 # Remove ONLY our hooks from Claude settings — leaves any user hooks intact.
-# Every Notch So Good hook command references /tmp/notchsogood.sock.
+# Every Notch So Good hook command runs ~/.notchsogood/hook.py.
 SETTINGS="$HOME/.claude/settings.json"
 if [ -f "$SETTINGS" ] && command -v python3 &> /dev/null; then
     UPDATED=$(python3 -c "
@@ -105,6 +105,37 @@ PYEOF
     fi
 fi
 
+# Remove ONLY our Gemini CLI hooks from its settings.
+GEMINI_SETTINGS="$HOME/.gemini/settings.json"
+if [ -f "$GEMINI_SETTINGS" ] && grep -q "notchsogood" "$GEMINI_SETTINGS" 2>/dev/null; then
+    if python3 - "$GEMINI_SETTINGS" <<'PYEOF'
+import json, sys
+path = sys.argv[1]
+doc = json.load(open(path))
+hooks = doc.get("hooks", {}) if isinstance(doc.get("hooks"), dict) else {}
+for event in list(hooks):
+    groups = []
+    for g in hooks[event] if isinstance(hooks[event], list) else []:
+        if isinstance(g, dict) and isinstance(g.get("hooks"), list):
+            g["hooks"] = [h for h in g["hooks"] if "notchsogood" not in str(h.get("command", "")).lower()]
+            if not g["hooks"]:
+                continue
+        groups.append(g)
+    if groups:
+        hooks[event] = groups
+    else:
+        hooks.pop(event)
+if hooks:
+    doc["hooks"] = hooks
+else:
+    doc.pop("hooks", None)
+json.dump(doc, open(path, "w"), indent=2)
+PYEOF
+    then
+        echo -e "  ${GREEN}✓${RESET} Removed Gemini CLI hooks (yours were left alone)"
+    fi
+fi
+
 # Hook bridge
 if [ -d "$HOME/.notchsogood" ]; then
     rm -rf "$HOME/.notchsogood"
@@ -113,7 +144,7 @@ fi
 
 # Preferences + socket
 defaults delete com.notchsogood.app 2>/dev/null && echo -e "  ${GREEN}✓${RESET} Removed preferences" || true
-rm -f /tmp/notchsogood.sock /tmp/notchsogood.port
+rm -f /tmp/notchsogood.sock "/tmp/notchsogood-$(id -u).sock"
 
 echo ""
 echo -e "  ${DIM}Peek waves goodbye 👋${RESET}"

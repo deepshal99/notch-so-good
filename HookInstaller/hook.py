@@ -532,6 +532,47 @@ def handle_simple(event_name, payload, agent):
     sys.exit(0)
 
 
+# Gemini CLI speaks its own event and tool names. It can't take an approval
+# from a hook (its permission Notification is observe-only), so it's watched,
+# not answered: the card says it needs you in the terminal.
+GEMINI_EVENTS = {
+    "SessionStart": "SessionStart", "SessionEnd": "SessionEnd",
+    "BeforeAgent": "UserPromptSubmit", "AfterAgent": "Stop",
+    "BeforeTool": "PreToolUse", "AfterTool": "PostToolUse",
+    "Notification": "Notification", "PreCompress": "PreCompact",
+}
+GEMINI_TOOLS = {
+    "run_shell_command": "Bash", "read_file": "Read", "read_many_files": "Read",
+    "write_file": "Write", "replace": "Edit", "glob": "Glob", "search_file_content": "Grep",
+    "grep_search": "Grep", "list_directory": "Glob", "web_fetch": "WebFetch", "google_web_search": "WebSearch",
+}
+
+
+def from_gemini(event_name, payload):
+    """Gemini's event and payload, in the shape the rest of the bridge reads."""
+    name = GEMINI_EVENTS.get(event_name)
+    if name is None:
+        return None, payload
+    out = dict(payload)
+    tool = str(payload.get("tool_name") or "")
+    if tool:
+        out["tool_name"] = GEMINI_TOOLS.get(tool, tool)
+    if event_name == "AfterAgent":
+        out["last_assistant_message"] = payload.get("prompt_response")
+    if event_name == "AfterTool":
+        response = payload.get("tool_response")
+        if isinstance(response, dict) and response.get("error"):
+            name = "PostToolUseFailure"
+    if event_name == "Notification":
+        details = payload.get("details") if isinstance(payload.get("details"), dict) else {}
+        out["notification_type"] = "permission_prompt" if payload.get("notification_type") == "ToolPermission" else "general"
+        out["message"] = payload.get("message") or "Gemini needs your OK in the terminal"
+        out["title"] = "Gemini needs your OK" if out["notification_type"] == "permission_prompt" else ""
+        if not out.get("tool_name") and isinstance(details.get("tool_name"), str):
+            out["tool_name"] = details["tool_name"]
+    return name, out
+
+
 def main():
     args = [a for a in sys.argv[1:]]
     agent = "claude"
@@ -546,6 +587,10 @@ def main():
         sys.exit(0)
 
     payload = read_payload()
+    if agent == "gemini":
+        event_name, payload = from_gemini(event_name, payload)
+        if event_name is None:
+            sys.exit(0)
 
     if event_name == "PermissionRequest":
         handle_permission_request(payload, agent)
