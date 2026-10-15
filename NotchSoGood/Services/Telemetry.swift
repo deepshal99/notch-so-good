@@ -33,8 +33,8 @@ final class Telemetry {
     /// `install` once ever, `active_day` once a day.
     func noteLaunch() {
         guard canSend else { return }
-        if !UserDefaults.standard.bool(forKey: "telemetry.sent.installed") {
-            UserDefaults.standard.set(true, forKey: "telemetry.sent.installed")
+        if !UserDefaults.standard.bool(forKey: "telemetry.sent2.installed") {
+            UserDefaults.standard.set(true, forKey: "telemetry.sent2.installed")
             trackEvent("install")
         }
         once(per: "active_day")
@@ -49,7 +49,7 @@ final class Telemetry {
     private func once(per event: String, props: [String: Any] = [:]) {
         guard canSend else { return }
         let today = ISO8601DateFormatter.string(from: Date(), timeZone: .current, formatOptions: [.withFullDate])
-        let key = "telemetry.sent.\(event)"
+        let key = "telemetry.sent2.\(event)"
         guard UserDefaults.standard.string(forKey: key) != today else { return }
         UserDefaults.standard.set(today, forKey: key)
         trackEvent(event, props: props)
@@ -59,5 +59,20 @@ final class Telemetry {
     func trackEvent(_ name: String, props: [String: Any] = [:]) {
         guard isConfigured, NotificationManager.shared.telemetryEnabled else { return }
         Aptabase.shared.trackEvent(name, with: props)
+        flushSoon()
+    }
+
+    private var flushPending = false
+
+    /// Aptabase only sends from a timer it starts when the app becomes active,
+    /// and a menu bar app almost never does: left alone, events would sit in
+    /// memory until quit. Send them a few seconds after they're queued.
+    private func flushSoon() {
+        guard !flushPending else { return }
+        flushPending = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
+            self?.flushPending = false
+            Aptabase.shared.flush()
+        }
     }
 }
