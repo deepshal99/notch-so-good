@@ -231,18 +231,32 @@ private struct AlertsPane: View {
                     Toggle("", isOn: $notificationManager.nudgeEnabled).labelsHidden()
                 }
                 PanelDivider()
-                PanelRow(icon: "speaker.wave.2.fill", title: "Sound",
-                         subtitle: notificationManager.soundOnlyWhenBlocked
-                            ? "Only when an agent is blocked on you."
-                            : "A short cue when an agent needs you or finishes.") {
-                    PanelSegmented(options: [("all", "All"), ("blocked", "Blocked"), ("off", "Off")], selection: Binding(
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(alignment: .center, spacing: 12) {
+                        Image(systemName: "speaker.wave.2.fill")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(Panel.icon)
+                            .frame(width: Panel.iconColumn)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("Sound").font(Panel.title).foregroundColor(Panel.primary)
+                            Text(notificationManager.soundOnlyWhenBlocked
+                                 ? "Only when an agent is blocked on you."
+                                 : "A short cue when an agent needs you or finishes.")
+                                .font(Panel.subtitle).foregroundColor(Panel.secondary)
+                        }
+                    }
+                    PanelSegmented(options: [("all", "All"), ("blocked", "Only when blocked"), ("off", "Off")], selection: Binding(
                         get: { notificationManager.soundEnabled ? (notificationManager.soundOnlyWhenBlocked ? "blocked" : "all") : "off" },
                         set: { mode in
                             notificationManager.soundEnabled = mode != "off"
                             notificationManager.soundOnlyWhenBlocked = mode == "blocked"
                         }
                     ))
+                    .fixedSize()
+                    .padding(.leading, Panel.iconColumn + 12)
                 }
+                .padding(.horizontal, Panel.rowPadding)
+                .padding(.vertical, 13)
             }
         }
     }

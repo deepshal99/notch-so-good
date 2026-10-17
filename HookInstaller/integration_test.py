@@ -20,7 +20,7 @@ import threading
 import time
 
 SOCKET_PATH = "/tmp/notchsogood-%d.sock" % os.getuid()
-APP_BINARY = "NotchSoGood.app/Contents/MacOS/NotchSoGood"
+APP_BINARY = "/Applications/NotchSoGood.app/Contents/MacOS/NotchSoGood"
 
 results = []
 

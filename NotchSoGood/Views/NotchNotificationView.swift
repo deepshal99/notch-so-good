@@ -869,12 +869,21 @@ struct OtherAnswerField: View {
             Image(systemName: "pencil")
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundColor(Island.tertiary)
-            TextField("", text: $text, prompt: Text("Something else…").foregroundColor(Island.secondary.opacity(0.75)))
-                .textFieldStyle(.plain)
-                .font(.system(size: 12.5, weight: .medium))
-                .foregroundColor(Island.primary)
-                .focused($focused)
-                .onSubmit(onSubmit)
+            // macOS ignores a placeholder's colour, so draw it ourselves.
+            ZStack(alignment: .leading) {
+                if text.isEmpty {
+                    Text("Something else…")
+                        .font(.system(size: 12.5, weight: .medium))
+                        .foregroundColor(Island.secondary.opacity(0.8))
+                        .allowsHitTesting(false)
+                }
+                TextField("", text: $text)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 12.5, weight: .medium))
+                    .foregroundColor(Island.primary)
+                    .focused($focused)
+                    .onSubmit(onSubmit)
+            }
         }
         .padding(.horizontal, 12)
         .frame(height: NotchNotificationView.Metrics.otherHeight)
