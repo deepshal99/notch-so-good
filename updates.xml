@@ -5,6 +5,15 @@
         <link>https://github.com/deepshal99/notch-so-good</link>
         <language>en</language>
         <item>
+            <title>Version 4.8.1</title>
+            <pubDate>Sat, 17 Oct 2026 10:32:45 +0000</pubDate>
+            <sparkle:version>28</sparkle:version>
+            <sparkle:shortVersionString>4.8.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[<ul><li>Fixed: `claude -p` scripts no longer wait for a reply from the notch</li><li>Reply from the notch only where it can reach the session (each app&#x27;s own Claude Code version is checked)</li><li>Cards answered in Conductor, VS Code or Claude&#x27;s desktop app now close in the notch too</li><li>Hooks put themselves back if Claude Code or another tool removes them</li></ul>]]></description>
+            <enclosure url="https://github.com/deepshal99/notch-so-good/releases/download/v4.8.1/NotchSoGood-4.8.1.zip" sparkle:edSignature="UuY2KAcehurcGmbLlxinBJ85m1U2QD5JkoKahPuWYXI04A7KFD21VS75xf7QBnU3W7GpM4bbpx7XUHYMcL37CQ==" length="3951895" type="application/octet-stream"/>
+        </item>
+        <item>
             <title>Version 4.8.0</title>
             <pubDate>Sat, 17 Oct 2026 07:24:29 +0000</pubDate>
             <sparkle:version>27</sparkle:version>
@@ -39,15 +48,6 @@
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <description><![CDATA[<ul><li>Fixes the anonymous counts never being sent (the analytics library only sends while an app is &quot;active&quot;, which a menu bar app rarely is)</li><li>The pill stays visible over the full-screen app your agents run in</li></ul>]]></description>
             <enclosure url="https://github.com/deepshal99/notch-so-good/releases/download/v4.7.1/NotchSoGood-4.7.1.zip" sparkle:edSignature="gj5UcR0bZbCY0MaDBqRiq3VH9aB2YsxQxLoibXxlgWGgs6gIXl80P2odS5Uq3J+JXhniY9V0O2nQ0xBlmqWZDg==" length="3805363" type="application/octet-stream"/>
-        </item>
-        <item>
-            <title>Version 4.7.0</title>
-            <pubDate>Thu, 15 Oct 2026 16:48:01 +0000</pubDate>
-            <sparkle:version>23</sparkle:version>
-            <sparkle:shortVersionString>4.7.0</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <description><![CDATA[<ul><li>Answer from the notch: approvals now come from Claude Code&#x27;s and Codex&#x27;s own permission hooks, so a card appears exactly when the agent would ask; questions and plans can be answered there too</li><li>See what you approve: the full command, file edits as a diff, and Always allow saves Claude&#x27;s own suggested rule for this project</li><li>Updates itself from now on: new versions download quietly and wait for a restart</li><li>Finished cards show files edited and test results; jump to the exact tab and tmux pane</li><li>Usage that&#x27;s out of date says so, and &quot;usage is back&quot; when a window resets</li><li>Quieter: only blockers over full-screen apps, sound for blockers only, optional hiding from screen sharing</li><li>Gemini CLI (beta), Conductor questions shown in the notch, and a health check in Settings</li><li>Peek has a new icon, tricks between tasks, and dozes when things go quiet</li></ul>]]></description>
-            <enclosure url="https://github.com/deepshal99/notch-so-good/releases/download/v4.7.0/NotchSoGood-4.7.0.zip" sparkle:edSignature="+6i7UErG6Zoj9qGvi/jK0IVyEH6fxHrdgAJpHR5DNQDaoHAxHt86w1eW+CJvl3zmlH4Ug4YvChlf3ka1xLmQAQ==" length="3805181" type="application/octet-stream"/>
         </item>
     </channel>
 </rss>

@@ -5,14 +5,14 @@
         <link>https://github.com/deepshal99/notch-so-good</link>
         <language>en</language>
         <item>
-            <title>Version 4.8.0</title>
-            <pubDate>Sat, 17 Oct 2026 07:24:29 +0000</pubDate>
-            <sparkle:version>27</sparkle:version>
-            <sparkle:shortVersionString>4.8.0</sparkle:shortVersionString>
-            <description><![CDATA[<h2>Notch So Good 4.8.0</h2><ul><li>Reply from the notch: when Claude finishes, type your next message on the card and it carries on (Claude Code 2.1.287+)</li><li>Allow for this session: one click or ⌃⌥S allows the same thing until the session ends, nothing saved</li><li>Keyboard first: ⌃⌥1–6 picks an option, ⌃⌥R replies, ⌃⌥N shows the next waiting card, ⌃⌥O opens the terminal</li><li>Plan progress: sessions show &quot;Step 2 of 5&quot; while they work through a plan</li><li>Agent radar: a heads-up when two sessions edit the same file</li><li>Cleaner cards: Peek carries the status, so the extra dot beside the title is gone</li></ul>
+            <title>Version 4.8.1</title>
+            <pubDate>Sat, 17 Oct 2026 10:32:45 +0000</pubDate>
+            <sparkle:version>28</sparkle:version>
+            <sparkle:shortVersionString>4.8.1</sparkle:shortVersionString>
+            <description><![CDATA[<h2>Notch So Good 4.8.1</h2><ul><li>Fixed: `claude -p` scripts no longer wait for a reply from the notch</li><li>Reply from the notch only where it can reach the session (each app&#x27;s own Claude Code version is checked)</li><li>Cards answered in Conductor, VS Code or Claude&#x27;s desktop app now close in the notch too</li><li>Hooks put themselves back if Claude Code or another tool removes them</li></ul>
             <p><b>Install this one by hand</b>: run <code>brew upgrade notch-so-good</code>, or download it from the release page.
-            From 4.8.0 on, updates install themselves.</p>]]></description>
-            <link>https://github.com/deepshal99/notch-so-good/releases/tag/v4.8.0</link>
+            From 4.8.1 on, updates install themselves.</p>]]></description>
+            <link>https://github.com/deepshal99/notch-so-good/releases/tag/v4.8.1</link>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
         </item>
     </channel>
