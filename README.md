@@ -50,13 +50,15 @@ curl -fsSL https://raw.githubusercontent.com/deepshal99/notch-so-good/main/get.s
 **Taps you when you're needed.** A finished task (with how many files it touched and whether the tests passed), an error, a usage heads-up: the notch opens into a card that says what happened and in which project. Click it to jump to the exact terminal tab, tmux pane included. Cards you're reading stay put; the rest leave on their own.
 
 **Answers from the notch.** When Claude Code would ask you something, the notch asks instead, and only then:
-- **Commands and edits:** the full command, or the file change in red and green, with Allow and Deny (⌃⌥A / ⌃⌥D from any app). Risky commands are flagged. *Always allow* saves exactly the rule Claude Code suggests, for this project, and the card names it.
-- **Questions:** Claude's options as buttons, one tap each.
+- **Commands and edits:** the full command, or the file change in red and green, with Allow, Deny and *This session* (allow the same thing until the session ends). Risky commands are flagged. *Always allow* saves exactly the rule Claude Code suggests, for this project, and the card names it.
+- **Questions:** Claude's options as buttons, one tap each, or type your own.
 - **Plans:** Approve, Auto-accept edits, or answer in the terminal.
+- **Replies:** when Claude finishes, type your next message right on the card and it carries on. No trip to the terminal. (Claude Code 2.1.287+.)
+- **All from the keyboard:** ⌃⌥ plus A allow, D deny, S this session, 1–6 an option, R reply, N next card, O open the terminal. Only while a card is up.
 
 It never approves anything you didn't click. Leave a card alone and Claude asks in the terminal as usual.
 
-**Keeps every session straight.** Running five agents? Hover the pill to see them all, each with its own colour, what it's working on and how long it's been going.
+**Keeps every session straight.** Running five agents? Hover the pill to see them all, each with its own colour, what it's working on, how far through its plan it is and how long it's been going. If two of them edit the same file, the notch tells you before one undoes the other.
 
 **Knows your limits.** The menu bar shows Claude Code and Codex usage (5-hour and weekly windows), when each resets, and when you'll run out at the pace you're going. Heads-ups at 80%, 95% and when it's used up, and a "usage is back" the moment it resets.
 
@@ -65,6 +67,14 @@ It never approves anything you didn't click. Leave a card alone and Claude asks 
 **Stays out of the way.** No Dock icon, no window, 1–2% of one core while agents work and none when they don't. Over a full-screen app only what needs you shows; sound can be blockers-only; and it can hide from screen sharing. Hooks install themselves and leave yours alone. Settings → About shows a health check of every connection.
 
 ---
+
+## What's new in 4.8.0
+
+- **Reply from the notch.** When Claude finishes, type your next message on the card and it carries on. No trip to the terminal.
+- **Allow for this session.** One click (or ⌃⌥S) allows the same thing until the session ends; nothing is saved to your settings.
+- **Keyboard first.** ⌃⌥1–6 picks an option, ⌃⌥R replies, ⌃⌥N moves to the next waiting card, ⌃⌥O opens the terminal.
+- **Plan progress.** Sessions show "Step 2 of 5" while working through a plan.
+- **Agent radar.** Two sessions editing the same file get a heads-up before one undoes the other.
 
 ## What's new in 4.7.0
 

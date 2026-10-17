@@ -367,11 +367,21 @@ class PermissionServer {
             let toolName = json["tool_name"] as? String ?? ""
             let edited = (json["edited"] as? [String]) ?? []
             let tests = json["tests"] as? String
+            let plan = (json["plan"] as? [[String: Any]]).map { $0.enumerated().compactMap { PlanStep(json: $0.element, index: $0.offset) } }
+            let taskAdd = (json["task_add"] as? [String: Any]).flatMap { PlanStep(json: $0.merging(["status": "pending"]) { a, _ in a }, index: 0) }
+            let taskUpdate = (json["task_update"] as? [String: Any]).map {
+                PlanStep(id: $0["id"] as? String ?? "", title: $0["title"] as? String ?? "", status: $0["status"] as? String ?? "")
+            }
             DispatchQueue.main.async {
                 NotificationManager.shared.adoptSession(sessionId: sessionId, cwd: cwd, sourcePid: agentPid, sourceApp: agent)
                 NotificationManager.shared.handlePostToolUse(sessionId: sessionId, toolName: toolName, cwd: cwd,
-                                                             edited: edited, tests: tests)
+                                                             edited: edited, tests: tests,
+                                                             plan: plan, taskAdd: taskAdd, taskUpdate: taskUpdate)
             }
+
+        case "ReplyWait":
+            // A finished Claude session listening for a reply from the notch.
+            holdReply(sessionId: sessionId, clientSocket: clientSocket, hookPid: Self.peer(of: clientSocket)?.hook)
 
         case "PostCompact":
             close(clientSocket)
@@ -415,6 +425,7 @@ class PermissionServer {
 
         case "SessionEnd":
             close(clientSocket)
+            cancelReply(sessionId: sessionId)
             DispatchQueue.main.async {
                 NotificationManager.shared.endSession(sessionId: sessionId)
             }
@@ -437,7 +448,8 @@ class PermissionServer {
                 let notification = NotchNotification(
                     type: .complete,
                     message: message,
-                    sessionId: sessionId
+                    sessionId: sessionId,
+                    canReply: (agent ?? "claude") == "claude" && sessionId != nil && Replies.shared.supported
                 )
                 NotificationManager.shared.handleNotification(notification)
             }
@@ -490,6 +502,7 @@ class PermissionServer {
 
         case "UserPromptSubmit":
             close(clientSocket)
+            cancelReply(sessionId: sessionId)          // they answered in the terminal
             DispatchQueue.main.async {
                 NotificationManager.shared.handleUserPromptSubmit(
                     sessionId: sessionId,
@@ -617,6 +630,61 @@ class PermissionServer {
         watchWaitingHook(pid: peer?.hook, requestId: requestId)
     }
 
+    // MARK: - Replies (a finished session listening for the notch)
+
+    private var replyWaiters: [String: Int32] = [:]
+
+    private func holdReply(sessionId: String?, clientSocket: Int32, hookPid: pid_t?) {
+        guard let sid = sessionId else { close(clientSocket); return }
+        lock.lock()
+        let previous = replyWaiters.updateValue(clientSocket, forKey: sid)
+        lock.unlock()
+        if let previous { close(previous) }
+        DispatchQueue.main.async { Replies.shared.listening.insert(sid) }
+        watchReplyHook(pid: hookPid, sessionId: sid, socket: clientSocket)
+    }
+
+    /// The hook dies with its session (or Claude Code times it out): stop
+    /// offering a reply as soon as it's gone.
+    private func watchReplyHook(pid: pid_t?, sessionId: String, socket: Int32) {
+        guard let pid else { return }
+        queue.asyncAfter(deadline: .now() + 3) { [weak self] in
+            guard let self else { return }
+            self.lock.lock()
+            let current = self.replyWaiters[sessionId] == socket
+            self.lock.unlock()
+            guard current else { return }
+            if kill(pid, 0) != 0 && errno == ESRCH {
+                self.cancelReply(sessionId: sessionId)
+            } else {
+                self.watchReplyHook(pid: pid, sessionId: sessionId, socket: socket)
+            }
+        }
+    }
+
+    func cancelReply(sessionId: String?) {
+        guard let sid = sessionId else { return }
+        lock.lock()
+        let socket = replyWaiters.removeValue(forKey: sid)
+        lock.unlock()
+        if let socket { close(socket) }
+        DispatchQueue.main.async { Replies.shared.listening.remove(sid) }
+    }
+
+    /// Send a reply to a finished session; false if it isn't listening.
+    @discardableResult
+    func sendReply(sessionId: String, text: String) -> Bool {
+        lock.lock()
+        let socket = replyWaiters.removeValue(forKey: sessionId)
+        lock.unlock()
+        DispatchQueue.main.async { Replies.shared.listening.remove(sessionId) }
+        guard let socket else { return false }
+        let body = (try? JSONSerialization.data(withJSONObject: ["reply": text])).flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
+        queue.async { self.sendSocketResponse(clientSocket: socket, body: body) }
+        Task { @MainActor in Telemetry.shared.trackEvent("card_answered", props: ["answer": "reply"]) }
+        return true
+    }
+
     // MARK: - Answers
 
     func respond(requestId: String, response: CardResponse) {
@@ -642,7 +710,7 @@ class PermissionServer {
         Task { @MainActor in
             let kind: String
             switch response {
-            case .allow, .allowAlways: kind = "approve"
+            case .allow, .allowSession, .allowAlways: kind = "approve"
             case .deny: kind = "deny"
             case .approvePlan: kind = "plan"
             case .answer: kind = "answer"

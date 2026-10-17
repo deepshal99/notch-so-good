@@ -33,6 +33,9 @@ SOCKET_PATH = os.environ.get("NOTCHSOGOOD_SOCKET") or "/tmp/notchsogood-%d.sock"
 SEND_TIMEOUT = 2.0
 # Must stay under the app's own 120s pending-request timeout.
 DECISION_TIMEOUT = 120.0
+# How long a finished session listens for a reply from the notch. The hook's
+# own timeout (set by the installer) is a little longer.
+REPLY_TIMEOUT = 3500.0
 
 MAX_SUMMARY = 200
 MAX_MESSAGE = 300
@@ -66,7 +69,7 @@ def read_payload():
     return parsed if isinstance(parsed, dict) else {}
 
 
-def send(event, wait=False):
+def send(event, wait=False, timeout=None):
     """Hand an event to the app. Returns the decoded reply when wait=True."""
     import socket
 
@@ -76,7 +79,7 @@ def send(event, wait=False):
         if os.stat(SOCKET_PATH).st_uid != os.getuid():
             return None
         sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        sock.settimeout(DECISION_TIMEOUT if wait else SEND_TIMEOUT)
+        sock.settimeout(timeout or (DECISION_TIMEOUT if wait else SEND_TIMEOUT))
         sock.connect(SOCKET_PATH)
         sock.sendall(json.dumps(event).encode())
         # Signal end-of-request so the app's read loop doesn't wait on us.
@@ -286,6 +289,9 @@ def handle_permission_request(payload, agent):
         if agent == "claude":
             if reply.get("always") and suggestions:
                 updates.extend(suggestions)
+            elif reply.get("session") and suggestions:
+                # The same rules, kept for this session only.
+                updates.extend(dict(entry, destination="session") for entry in suggestions)
             mode = reply.get("mode")
             if mode in ("default", "acceptEdits"):
                 updates.append({"type": "setMode", "mode": mode, "destination": "session"})
@@ -429,6 +435,61 @@ def handle_pre_tool_use(payload, agent):
     sys.exit(0)
 
 
+def handle_reply(payload, agent):
+    """A turn just ended (Stop). Run in the background (`asyncRewake`), wait
+    for a reply typed in the notch; if one comes, wake Claude with it (exit 2:
+    Claude Code shows stderr to Claude and starts a turn). A new prompt typed
+    in the terminal, or the session ending, closes the wait quietly."""
+    if agent != "claude":
+        sys.exit(0)
+    event = base_event(payload, agent)
+    event["event"] = "ReplyWait"
+    reply = send(event, wait=True, timeout=REPLY_TIMEOUT)
+    text = reply.get("reply") if isinstance(reply, dict) else None
+    if isinstance(text, str) and text.strip():
+        sys.stderr.write("The user replied from the Notch So Good notch (not typed here). "
+                         "Treat it as their next message:\n\n" + text.strip()[:4000])
+        sys.exit(2)
+    sys.exit(0)
+
+
+def plan_steps(tool_name, tool_input):
+    """A whole checklist, when the tool carries one: Claude's TodoWrite or
+    Codex's update_plan. Each step: title and status."""
+    if not isinstance(tool_input, dict):
+        return None
+    items, title_key = None, None
+    if tool_name == "TodoWrite":
+        items, title_key = tool_input.get("todos"), "content"
+    elif tool_name == "update_plan":
+        items, title_key = tool_input.get("plan"), "step"
+    if not isinstance(items, list):
+        return None
+    steps = []
+    for item in items[:30]:
+        if isinstance(item, dict) and isinstance(item.get(title_key), str):
+            active = item.get("activeForm") if isinstance(item.get("activeForm"), str) else None
+            steps.append({"title": (active if item.get("status") == "in_progress" and active else item[title_key])[:120],
+                          "status": str(item.get("status") or "pending")})
+    return steps
+
+
+def task_id(value):
+    """A task id from TaskCreate's result, wherever it sits."""
+    if isinstance(value, dict):
+        for key in ("taskId", "task_id", "id"):
+            if isinstance(value.get(key), (str, int)):
+                return str(value[key])
+        for nested in value.values():
+            found = task_id(nested) if isinstance(nested, dict) else None
+            if found:
+                return found
+    if isinstance(value, str):
+        match = re.search(r"(?:task|Task)\s*#?\s*(\w+)", value)
+        return match.group(1) if match else None
+    return None
+
+
 def handle_post_tool_use(event_name, payload, agent):
     tool_name = str(payload.get("tool_name") or "")
     tool_input = payload.get("tool_input")
@@ -440,6 +501,25 @@ def handle_post_tool_use(event_name, payload, agent):
     command = tool_input.get("command") if isinstance(tool_input, dict) else None
     if isinstance(command, list):
         command = " ".join(str(part) for part in command)
+    steps = plan_steps(tool_name, tool_input)
+    if steps is not None:
+        event["plan"] = steps
+    elif tool_name == "TaskCreate" and isinstance(tool_input, dict):
+        tid = task_id(payload.get("tool_response"))
+        title = tool_input.get("subject") or tool_input.get("description")
+        if tid and isinstance(title, str):
+            event["task_add"] = {"id": tid, "title": title[:120]}
+    elif tool_name == "TaskUpdate" and isinstance(tool_input, dict):
+        tid = tool_input.get("taskId") or tool_input.get("task_id") or tool_input.get("id")
+        if isinstance(tid, (str, int)):
+            update = {"id": str(tid)}
+            if isinstance(tool_input.get("status"), str):
+                update["status"] = tool_input["status"]
+            for key in ("activeForm", "subject"):
+                if isinstance(tool_input.get(key), str):
+                    update["title"] = tool_input[key][:120]
+                    break
+            event["task_update"] = update
     if tool_name == "Bash" and is_test_command(command):
         if event_name == "PostToolUseFailure":
             event["tests"] = "failed"
@@ -625,6 +705,8 @@ def main():
 
     if event_name == "PermissionRequest":
         handle_permission_request(payload, agent)
+    elif event_name == "Reply":
+        handle_reply(payload, agent)
     elif event_name in ("Interactive", "AskUserQuestion"):
         handle_interactive(payload, agent)
     elif event_name == "PreToolUse":

@@ -182,6 +182,9 @@ enum DebugSnapshots {
         sessions[0].taskTitle = "Fix the flaky websocket reconnect"
         for i in sessions.indices { sessions[i].colorIndex = i }
         sessions[2].taskTitle = "Rewrite the getting started guide"
+        sessions[2].plan = ["Outline the new guide", "Rewrite install and first run", "Add screenshots", "Check every link"].enumerated().map {
+            PlanStep(id: "\($0.offset)", title: $0.element, status: $0.offset < 1 ? "completed" : ($0.offset == 1 ? "in_progress" : "pending"))
+        }
         UsageLimitsStore.shared.windows = [UsageLimitsStore.LimitWindow(label: "Session", percentLeft: 62, resetsAt: Date().addingTimeInterval(2*3600 + 14*60))]
         let maxW = notchW + PillLayout.wingExpanded*2
         var images: [(CGImage, CGSize)] = []
@@ -262,6 +265,8 @@ enum DebugSnapshots {
             (NotchNotification(type: .permission, message: questions[0].question, title: "Cache", permissionRequestId: "q", toolName: "AskUserQuestion",
                                interaction: .question(questions)), 1.6),
             (NotchNotification(type: .complete, message: "Fixed the reconnect race. The socket now backs off before retrying, and all 76 tests pass."), 0.45),
+            (NotchNotification(type: .complete, message: "Added the backoff and its tests. Want me to remove the old retry flag too?", sessionId: "s", canReply: true), 0.45),
+            (NotchNotification(type: .general, message: "store.ts is being edited by api and web. One may undo the other.", title: NotchNotification.radarTitle), 1.2),
             (NotchNotification(type: .general, message: "Under 10% of the 5-hour window left. Resets in 58m.", title: NotchNotification.limitsTitle), 1.2),
             (NotchNotification(type: .error, message: "Run /login in Claude Code, then try again.", title: "Signed out"), 1.6),
         ]

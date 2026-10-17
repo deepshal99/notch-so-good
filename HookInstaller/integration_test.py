@@ -138,7 +138,7 @@ def test_socket_is_up():
 
 def hotkey(letter):
     """Press Control-Option-<letter>, the app's global answer keys."""
-    code = {"A": 0, "D": 2}[letter]
+    code = {"A": 0, "D": 2, "S": 1, "N": 45, "O": 31, "R": 15, "1": 18, "2": 19, "3": 20}[letter]
     subprocess.run(["osascript", "-e",
                     'tell application "System Events" to key code %d using {control down, option down}' % code],
                    capture_output=True)
@@ -157,7 +157,7 @@ def answered_with(event, key):
     worker = threading.Thread(target=lambda: box.update(reply=send(event, wait=True, timeout=10)))
     worker.start()
     wait_ui(2.2)          # the card appears (after any previous one leaves), and hotkeys ignore its first half second
-    shot("card-%s" % event["tool_name"])
+    shot("card-%s" % event.get("tool_name", event["event"]))
     hotkey(key)
     worker.join(12)
     return box.get("reply", (None, 0))[0]
@@ -197,6 +197,100 @@ def test_question_waits():
     ok = check("a question waits for an answer", reply == "TIMEOUT", "reply=%r after %.1fs" % (reply, elapsed))
     restart_app()   # clear the card this deliberately raised
     return ok
+
+
+def test_allow_for_session_hotkey():
+    reply = answered_with(permission_request("perm-3", "Bash", "npm test",
+                                             always_label="Bash(npm test:*)",
+                                             always_destination="localSettings"), "S")
+    return check("⌃⌥S allows for this session",
+                 isinstance(reply, dict) and reply.get("decision") == "allow" and reply.get("session") is True,
+                 "reply=%r" % (reply,))
+
+
+def test_next_card_hotkey():
+    """Two waiting cards: ⌃⌥N swaps to the second, which ⌃⌥A then answers."""
+    first, second = {}, {}
+    a = threading.Thread(target=lambda: first.update(r=send(permission_request("cycle-1", "Bash", "echo first"), wait=True, timeout=15)))
+    a.start()
+    wait_ui(0.3)
+    b = threading.Thread(target=lambda: second.update(r=send(permission_request("cycle-2", "Bash", "echo second"), wait=True, timeout=15)))
+    b.start()
+    wait_ui(2.2)
+    hotkey("N")
+    wait_ui(1.0)
+    shot("cycled-card")
+    hotkey("A")
+    b.join(6)
+    wait_ui(1.6)
+    hotkey("D")
+    a.join(6)
+    got_second = second.get("r", (None,))[0]
+    got_first = first.get("r", (None,))[0]
+    return check("⌃⌥N shows the next waiting card (it gets the allow, the first the deny)",
+                 isinstance(got_second, dict) and got_second.get("decision") == "allow"
+                 and isinstance(got_first, dict) and got_first.get("decision") == "deny",
+                 "second=%r first=%r" % (got_second, got_first))
+
+
+def test_question_number_hotkey():
+    event = base("ask-2")
+    event.update({"event": "AskUserQuestion", "questions": [{
+        "question": "Which cache?", "header": "Cache", "multiSelect": False,
+        "options": [{"label": "Redis", "description": "Shared"}, {"label": "SQLite", "description": "File"}]}]})
+    reply = answered_with(event, "2")
+    answers = reply.get("answers") if isinstance(reply, dict) else None
+    return check("⌃⌥2 picks the second option", answers == {"Which cache?": "SQLite"}, "reply=%r" % (reply,))
+
+
+def test_reply_from_the_notch():
+    """A finished session listening for a reply: ⌃⌥R, type, Return."""
+    box = {}
+    waiter = base("reply-1")
+    waiter["event"] = "ReplyWait"
+    worker = threading.Thread(target=lambda: box.update(r=send(waiter, wait=True, timeout=20)))
+    worker.start()
+    stop = base("reply-1")
+    stop.update({"event": "Stop", "last_assistant_message": "Added the backoff. Remove the old retry flag too?"})
+    send(stop)
+    wait_ui(1.4)
+    shot("reply-card")
+    hotkey("R")
+    wait_ui(0.6)
+    # Only type if the card really has the keys: never into whatever app is in front.
+    front = subprocess.run('lsappinfo info -only name "$(lsappinfo front)"', shell=True,
+                           capture_output=True, text=True).stdout.strip()
+    if "Notch So Good" not in front:
+        return check("⌃⌥R gives the reply field the keys", False, "front=%r" % front)
+    subprocess.run(["osascript", "-e", 'tell application "System Events" to keystroke "yes, remove it"'], capture_output=True)
+    wait_ui(0.3)
+    shot("reply-typed")
+    subprocess.run(["osascript", "-e", 'tell application "System Events" to key code 36'], capture_output=True)
+    worker.join(8)
+    reply = box.get("r", (None,))[0]
+    return check("a reply typed on the finished card reaches the session",
+                 reply == {"reply": "yes, remove it"}, "reply=%r" % (reply,))
+
+
+def test_agent_radar():
+    for sid, cwd in (("radar-a", "/Users/x/dev/api"), ("radar-b", "/Users/x/dev/web")):
+        event = base(sid, cwd=cwd)
+        event.update({"event": "PostToolUse", "tool_name": "Edit", "edited": ["/Users/x/dev/shared/store.ts"]})
+        send(event)
+        wait_ui(0.3)
+    wait_ui(1.0)
+    shot("radar-card")
+    return check("two sessions editing one file accepted (visual: 'Two agents, one file')", True)
+
+
+def test_plan_progress():
+    event = base("plan-1", cwd="/Users/x/dev/planner")
+    event.update({"event": "PostToolUse", "tool_name": "TodoWrite", "plan": [
+        {"title": "Read the code", "status": "completed"},
+        {"title": "Write the fix", "status": "in_progress"},
+        {"title": "Run the tests", "status": "pending"}]})
+    send(event)
+    return check("plan progress accepted (visual: 'Step 2 of 3 · Write the fix', 1/3)", True)
 
 
 def test_decision_not_needed_is_non_blocking():
@@ -336,7 +430,8 @@ def test_long_message_is_clamped():
 
 def test_cleanup():
     for sid in ("adopt-1", "status-1", "bypass-notif", "keep-a", "keep-b",
-                "prio-working", "prio-blocked", "long-1", "old-1", "perm-1", "perm-2", "ask-1"):
+                "prio-working", "prio-blocked", "long-1", "old-1", "perm-1", "perm-2", "ask-1",
+                "perm-3", "cycle-1", "cycle-2", "ask-2", "reply-1", "radar-a", "radar-b", "plan-1"):
         event = base(sid)
         event["event"] = "SessionEnd"
         send(event)
@@ -369,6 +464,12 @@ def main():
     test_permission_request_allow_hotkey()
     test_permission_request_deny_hotkey()
     test_question_waits()
+    test_allow_for_session_hotkey()
+    test_next_card_hotkey()
+    test_question_number_hotkey()
+    test_reply_from_the_notch()
+    test_agent_radar()
+    test_plan_progress()
     test_decision_not_needed_is_non_blocking()
     test_session_adopted_without_session_start()
     test_status_transitions()

@@ -234,6 +234,51 @@ class HostQuestions(unittest.TestCase):
         self.assertEqual((out.strip(), events[0]["event"]), ("", "PreToolUse"))
 
 
+class Replies(unittest.TestCase):
+    def test_a_reply_wakes_claude(self):
+        code, out, err, events = run_hook("Reply", {"session_id": "s", "cwd": "/r"}, reply={"reply": "now run the tests"})
+        self.assertEqual((code, out.strip(), events[0]["event"]), (2, "", "ReplyWait"))
+        self.assertIn("now run the tests", err)
+
+    def test_no_reply_stays_quiet(self):
+        for reply in ({}, {"reply": "   "}, None):
+            code, out, err, _ = run_hook("Reply", {"session_id": "s"}, reply=reply)
+            self.assertEqual((code, out.strip(), err.strip()), (0, "", ""))
+
+    def test_codex_never_waits(self):
+        code, _, _, events = run_hook("Reply", {"session_id": "s"}, agent="codex", reply={"reply": "x"})
+        self.assertEqual((code, events), (0, []))
+
+    def test_allow_for_this_session_scopes_the_rule(self):
+        payload = dict(BASH, permission_suggestions=[SUGGESTION])
+        _, out, _, _ = run_hook("PermissionRequest", payload, reply={"decision": "allow", "session": True})
+        updates = output(out)["hookSpecificOutput"]["decision"]["updatedPermissions"]
+        self.assertEqual([u["destination"] for u in updates], ["session"])
+        self.assertEqual(updates[0]["rules"], SUGGESTION["rules"])
+
+
+class Plans(unittest.TestCase):
+    def test_todowrite_and_codex_plans(self):
+        _, _, _, events = run_hook("PostToolUse", {"session_id": "s", "tool_name": "TodoWrite", "tool_input": {"todos": [
+            {"content": "Write tests", "status": "completed"},
+            {"content": "Fix bug", "activeForm": "Fixing the bug", "status": "in_progress"},
+            {"content": "Ship", "status": "pending"}]}})
+        self.assertEqual(events[0]["plan"], [{"title": "Write tests", "status": "completed"},
+                                             {"title": "Fixing the bug", "status": "in_progress"},
+                                             {"title": "Ship", "status": "pending"}])
+        _, _, _, events = run_hook("PostToolUse", {"session_id": "s", "tool_name": "update_plan", "tool_input": {"plan": [
+            {"step": "Read code", "status": "completed"}, {"step": "Patch", "status": "in_progress"}]}}, agent="codex")
+        self.assertEqual([p["status"] for p in events[0]["plan"]], ["completed", "in_progress"])
+
+    def test_task_tools(self):
+        _, _, _, events = run_hook("PostToolUse", {"session_id": "s", "tool_name": "TaskCreate",
+                                                   "tool_input": {"subject": "Add backoff"}, "tool_response": {"task": {"id": "3"}}})
+        self.assertEqual(events[0]["task_add"], {"id": "3", "title": "Add backoff"})
+        _, _, _, events = run_hook("PostToolUse", {"session_id": "s", "tool_name": "TaskUpdate",
+                                                   "tool_input": {"taskId": "3", "status": "in_progress", "activeForm": "Adding backoff"}})
+        self.assertEqual(events[0]["task_update"], {"id": "3", "status": "in_progress", "title": "Adding backoff"})
+
+
 class Activity(unittest.TestCase):
     def test_pre_tool_use_never_answers(self):
         code, out, _, events = run_hook("PreToolUse", BASH, reply={"decision": "allow"})

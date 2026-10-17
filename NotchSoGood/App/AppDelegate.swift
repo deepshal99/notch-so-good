@@ -24,6 +24,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         MenuBarController.shared.install()
         // Auto-install hooks on first launch / version update
         NotificationManager.shared.installHooksIfNeeded()
+        Replies.shared.refreshSupport()
 
         // Start permission server for approve/deny from the notch
         PermissionServer.shared.start()

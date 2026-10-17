@@ -45,7 +45,10 @@ struct IslandSessionRow: View {
 enum SessionRowParts {
     static func activity(_ session: NotificationManager.SessionInfo, emphasised: Bool = false) -> some View {
         let waiting = session.status == .needsInput || session.status == .needsPermission
-        return Text(session.status.activityLine(toolName: session.activeToolName, toolDetail: session.activeToolDetail))
+        // A plan under way says where it's up to; otherwise, the tool at hand.
+        let line = (!waiting ? session.planLine : nil)
+            ?? session.status.activityLine(toolName: session.activeToolName, toolDetail: session.activeToolDetail)
+        return Text(line)
             .font(.system(size: emphasised ? 12.5 : 11.5, weight: emphasised ? .medium : .regular))
             .foregroundColor(waiting ? CharacterState.need.color : (emphasised ? Color.white.opacity(0.82) : Island.secondary))
             .lineLimit(1)
@@ -72,6 +75,14 @@ enum SessionRowParts {
                 }
                 .foregroundColor(Island.tertiary)
                 .accessibilityLabel("\(running) subagent\(running == 1 ? "" : "s") running")
+            }
+            if let progress = session.planProgress {
+                HStack(spacing: 3) {
+                    Image(systemName: "checklist").font(.system(size: 9, weight: .semibold)).symbolRenderingMode(.monochrome)
+                    Text("\(progress.done)/\(progress.total)").font(Island.numeric)
+                }
+                .foregroundColor(Island.tertiary)
+                .accessibilityLabel("\(progress.done) of \(progress.total) steps done")
             }
             ElapsedText(since: session.startTime)
         }

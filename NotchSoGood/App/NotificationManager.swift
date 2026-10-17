@@ -101,6 +101,22 @@ class NotificationManager: ObservableObject {
         /// last test run went ("passed" / "failed").
         var turnEdited: Set<String> = []
         var turnTests: String?
+        /// The agent's own checklist (Codex's plan, Claude's task list), when it keeps one.
+        var plan: [PlanStep] = []
+
+        /// "Step 3 of 7 · Writing tests" while a plan is under way.
+        var planLine: String? {
+            guard plan.count > 1, plan.contains(where: { $0.status != "completed" }) else { return nil }
+            let done = plan.filter { $0.status == "completed" }.count
+            let current = plan.first { $0.status == "in_progress" } ?? plan.first { $0.status != "completed" }
+            return "Step \(min(done + 1, plan.count)) of \(plan.count)" + (current.map { " · \($0.title)" } ?? "")
+        }
+
+        /// (steps done, steps) while a plan is under way.
+        var planProgress: (done: Int, total: Int)? {
+            guard planLine != nil else { return nil }
+            return (plan.filter { $0.status == "completed" }.count, plan.count)
+        }
 
         var color: Color { Island.sessionColors[colorIndex % Island.sessionColors.count] }
     }
@@ -692,9 +708,23 @@ class NotificationManager: ObservableObject {
     /// PostToolUse: tool finished running — clear active tool, update status,
     /// and note what it changed for the finished card.
     func handlePostToolUse(sessionId: String?, toolName: String, cwd: String? = nil,
-                           edited: [String] = [], tests: String? = nil) {
+                           edited: [String] = [], tests: String? = nil,
+                           plan: [PlanStep]? = nil, taskAdd: PlanStep? = nil, taskUpdate: PlanStep? = nil) {
         guard let sid = NotchNotification.nonEmpty(sessionId),
               let idx = adoptSession(sessionId: sid, cwd: cwd) else { return }
+        if let plan { activeSessions[idx].plan = plan }
+        if let taskAdd, !activeSessions[idx].plan.contains(where: { $0.id == taskAdd.id }) {
+            activeSessions[idx].plan.append(taskAdd)
+        }
+        if let taskUpdate, let i = activeSessions[idx].plan.firstIndex(where: { $0.id == taskUpdate.id }) {
+            if taskUpdate.status == "deleted" {
+                activeSessions[idx].plan.remove(at: i)
+            } else {
+                if !taskUpdate.status.isEmpty { activeSessions[idx].plan[i].status = taskUpdate.status }
+                if !taskUpdate.title.isEmpty { activeSessions[idx].plan[i].title = taskUpdate.title }
+            }
+        }
+        if !edited.isEmpty { checkRadar(sessionId: sid, edited: edited) }
         activeSessions[idx].activeToolName = nil
         activeSessions[idx].activeToolDetail = nil
         if !edited.isEmpty { activeSessions[idx].turnEdited.formUnion(edited.prefix(200)) }
@@ -792,6 +822,38 @@ class NotificationManager: ObservableObject {
         ))
     }
 
+    // MARK: - Agent radar
+
+    /// Who last wrote each file, and when; and which collisions we've already
+    /// raised. Separate worktrees are separate paths, so they never collide.
+    private var lastWriter: [String: (session: String, at: Date)] = [:]
+    private var radarRaised: [String: Date] = [:]
+
+    /// Two live sessions writing the same file within a few minutes of each
+    /// other will undo each other's work: say so, once per file per half hour.
+    private func checkRadar(sessionId sid: String, edited: [String]) {
+        let now = Date()
+        for path in edited {
+            defer { lastWriter[path] = (sid, now) }
+            guard let previous = lastWriter[path], previous.session != sid,
+                  now.timeIntervalSince(previous.at) < 15*60,
+                  let other = activeSessions.first(where: { $0.id == previous.session }),
+                  let mine = activeSessions.first(where: { $0.id == sid }),
+                  now.timeIntervalSince(radarRaised[path] ?? .distantPast) > 30*60 else { continue }
+            radarRaised[path] = now
+            let name = { (s: SessionInfo) in s.taskTitle ?? s.projectName }
+            handleNotification(NotchNotification(
+                type: .general,
+                message: "\((path as NSString).lastPathComponent) is being edited by \(name(other)) and \(name(mine)). One may undo the other.",
+                title: NotchNotification.radarTitle,
+                sessionId: sid
+            ))
+        }
+        if lastWriter.count > 500 {
+            lastWriter = lastWriter.filter { now.timeIntervalSince($0.value.at) < 15*60 }
+        }
+    }
+
     /// Compaction is over (PostCompact, or the SessionStart that follows /compact).
     func compactionFinished(sessionId: String?) {
         guard let sid = NotchNotification.nonEmpty(sessionId),
@@ -815,7 +877,7 @@ class NotificationManager: ObservableObject {
 
     /// Bump when the hook bridge's wire format or command line changes, so an
     /// upgrade reinstalls hooks even if the app version didn't move.
-    private static let hooksSchemaVersion = 8
+    private static let hooksSchemaVersion = 9
 
     /// Install hooks on first launch, on version updates, and whenever the hook
     /// bridge itself changes shape.
@@ -860,6 +922,7 @@ class NotificationManager: ObservableObject {
             }
             DispatchQueue.main.async {
                 self.hooksInstallFailed = !ok
+                Replies.shared.refreshSupport()
                 completion?(ok)
             }
         }

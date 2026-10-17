@@ -22,6 +22,12 @@ struct NotchNotificationView: View {
     let onDismiss: () -> Void
     /// How the user answered a waiting card.
     let onRespond: ((CardResponse) -> Void)?
+    /// A reply typed on a finished card; returns whether it reached the session.
+    var onReply: ((String) -> Void)? = nil
+    /// Typing on the card: hold it open while true.
+    var onTyping: ((Bool) -> Void)? = nil
+    /// Which question of several is showing, for the number shortcuts.
+    var onQuestionShown: ((Int) -> Void)? = nil
     @ObservedObject var phase: NotificationPhase
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -34,6 +40,7 @@ struct NotchNotificationView: View {
     @State private var picked: [Int: Set<Int>] = [:]
     /// Typed "Other" answers, per question.
     @State private var typed: [Int: String] = [:]
+    @State private var reply = ""
 
     private let session: NotificationManager.SessionInfo?
     private let branch: String?
@@ -46,6 +53,9 @@ struct NotchNotificationView: View {
         onTap: @escaping () -> Void,
         onDismiss: @escaping () -> Void,
         onRespond: ((CardResponse) -> Void)? = nil,
+        onReply: ((String) -> Void)? = nil,
+        onTyping: ((Bool) -> Void)? = nil,
+        onQuestionShown: ((Int) -> Void)? = nil,
         phase: NotificationPhase = NotificationPhase(),
         session: NotificationManager.SessionInfo? = nil,
         appearImmediately: Bool = false
@@ -57,6 +67,9 @@ struct NotchNotificationView: View {
         self.onTap = onTap
         self.onDismiss = onDismiss
         self.onRespond = onRespond
+        self.onReply = onReply
+        self.onTyping = onTyping
+        self.onQuestionShown = onQuestionShown
         self.phase = phase
         self.session = session
         self.branch = GitBranch.current(in: session?.cwd)
@@ -140,6 +153,7 @@ struct NotchNotificationView: View {
             }
             let lines = messageLines(notification, panelWidth: panelWidth)
             return headerGap + 4 + titleRow + 6 + metaRow + 8 + CGFloat(lines)*bodyLine + 16
+                + (notification.canReply ? 10 + otherHeight : 0)
         }
 
         static func wellWidth(_ panelWidth: CGFloat) -> CGFloat {
@@ -211,7 +225,6 @@ struct NotchNotificationView: View {
         guard isPermission, case .permission = notification.interaction else { return false }
         return CommandRisk.looksDestructive(notification.detail ?? notification.message)
     }
-    private var accent: Color { isDestructive ? CharacterState.error.color : characterState.color }
     private var headerHeight: CGFloat { Metrics.headerHeight(notchHeight: notchHeight, hasNotch: hasNotch) }
 
     private var title: String {
@@ -368,10 +381,11 @@ struct NotchNotificationView: View {
         )
     }
 
-    /// What's being asked, and how long it's been waiting.
+    /// What's being asked, and how long it's been waiting. No status mark:
+    /// the character right above already says it, and a second dot beside the
+    /// session's would stack two marks under it that never line up.
     private var titleRow: some View {
         HStack(spacing: 8) {
-            StatusDot(color: accent)
             Text(title)
                 .font(Island.title)
                 .foregroundColor(Island.primary)
@@ -405,6 +419,7 @@ struct NotchNotificationView: View {
         HStack(spacing: 8) {
             if let session {
                 Circle().fill(session.color).frame(width: 7, height: 7)
+                    .padding(.trailing, -2)
             }
             if let toolChip, case .permission = notification.interaction { Chip(text: toolChip) }
             if let session, session.agentSource != .claude { Chip(text: session.agentSource.displayName, mono: false) }
@@ -469,21 +484,28 @@ struct NotchNotificationView: View {
         HStack(spacing: 8) {
             IslandButton(label: "Deny", shortcut: "⌃⌥D", style: .secondary, hint: "Blocks this tool call") { onRespond?(.deny) }
             if let always {
-                IslandButton(label: "Always allow", shortcut: nil, style: .secondary,
-                             hint: "Saves \(always.label) for \(always.scope)") { onRespond?(.allowAlways) }
+                IslandButton(label: "This session", shortcut: "⌃⌥S", style: .secondary,
+                             hint: "Allows \(always.label) until this session ends") { onRespond?(.allowSession) }
             }
             IslandButton(label: "Allow", shortcut: "⌃⌥A", style: .primary, hint: "Allows this tool call once") { onRespond?(.allow) }
         }
         .padding(.top, 12)
         if let always {
             // Exactly what "Always allow" saves, and where: no surprises.
-            Text("Always allow saves \(always.label) for \(always.scope)")
-                .font(Island.caption)
-                .foregroundColor(Island.tertiary)
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .frame(height: Metrics.captionRow)
-                .padding(.top, 8)
+            HStack(spacing: 6) {
+                Button { onRespond?(.allowAlways) } label: {
+                    Text("Always allow").font(Island.caption.weight(.semibold)).foregroundColor(Island.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Saves \(always.label) for \(always.scope)")
+                Text("saves \(always.label) for \(always.scope)")
+                    .font(Island.caption)
+                    .foregroundColor(Island.tertiary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            .frame(height: Metrics.captionRow)
+            .padding(.top, 8)
         }
     }
 
@@ -554,7 +576,8 @@ struct NotchNotificationView: View {
             .padding(.top, 8)
         VStack(spacing: Metrics.optionGap) {
             ForEach(Array(question.options.enumerated()), id: \.offset) { offset, option in
-                OptionRow(option: option, multiSelect: question.multiSelect, selected: selected.contains(offset)) {
+                OptionRow(option: option, multiSelect: question.multiSelect, selected: selected.contains(offset),
+                          shortcut: offset < 6 ? "⌃⌥\(offset + 1)" : nil) {
                     choose(offset, in: questions)
                 }
             }
@@ -566,6 +589,11 @@ struct NotchNotificationView: View {
             }
         }
         .padding(.top, 10)
+        .onReceive(NotificationCenter.default.publisher(for: .notchPickOption)) { note in
+            guard let offset = note.object as? Int, question.options.indices.contains(offset) else { return }
+            choose(offset, in: questions)
+        }
+        .onChange(of: questionIndex, initial: true) { _, now in onQuestionShown?(now) }
         if question.multiSelect {
             HStack(spacing: 8) {
                 IslandButton(label: "In \(answerElsewhere)", shortcut: nil, style: .secondary, hint: "Answer in \(answerElsewhere)") { onRespond?(.handOff) }
@@ -637,15 +665,6 @@ struct NotchNotificationView: View {
         let lines = Metrics.messageLines(notification, panelWidth: panelWidth)
         return VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 8) {
-                if characterState == .done {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 14, weight: .semibold))
-                        .symbolRenderingMode(.palette)
-                        .foregroundStyle(Color.black, accent)
-                        .frame(width: 14, height: 14)
-                } else {
-                    StatusDot(color: accent)
-                }
                 Text(title)
                     .font(Island.title)
                     .foregroundColor(Island.primary)
@@ -691,6 +710,16 @@ struct NotchNotificationView: View {
                 .frame(maxWidth: .infinity, alignment: .topLeading)
                 .frame(height: CGFloat(lines)*Metrics.bodyLine, alignment: .topLeading)
                 .padding(.top, 8)
+            if notification.canReply {
+                // Answer the finished session right here: it carries on.
+                OtherAnswerField(text: $reply, placeholder: "Reply to \(session?.agentSource.displayName ?? "Claude")…",
+                                 icon: "arrowshape.turn.up.left", onFocus: { onTyping?($0) }) {
+                    let text = reply.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !text.isEmpty else { return }
+                    onReply?(text)
+                }
+                .padding(.top, 10)
+            }
         }
     }
 
@@ -785,7 +814,14 @@ struct OptionRow: View {
     let option: AgentQuestion.Option
     let multiSelect: Bool
     let selected: Bool
+    var shortcut: String? = nil
     let action: () -> Void
+
+    private var tooltip: String {
+        let text = option.description.isEmpty ? option.label : option.description
+        guard let shortcut else { return text }
+        return text + " (" + shortcut + ")"
+    }
 
     @State private var hovered = false
 
@@ -824,7 +860,7 @@ struct OptionRow: View {
         .onHover { hovered = $0 }
         .animation(Island.press, value: hovered)
         .animation(Island.press, value: selected)
-        .help(option.description.isEmpty ? option.label : option.description)
+        .help(tooltip)
         .accessibilityLabel(option.description.isEmpty ? option.label : "\(option.label), \(option.description)")
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
@@ -858,22 +894,26 @@ struct TurnStats: View {
     }
 }
 
-/// "Other": your own answer, typed. Return sends it.
+/// A one-line field on a card: "Other" answers to questions, replies to a
+/// finished session. Return sends it.
 struct OtherAnswerField: View {
     @Binding var text: String
+    var placeholder = "Something else…"
+    var icon = "pencil"
+    var onFocus: ((Bool) -> Void)? = nil
     let onSubmit: () -> Void
 
     @FocusState private var focused: Bool
 
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: "pencil")
+            Image(systemName: icon)
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundColor(Island.tertiary)
             // macOS ignores a placeholder's colour, so draw it ourselves.
             ZStack(alignment: .leading) {
                 if text.isEmpty {
-                    Text("Something else…")
+                    Text(placeholder)
                         .font(.system(size: 12.5, weight: .medium))
                         .foregroundColor(Island.secondary.opacity(0.8))
                         .allowsHitTesting(false)
@@ -884,6 +924,11 @@ struct OtherAnswerField: View {
                     .foregroundColor(Island.primary)
                     .focused($focused)
                     .onSubmit(onSubmit)
+            }
+            if !text.isEmpty {
+                Image(systemName: "return")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(Island.tertiary)
             }
         }
         .padding(.horizontal, 12)
@@ -898,11 +943,21 @@ struct OtherAnswerField: View {
                 )
         )
         .contentShape(Rectangle())
-        .onTapGesture {
-            NSApp.windows.first { $0.isVisible && $0.canBecomeKey && $0 is NotchPanel }?.makeKey()
-            focused = true
-        }
-        .accessibilityLabel("Type your own answer")
+        .onTapGesture { focus() }
+        .onChange(of: focused) { _, now in onFocus?(now) }
+        .onReceive(NotificationCenter.default.publisher(for: .notchFocusField)) { _ in focus() }
+        .accessibilityLabel(placeholder)
+    }
+
+    private func focus() {
+        NSApp.windows.first { $0.isVisible && $0.canBecomeKey && $0 is NotchPanel }?.makeKey()
+        focused = true
     }
 }
 
+extension Notification.Name {
+    /// ⌃⌥R: put the caret in the card's field (reply, or "something else").
+    static let notchFocusField = Notification.Name("notchFocusField")
+    /// ⌃⌥1–6: pick that option on the question showing (object: its offset).
+    static let notchPickOption = Notification.Name("notchPickOption")
+}

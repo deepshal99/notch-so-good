@@ -16,6 +16,8 @@ struct NotchNotification: Identifiable {
     let detail: String?
     /// What the card asks and how it can be answered.
     let interaction: CardInteraction?
+    /// A finished session that can be answered from the card (its reply hook is listening).
+    let canReply: Bool
 
     /// Ingress limits. Hook payloads and URL parameters are untrusted input:
     /// a 50 KB assistant message or a control-character-laden path would wreck
@@ -33,8 +35,10 @@ struct NotchNotification: Identifiable {
         permissionRequestId: String? = nil,
         toolName: String? = nil,
         detail: String? = nil,
-        interaction: CardInteraction? = nil
+        interaction: CardInteraction? = nil,
+        canReply: Bool = false
     ) {
+        self.canReply = canReply
         self.type = type
         self.message = Self.clean(message, limit: Self.messageLimit) ?? type.defaultTitle
         self.title = Self.clean(title, limit: Self.titleLimit)
@@ -75,6 +79,7 @@ struct NotchNotification: Identifiable {
     static let limitsOutTitle = "Out of usage"
     static let limitsBackTitle = "Usage is back"
     static let updateTitle = "Update ready"
+    static let radarTitle = "Two agents, one file"
     static let nudgeTitle = "Still waiting on you"
 
     var displayTitle: String {

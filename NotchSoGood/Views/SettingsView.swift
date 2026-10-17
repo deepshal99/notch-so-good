@@ -212,17 +212,24 @@ private struct AlertsPane: View {
                          subtitle: "Allow or deny from the notch. When off, Claude Code asks in the terminal as usual.") {
                     Toggle("", isOn: $notificationManager.showOnPermission).labelsHidden()
                 }
-                HStack(spacing: 10) {
-                    KeyCaps(keys: ["⌃", "⌥", "A"])
-                    Text("allows").font(Panel.subtitle).foregroundColor(Panel.secondary)
-                    KeyCaps(keys: ["⌃", "⌥", "D"])
-                    Text("denies, from any app").font(Panel.subtitle).foregroundColor(Panel.secondary)
-                    Spacer(minLength: 0)
+            }
+
+            PanelSection("Shortcuts") {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(spacing: 8) {
+                        KeyCaps(keys: ["⌃", "⌥"])
+                        Text("plus a key, from any app, while a card is up")
+                            .font(Panel.subtitle).foregroundColor(Panel.secondary)
+                    }
+                    Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 10) {
+                        GridRow { shortcut("A", "Allow"); shortcut("D", "Deny") }
+                        GridRow { shortcut("S", "Allow for this session"); shortcut("1–6", "Pick an option") }
+                        GridRow { shortcut("R", "Reply, or type an answer"); shortcut("N", "Next waiting card") }
+                        GridRow { shortcut("O", "Open where it's running"); Color.clear.frame(height: 1) }
+                    }
                 }
-                .padding(.leading, Panel.rowPadding + Panel.iconColumn + 12)
-                .padding(.trailing, Panel.rowPadding)
-                .padding(.bottom, 13)
-                .padding(.top, -4)
+                .padding(.horizontal, Panel.rowPadding)
+                .padding(.vertical, 13)
             }
 
             PanelSection("Reminders") {
@@ -262,6 +269,15 @@ private struct AlertsPane: View {
     }
 }
 
+extension AlertsPane {
+    fileprivate func shortcut(_ key: String, _ label: String) -> some View {
+        HStack(spacing: 8) {
+            KeyCaps(keys: [key])
+            Text(label).font(Panel.subtitle).foregroundColor(Panel.secondary).lineLimit(1)
+        }
+    }
+}
+
 private struct KeyCaps: View {
     let keys: [String]
 
@@ -271,6 +287,7 @@ private struct KeyCaps: View {
                 Text(key)
                     .font(.system(size: 11.5, weight: .medium))
                     .foregroundColor(Panel.primary)
+                    .padding(.horizontal, key.count > 1 ? 5 : 0)
                     .frame(minWidth: 22, minHeight: 22)
                     .background(
                         RoundedRectangle(cornerRadius: 6, style: .continuous)

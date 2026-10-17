@@ -11,6 +11,8 @@ The world's smallest coworker lives in your Mac's notch. A little 3D character (
 - Hooks: Notch So Good only answers "allow" after a user click; anything it wouldn't ask about gets no decision so the agent's own rules decide. Installers merge with the user's own hooks
 - Notch characters (Peek, Tail, Roost, Bubble) are signed-distance fields raymarched in a Metal shader (`NotchSoGood/Character/`), compiled from source at runtime because `swift build` doesn't compile `.metal` files. Choreography and Bubble's physics live in `CharacterEngine.swift`.
 - Debug builds can render offscreen snapshots: `.build/out/Products/Debug/NotchSoGood --snapshots <dir>` (runs alongside an installed copy, starts no servers)
+- Replies from the notch: Claude's Stop also runs a `Reply` hook with `asyncRewake` (2.1.287+) that waits up to an hour for text typed on the finished card; exit 2 with the text on stderr wakes Claude. Typing in the terminal (UserPromptSubmit) cancels it
+- Card shortcuts (`HotkeyManager`) are ⌃⌥ + A/D/S/1–6/R/N/O, registered only while a card that uses them is up; ⌃⌥R brings the app forward so the panel gets keys, then hands focus back
 - Claude Code / Codex CLI hook integration over a per-user Unix socket (`/tmp/notchsogood-<uid>.sock`). Approvals come from the agents' `PermissionRequest` hook; questions and plans from PreToolUse with `updatedInput`
 - Updates: Sparkle with our own EdDSA key and a self-signed release certificate (no Apple Developer account); `release.sh` publishes
 

@@ -1,5 +1,22 @@
 import Foundation
 
+/// One step of an agent's checklist.
+struct PlanStep: Equatable {
+    var id: String
+    var title: String
+    /// "pending", "in_progress" or "completed" (empty: unchanged, in an update).
+    var status: String
+
+    init(id: String, title: String, status: String) {
+        self.id = id; self.title = title; self.status = status
+    }
+
+    init?(json: [String: Any], index: Int) {
+        guard let title = json["title"] as? String else { return nil }
+        self.init(id: json["id"] as? String ?? "\(index)", title: title, status: json["status"] as? String ?? "pending")
+    }
+}
+
 /// What a waiting card asks of the user, and how they can answer.
 enum CardInteraction: Equatable {
     /// A tool call the agent wants to run. `always` is the rule "Always allow"
@@ -67,6 +84,8 @@ struct AgentQuestion: Equatable {
 /// How the user answered a waiting card.
 enum CardResponse: Equatable {
     case allow
+    /// Allow, and keep allowing the same thing until the session ends.
+    case allowSession
     case allowAlways
     case deny
     /// Approve a plan; `acceptEdits` also switches the session to auto-accept edits.
@@ -80,6 +99,7 @@ enum CardResponse: Equatable {
     var reply: [String: Any]? {
         switch self {
         case .allow: return ["decision": "allow"]
+        case .allowSession: return ["decision": "allow", "session": true]
         case .allowAlways: return ["decision": "allow", "always": true]
         case .deny: return ["decision": "deny", "reason": "Denied from Notch So Good"]
         case .approvePlan(let acceptEdits): return ["decision": "allow", "mode": acceptEdits ? "acceptEdits" : "default"]

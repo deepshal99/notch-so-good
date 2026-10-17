@@ -74,6 +74,7 @@ VERSIONED = {
     "PostToolUseFailure": (2, 1, 119),
 }
 ASYNC_SINCE = (2, 1, 23)            # "async": true on command hooks
+REWAKE_SINCE = (2, 1, 287)          # "asyncRewake": true (reply from the notch)
 ANSWERS_SINCE = (2, 1, 85)          # PreToolUse can answer AskUserQuestion / ExitPlanMode
 
 def claude_version():
@@ -130,14 +131,16 @@ SUPPORTED = [event for event, since in VERSIONED.items()
              if supports(since) or (version is None and had_ours(event))]
 background = supports(ASYNC_SINCE)
 
-def handler(event, timeout, run_async=False):
+def handler(event, timeout, run_async=False, rewake=False):
     hook = {"type": "command", "command": 'python3 %s %s' % (json.dumps(bridge), event), "timeout": timeout}
     if run_async:
         hook["async"] = True
+    if rewake:
+        hook["asyncRewake"] = True
     return hook
 
-def group(event, timeout, matcher="", run_async=False):
-    return {"matcher": matcher, "hooks": [handler(event, timeout, run_async)]}
+def group(event, timeout, matcher="", run_async=False, rewake=False):
+    return {"matcher": matcher, "hooks": [handler(event, timeout, run_async, rewake)]}
 
 def ours(hook):
     return "notchsogood" in str(hook.get("command", "")).lower()
@@ -166,6 +169,12 @@ ours_by_event = {}
 # slow the agent down. SessionEnd stays synchronous (the session is closing).
 for event in FIRE_AND_FORGET + [e for e in ("StopFailure", "PostCompact", "PostToolUseFailure") if e in SUPPORTED]:
     ours_by_event[event] = [group(event, 5, run_async=background and event != "SessionEnd")]
+# Reply from the notch: when a turn ends, listen in the background for a reply
+# typed in the notch, and wake Claude with it.
+if supports(REWAKE_SINCE) or (version is None and had_ours("Stop", "")):
+    if supports(REWAKE_SINCE) or any("Reply" in str(h.get("command", "")) for item in (hooks_before.get("Stop") or [])
+                                     if isinstance(item, dict) for h in item.get("hooks", []) if isinstance(h, dict)):
+        ours_by_event["Stop"].append(group("Reply", 3600, rewake=True))
 # What the agent is doing right now, for the pill; plus, where Claude Code can
 # take the answer from a hook, questions and plans answered in the notch.
 pre = [group("PreToolUse", 5, run_async=background)]

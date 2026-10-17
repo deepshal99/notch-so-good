@@ -27,11 +27,15 @@ class NotchWindowController {
 
     // Track current permission notification so we can dismiss it programmatically
     private var activePermissionRequestId: String? {
-        // The approve/deny shortcuts exist only while there's something to answer.
-        didSet { HotkeyManager.shared.setArmed(activePermissionRequestId != nil) }
+        // The shortcuts exist only while there's something to use them on.
+        didSet { armHotkeys() }
     }
     /// The notification currently on screen, for re-laying out on display changes.
-    private var activeNotification: NotchNotification?
+    private var activeNotification: NotchNotification? {
+        didSet { armHotkeys() }
+    }
+    /// Where the card on screen came from, for jumping there or cycling cards.
+    private var activeMeta: (sourceBundleId: String?, cwd: String?, sourcePid: pid_t?) = (nil, nil, nil)
     /// Exit-animation signal for the currently visible notification
     private var notificationPhase: NotificationPhase?
 
@@ -44,6 +48,8 @@ class NotchWindowController {
     /// When the current waiting card appeared. Hotkeys ignore its first half
     /// second, so a double press never answers a card you haven't seen.
     private var waitingShownAt = Date.distantPast
+    /// A reply (or other answer) is being typed on the card: it stays up.
+    private var cardBeingTyped = false
 
     /// Screen each panel is currently built for. The pill bakes its notch
     /// dimensions into the SwiftUI view, so moving it to a display with
@@ -328,7 +334,7 @@ class NotchWindowController {
             panel?.setFrame(frame, display: true)
         }
 
-        if case .question = notification.interaction { panel?.acceptsTyping = true } else { panel?.acceptsTyping = false }
+        if case .question = notification.interaction { panel?.acceptsTyping = true } else { panel?.acceptsTyping = notification.canReply }
         // Over a full-screen video or slides, only a card that needs an answer
         // shows; over the full-screen app your agents run in, everything does.
         panel?.showsOverFullScreen = isPermission || TerminalLauncher.frontmostRunsAgents(
@@ -336,7 +342,9 @@ class NotchWindowController {
         let resolvedBundleId = notification.sourceBundleId ?? sessionSourceBundleId
         let resolvedCwd = sessionCwd
 
+        questionIndex = 0
         activePermissionRequestId = notification.permissionRequestId
+        activeMeta = (resolvedBundleId, resolvedCwd, sessionSourcePid)
         activeNotification = notification
         if isPermission { waitingShownAt = Date() }
 
@@ -374,6 +382,28 @@ class NotchWindowController {
                 guard let self, let reqId = self.activePermissionRequestId else { return }
                 self.answer(reqId, response, focus: (notification.sessionId, resolvedBundleId, resolvedCwd, sessionSourcePid))
             } : nil,
+            onReply: notification.canReply ? { [weak self] text in
+                guard let sid = notification.sessionId else { return }
+                MainActor.assumeIsolated { Replies.shared.send(text, to: sid) { sent in
+                    if sent {
+                        NotificationManager.shared.updateSessionStatus(sessionId: sid, status: .running)
+                        self?.dismiss()
+                    } else {
+                        // Not listening any more (it timed out, or you typed in the
+                        // terminal): take you there instead.
+                        self?.dismiss()
+                        TerminalLauncher.focusClaudeCode(sessionId: sid, sourceBundleId: resolvedBundleId,
+                                                         cwd: resolvedCwd, sourcePid: sessionSourcePid)
+                    }
+                } }
+            } : nil,
+            onTyping: { [weak self] typing in
+                guard let self, self.activePermissionRequestId == nil else { return }
+                self.cardBeingTyped = typing
+                if typing { self.dismissTimer?.invalidate(); self.dismissTimer = nil }
+                else if !self.notifHoverMonitor.inside { self.scheduleAutoDismiss(after: Self.lingerAfterHover) }
+            },
+            onQuestionShown: { [weak self] index in self?.questionShown(index) },
             phase: phase,
             // Always called on the main thread (UI entry points only).
             session: MainActor.assumeIsolated {
@@ -397,13 +427,13 @@ class NotchWindowController {
         // Regular cards leave on their own; a card you're reading stays until
         // you move away (then it gives you a moment). Permissions never time out here.
         if !isPermission {
-            scheduleAutoDismiss(after: Self.cardLifetime)
+            scheduleAutoDismiss(after: notification.canReply ? Self.replyCardLifetime : Self.cardLifetime)
             notifHoverMonitor.onHoverChange = { [weak self] hovering in
                 guard let self, !self.isDismissing, self.activePermissionRequestId == nil else { return }
                 if hovering {
                     self.dismissTimer?.invalidate()
                     self.dismissTimer = nil
-                } else {
+                } else if !self.cardBeingTyped {
                     self.scheduleAutoDismiss(after: Self.lingerAfterHover)
                 }
             }
@@ -418,6 +448,8 @@ class NotchWindowController {
     }
 
     private static let cardLifetime: TimeInterval = 6
+    /// Long enough to decide whether to answer it.
+    private static let replyCardLifetime: TimeInterval = 10
     private static let lingerAfterHover: TimeInterval = 2.5
 
     private func scheduleAutoDismiss(after interval: TimeInterval) {
@@ -522,9 +554,111 @@ class NotchWindowController {
     /// True while an interactive permission is on screen (hotkeys only fire then).
     var hasActivePermission: Bool { activePermissionRequestId != nil }
 
+    /// The keys the card on screen can use.
+    private func armHotkeys() {
+        var keys: Set<HotkeyManager.Key> = []
+        if let notification = activeNotification {
+            if activePermissionRequestId != nil {
+                keys.formUnion([.deny, .next, .open])
+                switch notification.interaction {
+                case .question(let questions):
+                    let index = min(questionIndex, max(questions.count - 1, 0))
+                    keys.insert(.reply)
+                    if questions.indices.contains(index) {
+                        keys.formUnion(HotkeyManager.Key.options(questions[index].options.count))
+                    }
+                case .permission(let always):
+                    keys.insert(.allow)
+                    if always != nil { keys.insert(.session) }
+                default:
+                    keys.insert(.allow)
+                }
+            } else if notification.sessionId != nil {
+                keys.insert(.open)
+                if notification.canReply { keys.insert(.reply) }
+            }
+        }
+        HotkeyManager.shared.arm(keys)
+    }
+
+    /// Which question of a multi-question card is showing (the card reports it),
+    /// so ⌃⌥1–6 match its options.
+    private var questionIndex = 0 {
+        didSet { if questionIndex != oldValue { armHotkeys() } }
+    }
+
+    func questionShown(_ index: Int) { questionIndex = index }
+
+    private var hotkeyReady: Bool { Date().timeIntervalSince(waitingShownAt) > 0.5 }
+
+    /// ⌃⌥S: allow, and keep allowing the same thing until the session ends.
+    @MainActor func allowActiveForSession() {
+        guard let reqId = activePermissionRequestId, hotkeyReady,
+              case .permission(let always)? = activeNotification?.interaction, always != nil else { return }
+        answer(reqId, .allowSession)
+    }
+
+    /// ⌃⌥1–6: the option with that number on a question card.
+    @MainActor func pickOption(_ offset: Int) {
+        guard activePermissionRequestId != nil, hotkeyReady,
+              case .question? = activeNotification?.interaction else { return }
+        NotificationCenter.default.post(name: .notchPickOption, object: offset)
+    }
+
+    /// ⌃⌥N: put this waiting card at the back of the line and show the next.
+    @MainActor func showNextWaitingCard() {
+        guard activePermissionRequestId != nil, hotkeyReady, !permissionQueue.isEmpty,
+              let current = activeNotification else { return }
+        permissionQueue.append(current)
+        permissionQueueMeta.append(activeMeta)
+        activePermissionRequestId = nil
+        showNextQueuedPermission()
+    }
+
+    /// ⌃⌥O: go to where the session runs. A waiting card is handed back there,
+    /// so the agent asks in its own prompt.
+    @MainActor func openActiveCard() {
+        guard let notification = activeNotification else { return }
+        let meta = activeMeta
+        if let reqId = activePermissionRequestId {
+            guard hotkeyReady else { return }
+            answer(reqId, .handOff, focus: (notification.sessionId, meta.sourceBundleId, meta.cwd, meta.sourcePid))
+        } else {
+            dismiss()
+            TerminalLauncher.focusClaudeCode(sessionId: notification.sessionId, sourceBundleId: meta.sourceBundleId,
+                                             cwd: meta.cwd, sourcePid: meta.sourcePid)
+        }
+    }
+
+    /// ⌃⌥R: the caret in the card's field (a reply, or your own answer). A
+    /// panel only gets keys from an app in front, so the app comes forward
+    /// this once, and hands focus back when the card goes.
+    @MainActor func focusCardField() {
+        guard activeNotification != nil, let panel, panel.acceptsTyping else { return }
+        if !NSApp.isActive {
+            appBeforeTyping = NSWorkspace.shared.frontmostApplication
+            NSApp.activate(ignoringOtherApps: true)
+        }
+        panel.makeKeyAndOrderFront(nil)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            NotificationCenter.default.post(name: .notchFocusField, object: nil)
+        }
+    }
+
+    /// The app you were in before ⌃⌥R brought the card forward.
+    private var appBeforeTyping: NSRunningApplication?
+
+    private func restoreFocus() {
+        guard let app = appBeforeTyping else { return }
+        appBeforeTyping = nil
+        app.activate()
+    }
+
     func dismiss() {
         guard !isDismissing else { return }
         isDismissing = true
+        cardBeingTyped = false
+        restoreFocus()
         activePermissionRequestId = nil
         activeNotification = nil
 
