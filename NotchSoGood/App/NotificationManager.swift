@@ -221,6 +221,7 @@ class NotificationManager: ObservableObject {
         followActiveDisplay = defaults.bool(forKey: "followActiveDisplay")
 
         SoundManager.shared.isEnabled = soundEnabled
+        SoundManager.shared.onlyWhenBlocked = soundOnlyWhenBlocked
 
         NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main

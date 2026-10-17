@@ -381,6 +381,13 @@ def handle_ask_user_question(payload, agent, tool_input, tool_name="AskUserQuest
     asked = [q["question"] for q in questions]
     if (isinstance(answers, dict) and asked
             and all(isinstance(answers.get(q), str) and answers.get(q) for q in asked)):
+        # The card saw questions cut to length; Claude matches answers on its
+        # own full text, so map them back by position.
+        originals = [q.get("question") for q in tool_input.get("questions") if isinstance(q, dict)
+                     and isinstance(q.get("question"), str)][:len(asked)]
+        if len(originals) == len(asked):
+            answers = {orig: answers[short] for orig, short in zip(originals, asked)}
+            asked = originals
         if host:
             lines = "\n".join('- "%s": %s' % (q, answers[q]) for q in asked)
             emit({"hookSpecificOutput": {

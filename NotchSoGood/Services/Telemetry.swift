@@ -43,6 +43,7 @@ final class Telemetry {
     /// `session_day` once a day, with which agent ("claude" / "codex"), the
     /// first time a session shows up that day.
     func noteSession(agent: AgentSource) {
+        once(per: "active_day")
         once(per: "session_day", props: ["agent": agent.rawValue])
     }
 

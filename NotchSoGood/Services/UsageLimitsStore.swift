@@ -119,6 +119,11 @@ final class UsageLimitsStore: ObservableObject {
                 return
             }
 
+            // Signed out or expired everywhere: the old numbers are wrong now.
+            if claude.signedOut || claude.expired || codex.signedOut {
+                self.windows = combined
+                NotificationManager.shared.limitsDidChange()
+            }
             // Nothing came back. Keep whatever we last showed rather than
             // blanking the card because of one flaky request, but record why so
             // the menu can say something instead of silently hiding the card.

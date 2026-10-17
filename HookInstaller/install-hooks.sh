@@ -78,27 +78,56 @@ ANSWERS_SINCE = (2, 1, 85)          # PreToolUse can answer AskUserQuestion / Ex
 
 def claude_version():
     """The installed Claude Code's version, or None. The app runs this with a
-    bare PATH, so look in the usual install locations too."""
+    bare PATH (no nvm, volta, bun, or node for npm's launcher), so try the
+    usual locations with a fuller PATH, then the user's own login shell."""
     home = os.path.expanduser("~")
-    candidates = [shutil.which("claude"), home + "/.local/bin/claude", home + "/.claude/local/claude",
-                  "/opt/homebrew/bin/claude", "/usr/local/bin/claude"]
-    for path in candidates:
-        if not path or not os.access(path, os.X_OK):
-            continue
-        try:
-            out = subprocess.run([path, "--version"], capture_output=True, text=True, timeout=10).stdout
-        except Exception:
-            continue
-        match = re.search(r"(\d+)\.(\d+)\.(\d+)", out)
-        if match:
-            return tuple(int(part) for part in match.groups())
-    return None
+    path = ":".join([home + "/.local/bin", home + "/.claude/local", "/opt/homebrew/bin", "/usr/local/bin",
+                     home + "/.volta/bin", home + "/.bun/bin", home + "/.npm-global/bin", os.environ.get("PATH", "")])
+    env = dict(os.environ, PATH=path)
+    def parse(out):
+        match = re.search(r"(\d+)\.(\d+)\.(\d+)", out or "")
+        return tuple(int(part) for part in match.groups()) if match else None
+    for candidate in [shutil.which("claude", path=path), home + "/.local/bin/claude", home + "/.claude/local/claude",
+                      "/opt/homebrew/bin/claude", "/usr/local/bin/claude"]:
+        if candidate and os.access(candidate, os.X_OK):
+            try:
+                found = parse(subprocess.run([candidate, "--version"], capture_output=True, text=True,
+                                             timeout=10, env=env).stdout)
+            except Exception:
+                found = None
+            if found:
+                return found
+    try:
+        shell = os.environ.get("SHELL") or "/bin/zsh"
+        return parse(subprocess.run([shell, "-lic", "claude --version"], capture_output=True, text=True,
+                                    timeout=20).stdout)
+    except Exception:
+        return None
 
 version = claude_version()
 def supports(since):
     return bool(version) and version >= since
 
-SUPPORTED = [event for event, since in VERSIONED.items() if supports(since)]
+# Unknown version (detection failed): keep whatever we installed before rather
+# than take approvals away from someone who had them.
+def had_ours(event, matcher_part=None):
+    for item in (hooks_before.get(event) or []) if isinstance(hooks_before.get(event), list) else []:
+        for hook in item.get("hooks", []) if isinstance(item, dict) else []:
+            if isinstance(hook, dict) and "notchsogood" in str(hook.get("command", "")).lower():
+                if matcher_part is None or matcher_part in str(item.get("matcher", "")):
+                    return True
+    return False
+
+try:
+    with open(settings_path) as handle:
+        hooks_before = json.load(handle).get("hooks") or {}
+except Exception:
+    hooks_before = {}
+if not isinstance(hooks_before, dict):
+    hooks_before = {}
+
+SUPPORTED = [event for event, since in VERSIONED.items()
+             if supports(since) or (version is None and had_ours(event))]
 background = supports(ASYNC_SINCE)
 
 def handler(event, timeout, run_async=False):
@@ -142,8 +171,9 @@ for event in FIRE_AND_FORGET + [e for e in ("StopFailure", "PostCompact", "PostT
 pre = [group("PreToolUse", 5, run_async=background)]
 # Apps that bring their own question tool (Conductor's mcp__conductor__AskUserQuestion)
 # are answered by declining the call with the answers, which any version takes.
+answers = supports(ANSWERS_SINCE) or (version is None and had_ours("PreToolUse", "AskUserQuestion"))
 pre.append(group("Interactive", 130, matcher="^(AskUserQuestion|ExitPlanMode|mcp__.*__AskUserQuestion)$"
-                 if supports(ANSWERS_SINCE) else "^mcp__.*__AskUserQuestion$"))
+                 if answers else "^mcp__.*__AskUserQuestion$"))
 ours_by_event["PreToolUse"] = pre
 # The one place we ever answer for the user: when Claude Code is about to ask
 # them. Has to outlast the app's own 120 s decision window.

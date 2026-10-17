@@ -362,18 +362,6 @@ class PermissionServer {
         case "PreToolUse":
             handlePreToolUse(json: json, clientSocket: clientSocket, agent: agent)
 
-        case "HostQuestion":
-            // An app's own question tool (Conductor's): it takes the answer, so
-            // the notch shows the question and sends you there.
-            close(clientSocket)
-            let questions = (json["questions"] as? [[String: Any]] ?? []).compactMap(AgentQuestion.init(json:))
-            let host = (json["host"] as? String).flatMap { $0.isEmpty ? nil : $0.capitalized }
-            DispatchQueue.main.async {
-                NotificationManager.shared.adoptSession(sessionId: sessionId, cwd: cwd, sourceBundleId: sourceBundleId,
-                                                        sourcePid: agentPid, permissionMode: mode, sourceApp: agent)
-                NotificationManager.shared.showHostQuestion(sessionId: sessionId, questions: questions, host: host)
-            }
-
         case "PostToolUse":
             close(clientSocket)
             let toolName = json["tool_name"] as? String ?? ""

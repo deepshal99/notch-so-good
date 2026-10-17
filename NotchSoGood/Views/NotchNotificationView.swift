@@ -609,6 +609,7 @@ struct NotchNotificationView: View {
             picked[index] = set
         } else {
             picked[index] = [option]
+            typed[index] = nil          // a click is the answer, not click + half-typed text
             advance(in: questions)
         }
     }

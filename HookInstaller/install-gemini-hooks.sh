@@ -39,8 +39,9 @@ bridge = os.environ["BRIDGE"]
 HOOKS_SINCE = (0, 26, 0)
 version = None
 try:
+    env = dict(os.environ, PATH="/opt/homebrew/bin:/usr/local/bin:" + os.path.expanduser("~/.volta/bin:~/.bun/bin:") + os.environ.get("PATH", ""))
     out = subprocess.run([os.environ.get("GEMINI_BIN") or "gemini", "--version"],
-                         capture_output=True, text=True, timeout=15).stdout
+                         capture_output=True, text=True, timeout=15, env=env).stdout
     match = re.search(r"(\d+)\.(\d+)\.(\d+)", out)
     version = tuple(int(p) for p in match.groups()) if match else None
 except Exception:
@@ -69,7 +70,10 @@ try:
 except Exception:
     sys.exit("Error: %s is not valid JSON; fix it and run this again." % settings_path)
 hooks = settings.get("hooks") if isinstance(settings.get("hooks"), dict) else {}
-supported = version is not None and version >= HOOKS_SINCE
+had_ours = any(isinstance(item, dict) and any(ours(h) for h in item.get("hooks", []) if isinstance(h, dict))
+               for groups in hooks.values() if isinstance(groups, list) for item in groups)
+# Unknown version (detection failed): keep what was installed before.
+supported = (version is not None and version >= HOOKS_SINCE) or (version is None and had_ours)
 
 for event in EVENTS:
     # Gemini's timeout is in milliseconds; tool matchers are regexes.

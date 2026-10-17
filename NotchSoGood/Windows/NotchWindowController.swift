@@ -442,6 +442,11 @@ class NotchWindowController {
             PermissionServer.shared.respond(requestId: reqId, response: response)
         }
         dismiss()
+        // respond() moves the queue on; a hand-back has to do it here, or the
+        // next waiting card (and any held ones) would never show.
+        if response == .handOff {
+            DispatchQueue.main.async { [weak self] in self?.showNextQueuedPermission() }
+        }
     }
 
     /// Show next queued permission notification (called after responding to current one)
