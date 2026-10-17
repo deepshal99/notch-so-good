@@ -5,6 +5,15 @@
         <link>https://github.com/deepshal99/notch-so-good</link>
         <language>en</language>
         <item>
+            <title>Version 4.8.0</title>
+            <pubDate>Sat, 17 Oct 2026 07:24:29 +0000</pubDate>
+            <sparkle:version>27</sparkle:version>
+            <sparkle:shortVersionString>4.8.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[<ul><li>Reply from the notch: when Claude finishes, type your next message on the card and it carries on (Claude Code 2.1.287+)</li><li>Allow for this session: one click or ⌃⌥S allows the same thing until the session ends, nothing saved</li><li>Keyboard first: ⌃⌥1–6 picks an option, ⌃⌥R replies, ⌃⌥N shows the next waiting card, ⌃⌥O opens the terminal</li><li>Plan progress: sessions show &quot;Step 2 of 5&quot; while they work through a plan</li><li>Agent radar: a heads-up when two sessions edit the same file</li><li>Cleaner cards: Peek carries the status, so the extra dot beside the title is gone</li></ul>]]></description>
+            <enclosure url="https://github.com/deepshal99/notch-so-good/releases/download/v4.8.0/NotchSoGood-4.8.0.zip" sparkle:edSignature="4UdnddwaiDJQ/Ur8dBweUvQUUfriUKv4zXg2oMTx88lw0POM6d2f/dwuR29C1bu6B54qGfFHNAkpksMGmTp/Bg==" length="3935993" type="application/octet-stream"/>
+        </item>
+        <item>
             <title>Version 4.7.3</title>
             <pubDate>Sat, 17 Oct 2026 06:17:07 +0000</pubDate>
             <sparkle:version>26</sparkle:version>
