@@ -370,6 +370,12 @@ class PermissionServer {
             close(clientSocket)
             // The tool ran: if its card is still up, it was answered elsewhere.
             if let key = json["tool_key"] as? String { resolvedElsewhere(sessionId: sessionId, toolKey: key) }
+            if let context = json["context"] as? [String: Any], let used = context["used"] as? Int, let window = context["window"] as? Int {
+                let known = context["known"] as? Bool ?? false
+                DispatchQueue.main.async {
+                    NotificationManager.shared.updateContext(sessionId: sessionId, used: used, window: window, known: known)
+                }
+            }
             let toolName = json["tool_name"] as? String ?? ""
             let edited = (json["edited"] as? [String]) ?? []
             let tests = json["tests"] as? String
@@ -440,6 +446,12 @@ class PermissionServer {
         case "Stop":
             close(clientSocket)
             resolvedElsewhere(sessionId: sessionId, before: eventTime)
+            if let context = json["context"] as? [String: Any], let used = context["used"] as? Int, let window = context["window"] as? Int {
+                let known = context["known"] as? Bool ?? false
+                DispatchQueue.main.async {
+                    NotificationManager.shared.updateContext(sessionId: sessionId, used: used, window: window, known: known)
+                }
+            }
             if let sessionId {
                 lock.lock()
                 autoAcceptEdits.remove(sessionId)

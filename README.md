@@ -68,6 +68,13 @@ It never approves anything you didn't click. Leave a card alone and Claude asks 
 
 ---
 
+## What's new in 4.9.0
+
+- **Practice run.** First launch is a 30-second tour in the notch: allow one, answer one, reply to one.
+- **Context meter.** Sessions past half full show how full they are, with one heads-up before a known window fills.
+- **Never stale.** Cards answered in Conductor, VS Code or Claude's desktop app close in the notch too; hooks put themselves back if something removes them.
+- **Ghostty.** Jump straight to the session's terminal (1.3+).
+
 ## What's new in 4.8.0
 
 - **Reply from the notch.** When Claude finishes, type your next message on the card and it carries on. No trip to the terminal.

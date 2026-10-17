@@ -76,9 +76,12 @@ enum SessionRowParts {
                 .foregroundColor(Island.tertiary)
                 .accessibilityLabel("\(running) subagent\(running == 1 ? "" : "s") running")
             }
+            if let percent = session.contextPercent, percent >= 50 {
+                ContextRing(percent: percent)
+            }
             if let progress = session.planProgress {
                 HStack(spacing: 3) {
-                    Image(systemName: "checklist").font(.system(size: 9, weight: .semibold)).symbolRenderingMode(.monochrome)
+                    Image(systemName: "checklist").font(.system(size: 9, weight: .semibold)).foregroundStyle(Island.tertiary)
                     Text("\(progress.done)/\(progress.total)").font(Island.numeric)
                 }
                 .foregroundColor(Island.tertiary)
@@ -132,5 +135,27 @@ struct ElapsedText: View {
                 .lineLimit(1)
                 .fixedSize()
         }
+    }
+}
+
+/// How full a session's context is: a small bar that fills up (not a ring,
+/// so it never reads as the usage ring beside it), only once it's past half,
+/// amber from 75%, red from 90%.
+struct ContextRing: View {
+    let percent: Int
+
+    var body: some View {
+        let color = percent >= 90 ? CharacterState.error.color : (percent >= 75 ? CharacterState.warn.color : Island.tertiary)
+        HStack(spacing: 4) {
+            ZStack(alignment: .leading) {
+                Capsule().fill(Color.white.opacity(0.14))
+                Capsule().fill(color).frame(width: max(3, 14 * CGFloat(percent) / 100))
+            }
+            .frame(width: 14, height: 5)
+            Text("\(percent)%").font(Island.numeric).foregroundColor(percent >= 75 ? color : Island.tertiary)
+        }
+        .help("Context \(percent)% full")
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Context \(percent)% full")
     }
 }

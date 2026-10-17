@@ -60,13 +60,16 @@ struct CharacterView: NSViewRepresentable {
     /// whenever something happens, which wakes it and puts off the next trick.
     var lively = false
     var activity = 0
+    /// A trick to do once, as soon as it's on screen.
+    var celebrate: PeekTrick? = nil
 
     @ObservedObject private var settings = CharacterSettings.shared
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     init(state: CharacterState, framing: CharacterFraming, gaze: SIMD2<Float>? = nil,
          kind: CharacterKind? = nil, finish: CharacterFinish? = nil, framesPerSecond: Int = 60,
-         lively: Bool = false, activity: Int = 0) {
+         lively: Bool = false, activity: Int = 0, celebrate: PeekTrick? = nil) {
+        self.celebrate = celebrate
         self.lively = lively
         self.activity = activity
         self.state = state
@@ -80,6 +83,10 @@ struct CharacterView: NSViewRepresentable {
     func makeNSView(context: Context) -> CharacterMTKView {
         let view = CharacterMTKView(kind: kind ?? settings.kind, state: state)
         apply(to: view)
+        if let celebrate {
+            // A beat after it lands, so the card's arrival and the trick don't blur.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { view.perform(celebrate) }
+        }
         return view
     }
 

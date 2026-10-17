@@ -384,6 +384,11 @@ class NotchWindowController {
             } : nil,
             onReply: notification.canReply ? { [weak self] text in
                 guard let sid = notification.sessionId else { return }
+                if notification.tour != nil {
+                    self?.dismiss()
+                    MainActor.assumeIsolated { Tour.shared.replied(text) }
+                    return
+                }
                 MainActor.assumeIsolated { Replies.shared.send(text, to: sid) { sent in
                     if sent {
                         NotificationManager.shared.updateSessionStatus(sessionId: sid, status: .running)
@@ -404,6 +409,11 @@ class NotchWindowController {
                 else if !self.notifHoverMonitor.inside { self.scheduleAutoDismiss(after: Self.lingerAfterHover) }
             },
             onQuestionShown: { [weak self] index in self?.questionShown(index) },
+            onTourNext: { [weak self] in
+                self?.dismiss()
+                MainActor.assumeIsolated { Tour.shared.next() }
+            },
+            onTourSkip: { MainActor.assumeIsolated { Tour.shared.skip() } },
             phase: phase,
             // Always called on the main thread (UI entry points only).
             session: MainActor.assumeIsolated {
@@ -426,7 +436,9 @@ class NotchWindowController {
 
         // Regular cards leave on their own; a card you're reading stays until
         // you move away (then it gives you a moment). Permissions never time out here.
-        if !isPermission {
+        // Practice cards wait for you, except the last.
+        let tourWaits = notification.tour.map { $0.index < $0.total - 1 } ?? false
+        if !isPermission && !tourWaits {
             scheduleAutoDismiss(after: notification.canReply ? Self.replyCardLifetime : Self.cardLifetime)
             notifHoverMonitor.onHoverChange = { [weak self] hovering in
                 guard let self, !self.isDismissing, self.activePermissionRequestId == nil else { return }
@@ -464,6 +476,12 @@ class NotchWindowController {
     private func answer(_ reqId: String, _ response: CardResponse,
                         focus: (sessionId: String?, bundleId: String?, cwd: String?, pid: pid_t?)? = nil) {
         activePermissionRequestId = nil
+        if reqId.hasPrefix("tour-") {
+            // Practice: nothing is waiting on it but the tour.
+            dismiss()
+            MainActor.assumeIsolated { if response == .handOff { Tour.shared.skip() } else { Tour.shared.answered(response) } }
+            return
+        }
         if response == .handOff {
             PermissionServer.shared.handOffToTerminal(requestId: reqId)
             if let focus {
@@ -525,7 +543,9 @@ class NotchWindowController {
     /// Code's own prompt) instead of leaving the request hanging; anything else
     /// just closes.
     private func cancelActive() {
-        if let reqId = activePermissionRequestId {
+        if activeNotification?.tour != nil {
+            MainActor.assumeIsolated { Tour.shared.skip() }
+        } else if let reqId = activePermissionRequestId {
             PermissionServer.shared.handOffToTerminal(requestId: reqId)
         } else {
             dismiss()
@@ -548,6 +568,16 @@ class NotchWindowController {
         switch activeNotification?.interaction {
         case .plan, .question: answer(reqId, .handOff)
         default: answer(reqId, .deny)
+        }
+    }
+
+    /// The tour is over (skipped, or a real card needs the notch): its card goes.
+    func endTour() {
+        let queued = permissionQueue.indices.filter { permissionQueue[$0].tour != nil }.reversed()
+        for i in queued { permissionQueue.remove(at: i); permissionQueueMeta.remove(at: i) }
+        if activeNotification?.tour != nil {
+            activePermissionRequestId = nil
+            dismiss()
         }
     }
 

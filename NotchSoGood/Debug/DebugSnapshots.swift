@@ -182,6 +182,8 @@ enum DebugSnapshots {
         sessions[0].taskTitle = "Fix the flaky websocket reconnect"
         for i in sessions.indices { sessions[i].colorIndex = i }
         sessions[2].taskTitle = "Rewrite the getting started guide"
+        sessions[1].context = ContextUsage(used: 164_000, window: 200_000, known: false)
+        sessions[3].context = ContextUsage(used: 930_000, window: 1_000_000, known: true)
         sessions[2].plan = ["Outline the new guide", "Rewrite install and first run", "Add screenshots", "Check every link"].enumerated().map {
             PlanStep(id: "\($0.offset)", title: $0.element, status: $0.offset < 1 ? "completed" : ($0.offset == 1 ? "in_progress" : "pending"))
         }
@@ -253,7 +255,8 @@ enum DebugSnapshots {
                 .init(label: "macOS", description: ""), .init(label: "iOS", description: ""), .init(label: "Web", description: ""),
             ]),
         ]
-        let cards: [(NotchNotification, Double)] = [
+        let tourCards: [(NotchNotification, Double)] = Tour.previewCards().map { ($0, 1.6) }
+        let cards: [(NotchNotification, Double)] = tourCards + [
             (NotchNotification(type: .permission, message: "Push the fix branch", title: "Run command", permissionRequestId: "x", toolName: "Bash",
                                detail: "git push origin fix/ws-reconnect", interaction: .permission(always: always)), 1.6),
             (NotchNotification(type: .permission, message: "Clean, build and run the e2e suite", title: "Run command", permissionRequestId: "z", toolName: "Bash",
@@ -267,6 +270,7 @@ enum DebugSnapshots {
             (NotchNotification(type: .complete, message: "Fixed the reconnect race. The socket now backs off before retrying, and all 76 tests pass."), 0.45),
             (NotchNotification(type: .complete, message: "Added the backoff and its tests. Want me to remove the old retry flag too?", sessionId: "s", canReply: true), 0.45),
             (NotchNotification(type: .general, message: "store.ts is being edited by api and web. One may undo the other.", title: NotchNotification.radarTitle), 1.2),
+            (NotchNotification(type: .general, message: "91% used · compacts soon", title: NotchNotification.contextTitle, sessionId: "s"), 1.2),
             (NotchNotification(type: .general, message: "Under 10% of the 5-hour window left. Resets in 58m.", title: NotchNotification.limitsTitle), 1.2),
             (NotchNotification(type: .error, message: "Run /login in Claude Code, then try again.", title: "Signed out"), 1.6),
         ]
@@ -276,7 +280,7 @@ enum DebugSnapshots {
             let h = notchH + NotchNotificationView.Metrics.contentHeight(for: n, panelWidth: panelW)
             let view = NotchNotificationView(notification: n, hasNotch: true, notchWidth: notchW, notchHeight: notchH, onTap: {}, onDismiss: {},
                                              onRespond: { _ in },
-                                             session: n.title == NotchNotification.limitsTitle ? nil : session, appearImmediately: true)
+                                             session: n.title == NotchNotification.limitsTitle || n.tour != nil ? nil : session, appearImmediately: true)
                 .frame(width: panelW, height: h)
             let host = NSHostingView(rootView: view)
             guard let base = bitmap(host, size: CGSize(width: panelW, height: h), scale: s, settle: 0.9) else { continue }

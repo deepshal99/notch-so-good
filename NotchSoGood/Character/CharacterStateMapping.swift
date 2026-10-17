@@ -9,7 +9,7 @@ extension CharacterState {
         case .error: self = .error
         case .general:
             switch notification.title {
-            case NotchNotification.limitsTitle, NotchNotification.radarTitle: self = .warn
+            case NotchNotification.limitsTitle, NotchNotification.radarTitle, NotchNotification.contextTitle: self = .warn
             case NotchNotification.limitsOutTitle: self = .error
             case NotchNotification.limitsBackTitle, NotchNotification.updateTitle: self = .done
             case NotchNotification.nudgeTitle: self = .need

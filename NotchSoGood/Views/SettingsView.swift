@@ -186,6 +186,11 @@ private struct GeneralPane: View {
                     .buttonStyle(PanelButtonStyle(kind: hookState == .done ? .quiet : .outline))
                     .disabled(hookState == .working || hookState == .done)
                 }
+                PanelDivider()
+                PanelRow(icon: "sparkles", title: "Practice run", subtitle: "30 seconds in the notch.") {
+                    Button("Start") { Tour.shared.start() }
+                        .buttonStyle(PanelButtonStyle(kind: .outline))
+                }
             }
         }
         .onAppear { launchAtLogin = SMAppService.mainApp.status == .enabled }

@@ -149,6 +149,63 @@ def emit(output):
 
 # ---------------------------------------------------------------- tool summary
 
+def settings_model(cwd):
+    """The model the user's settings pick (where a 1M context is chosen)."""
+    names = []
+    home = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~/.claude")
+    files = [os.path.join(home, "settings.json")]
+    if isinstance(cwd, str) and cwd:
+        files += [os.path.join(cwd, ".claude", "settings.json"), os.path.join(cwd, ".claude", "settings.local.json")]
+    for path in files:
+        try:
+            with open(path) as f:
+                names.append(str(json.load(f).get("model") or ""))
+        except Exception:
+            pass
+    return " ".join(names)
+
+
+def context_usage(payload):
+    """How full the session's context is, from the newest reply's token counts
+    in the transcript. The window is 1M only when something says so (the
+    launch model, settings, or usage already past 200k); `known` is false when
+    it's assumed to be 200k, and the app then never warns on it."""
+    path = payload.get("transcript_path")
+    if not isinstance(path, str) or not path:
+        return None
+    try:
+        with open(path, "rb") as f:
+            f.seek(0, 2)
+            f.seek(max(0, f.tell() - 262144))
+            tail = f.read()
+    except Exception:
+        return None
+    for line in reversed(tail.splitlines()):
+        if b'"usage"' not in line:
+            continue
+        try:
+            entry = json.loads(line)
+        except Exception:
+            continue
+        message = entry.get("message") if isinstance(entry, dict) else None
+        if entry.get("type") != "assistant" or entry.get("isSidechain") or not isinstance(message, dict):
+            continue
+        usage = message.get("usage") or {}
+        used = 0
+        for k in ("input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens", "output_tokens"):
+            try:
+                used += int(usage.get(k) or 0)
+            except (TypeError, ValueError):
+                pass
+        if used <= 0:
+            continue
+        hints = " ".join((claude_args(), os.environ.get("ANTHROPIC_MODEL", ""), settings_model(payload.get("cwd")))).lower()
+        if "[1m]" in hints or used > 200000:
+            return {"used": used, "window": 1000000, "known": True}
+        return {"used": used, "window": 200000, "known": False}
+    return None
+
+
 def tool_key(tool_name, tool_input):
     """A short fingerprint of one tool call. A waiting card and the tool
     running later share it, so the app knows which card that answered."""
@@ -634,6 +691,10 @@ def handle_post_tool_use(event_name, payload, agent):
     tool_input = payload.get("tool_input")
     event = base_event(payload, agent)
     event.update({"event": "PostToolUse", "tool_name": tool_name, "tool_key": tool_key(tool_name, tool_input)})
+    if agent == "claude":
+        context = context_usage(payload)
+        if context:
+            event["context"] = context
     paths = edited_paths(tool_name, tool_input)
     if paths:
         event["edited"] = paths
@@ -763,6 +824,9 @@ def handle_simple(event_name, payload, agent):
     elif event_name == "Stop":
         event["last_assistant_message"] = (last_assistant_message(payload) or "Task completed")[:MAX_MESSAGE]
         event["can_reply"] = can_reply(agent)
+        context = context_usage(payload) if agent == "claude" else None
+        if context:
+            event["context"] = context
     elif event_name == "StopFailure":
         # The turn died on an API error: the app says which, in plain words.
         event["error"] = str(payload.get("error") or "unknown")[:40]

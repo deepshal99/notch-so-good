@@ -101,7 +101,7 @@ def run_hook(event, payload, agent=None, socket_path=None, reply=None, claude=No
 
     # Point the bridge at the fake socket without touching the real one.
     # The agent's own variables come from the test, never from whoever runs it.
-    env = {k: v for k, v in os.environ.items() if not k.startswith("CLAUDE")}
+    env = {k: v for k, v in os.environ.items() if not k.startswith("CLAUDE") and k != "ANTHROPIC_MODEL"}
     env.update(CLAUDE_ENV if claude is None else claude)
     env["NOTCHSOGOOD_SOCKET"] = path
 
@@ -306,6 +306,36 @@ class StaleCards(unittest.TestCase):
     def test_every_event_says_when(self):
         _, _, _, events = run_hook("UserPromptSubmit", {"session_id": "s", "prompt": "hi"})
         self.assertAlmostEqual(events[0]["at"], time.time(), delta=30)
+
+
+class Context(unittest.TestCase):
+    def transcript(self, *usages):
+        path = os.path.join(tempfile.mkdtemp(), "t.jsonl")
+        with open(path, "w") as f:
+            for usage in usages:
+                f.write(json.dumps({"type": "assistant", "message": {"usage": usage}}) + "\n")
+            f.write(json.dumps({"type": "user", "message": {"content": "hi"}}) + "\n")
+        return path
+
+    def test_newest_reply_counts(self):
+        path = self.transcript({"input_tokens": 5, "cache_read_input_tokens": 1000},
+                               {"input_tokens": 2, "cache_read_input_tokens": 150000, "cache_creation_input_tokens": 3000, "output_tokens": 500})
+        _, _, _, events = run_hook("PostToolUse", dict(BASH, transcript_path=path))
+        self.assertEqual(events[0]["context"], {"used": 153502, "window": 200000, "known": False})
+
+    def test_one_million_when_something_says_so(self):
+        path = self.transcript({"input_tokens": 1, "cache_read_input_tokens": 250000})
+        _, _, _, events = run_hook("Stop", {"session_id": "s", "transcript_path": path})
+        self.assertEqual(events[0]["context"]["window"], 1000000)
+        self.assertTrue(events[0]["context"]["known"])
+        path = self.transcript({"input_tokens": 1, "cache_read_input_tokens": 50000})
+        _, _, _, events = run_hook("Stop", {"session_id": "s", "transcript_path": path},
+                                   claude=dict(CLAUDE_ENV, ANTHROPIC_MODEL="claude-opus-5-5[1m]"))
+        self.assertEqual((events[0]["context"]["window"], events[0]["context"]["known"]), (1000000, True))
+
+    def test_no_transcript_no_context(self):
+        _, _, _, events = run_hook("PostToolUse", BASH)
+        self.assertNotIn("context", events[0])
 
 
 class Plans(unittest.TestCase):

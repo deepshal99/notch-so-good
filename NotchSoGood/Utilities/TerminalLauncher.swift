@@ -187,6 +187,8 @@ struct TerminalLauncher {
             return focusKittyWindow(cwd: cwd)
         case "com.github.wez.wezterm":
             return focusWezTermTab(cwd: cwd)
+        case "com.mitchellh.ghostty":
+            return focusGhosttyTerminal(cwd: cwd)
         default:
             return false
         }
@@ -243,6 +245,26 @@ struct TerminalLauncher {
             end repeat
         end tell
         return false
+        """
+        return runAppleScript(script)
+    }
+
+    // MARK: - Ghostty: AppleScript terminal focus by working directory (1.3+)
+
+    private static func focusGhosttyTerminal(cwd: String) -> Bool {
+        // The session's folder exactly, else a terminal inside it.
+        let exact = appleScriptString(cwd)
+        let inside = appleScriptString(cwd.hasSuffix("/") ? cwd : cwd + "/")
+        let script = """
+        tell application "Ghostty"
+            set matches to every terminal whose working directory is \(exact)
+            if (count of matches) = 0 then
+                set matches to every terminal whose working directory starts with \(inside)
+            end if
+            if (count of matches) = 0 then return false
+            focus (item 1 of matches)
+            return true
+        end tell
         """
         return runAppleScript(script)
     }

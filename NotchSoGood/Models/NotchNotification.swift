@@ -18,6 +18,8 @@ struct NotchNotification: Identifiable {
     let interaction: CardInteraction?
     /// A finished session that can be answered from the card (its reply hook is listening).
     let canReply: Bool
+    /// Part of the first-run practice tour (not from an agent).
+    var tour: TourStep? = nil
 
     /// Ingress limits. Hook payloads and URL parameters are untrusted input:
     /// a 50 KB assistant message or a control-character-laden path would wreck
@@ -80,6 +82,7 @@ struct NotchNotification: Identifiable {
     static let limitsBackTitle = "Usage is back"
     static let updateTitle = "Update ready"
     static let radarTitle = "Two agents, one file"
+    static let contextTitle = "Context almost full"
     static let nudgeTitle = "Still waiting on you"
 
     var displayTitle: String {
@@ -89,4 +92,14 @@ struct NotchNotification: Identifiable {
     var isInteractivePermission: Bool {
         permissionRequestId != nil
     }
+}
+
+/// One card of the practice tour: where it is in the tour, an optional button
+/// on a card that otherwise has none, and a trick for Peek to do.
+struct TourStep: Equatable {
+    let index: Int
+    let total: Int
+    var primary: String? = nil
+    /// A `PeekTrick` raw value ("wave", "twirl").
+    var celebrate: String? = nil
 }

@@ -103,6 +103,10 @@ class NotificationManager: ObservableObject {
         var turnTests: String?
         /// The agent's own checklist (Codex's plan, Claude's task list), when it keeps one.
         var plan: [PlanStep] = []
+        /// How full its context is (tokens used, window), and whether the
+        /// window is known or assumed (200k).
+        var context: ContextUsage?
+        var contextPercent: Int? { context.map { min(100, Int((Double($0.used) / Double(max($0.window, 1)) * 100).rounded())) } }
 
         /// "Step 3 of 7 · Writing tests" while a plan is under way.
         var planLine: String? {
@@ -571,6 +575,7 @@ class NotificationManager: ObservableObject {
     }
 
     func handleNotification(_ notification: NotchNotification) {
+        Tour.shared.yield()
         // A session whose agent decides for itself (bypass / auto / plan) never
         // needs a permission gate from us. Claude Code still fires its own
         // Notification event in those modes, and echoing it here is the
@@ -855,6 +860,27 @@ class NotificationManager: ObservableObject {
     }
 
     /// Compaction is over (PostCompact, or the SessionStart that follows /compact).
+    /// Sessions already told their context is nearly full (until it compacts).
+    private var contextWarned: Set<String> = []
+
+    /// New token counts for a session. Once, at 90% of a known window, a
+    /// heads-up: compaction is near, so it's a good moment to wrap up or /compact.
+    func updateContext(sessionId: String?, used: Int, window: Int, known: Bool) {
+        guard let sid = NotchNotification.nonEmpty(sessionId),
+              let idx = activeSessions.firstIndex(where: { $0.id == sid }) else { return }
+        activeSessions[idx].context = ContextUsage(used: used, window: window, known: known)
+        let percent = activeSessions[idx].contextPercent ?? 0
+        if percent < 80 { contextWarned.remove(sid) }
+        guard known, percent >= 90, !contextWarned.contains(sid) else { return }
+        contextWarned.insert(sid)
+        handleNotification(NotchNotification(
+            type: .general,
+            message: "\(percent)% used · compacts soon",
+            title: NotchNotification.contextTitle,
+            sessionId: sid
+        ))
+    }
+
     func compactionFinished(sessionId: String?) {
         guard let sid = NotchNotification.nonEmpty(sessionId),
               let idx = activeSessions.firstIndex(where: { $0.id == sid }),
@@ -877,7 +903,7 @@ class NotificationManager: ObservableObject {
 
     /// Bump when the hook bridge's wire format or command line changes, so an
     /// upgrade reinstalls hooks even if the app version didn't move.
-    private static let hooksSchemaVersion = 11
+    private static let hooksSchemaVersion = 12
 
     /// Install hooks on first launch, on version updates, and whenever the hook
     /// bridge itself changes shape.
@@ -932,6 +958,7 @@ class NotificationManager: ObservableObject {
     /// A card that waits for an answer: a tool to approve, a plan, a question.
     func showWaitingCard(requestId: String, toolName: String, interaction: CardInteraction,
                          detail: String?, description: String?, sessionId: String?) {
+        Tour.shared.yield()
         let enabled: Bool
         let title: String
         let message: String
@@ -1115,4 +1142,11 @@ class NotificationManager: ObservableObject {
         }
         return name.replacingOccurrences(of: "_", with: " ").capitalized
     }
+}
+
+/// Tokens in a session's context, and the window they fill.
+struct ContextUsage: Equatable {
+    let used: Int
+    let window: Int
+    let known: Bool
 }

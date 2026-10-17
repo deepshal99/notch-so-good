@@ -283,6 +283,12 @@ final class CharacterMTKView: MTKView, MTKViewDelegate {
     /// Calm states only: anything that needs you has to read in under a second.
     private var calmState: Bool { state == .work || state == .think || state == .done }
 
+    /// Do this trick now (once per request), e.g. a hello wave on the tour.
+    func perform(_ trick: PeekTrick) {
+        guard kind == .peek, !reduceMotion, puppet.trick == nil else { return }
+        puppet.trick = (trick, now, motion == .calm ? 0.65 : 1)
+    }
+
     /// Something happened (an event, a state change): wake up, and no trick right away.
     func noteActivity(_ token: Int? = nil) {
         if let token { guard token != activityToken else { return }; activityToken = token }

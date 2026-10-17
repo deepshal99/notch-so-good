@@ -28,6 +28,9 @@ enum Health {
 
     // MARK: - Checks
 
+    static var claudeConnected: Bool { ourEvents(in: claudeDir + "/settings.json").contains("Stop") }
+    static var codexConnected: Bool { !ourEvents(in: NSHomeDirectory() + "/.codex/hooks.json").isEmpty }
+
     static var claudeDir: String {
         ProcessInfo.processInfo.environment["CLAUDE_CONFIG_DIR"].flatMap { $0.isEmpty ? nil : $0 }
             ?? NSHomeDirectory() + "/.claude"

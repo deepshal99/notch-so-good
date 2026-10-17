@@ -28,6 +28,9 @@ struct NotchNotificationView: View {
     var onTyping: ((Bool) -> Void)? = nil
     /// Which question of several is showing, for the number shortcuts.
     var onQuestionShown: ((Int) -> Void)? = nil
+    /// The practice tour: its button, and leaving it.
+    var onTourNext: (() -> Void)? = nil
+    var onTourSkip: (() -> Void)? = nil
     @ObservedObject var phase: NotificationPhase
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -56,6 +59,8 @@ struct NotchNotificationView: View {
         onReply: ((String) -> Void)? = nil,
         onTyping: ((Bool) -> Void)? = nil,
         onQuestionShown: ((Int) -> Void)? = nil,
+        onTourNext: (() -> Void)? = nil,
+        onTourSkip: (() -> Void)? = nil,
         phase: NotificationPhase = NotificationPhase(),
         session: NotificationManager.SessionInfo? = nil,
         appearImmediately: Bool = false
@@ -70,6 +75,8 @@ struct NotchNotificationView: View {
         self.onReply = onReply
         self.onTyping = onTyping
         self.onQuestionShown = onQuestionShown
+        self.onTourNext = onTourNext
+        self.onTourSkip = onTourSkip
         self.phase = phase
         self.session = session
         self.branch = GitBranch.current(in: session?.cwd)
@@ -129,8 +136,11 @@ struct NotchNotificationView: View {
 
         /// Height of everything below the header strip.
         static func contentHeight(for notification: NotchNotification, panelWidth: CGFloat) -> CGFloat {
+            let tour = notification.tour != nil
             if let interaction = notification.interaction {
-                let top = Island.cardPadding + titleRow + rowGap + metaRow
+                // A practice question has no session line; a practice command keeps its tool chip.
+                let showsMeta = !(tour && { if case .question = interaction { return true }; return false }())
+                let top = Island.cardPadding + titleRow + (showsMeta ? rowGap + metaRow : 0)
                 var card: CGFloat
                 switch interaction {
                 case .permission(let always):
@@ -144,16 +154,17 @@ struct NotchNotificationView: View {
                     // Sized for the tallest question, so stepping through never resizes the card.
                     let tallest = questions.map { q -> CGFloat in
                         let lines = CGFloat(questionLines(q.question, panelWidth: panelWidth))
-                        let options = q.options.map(optionHeight).reduce(0, +) + CGFloat(q.options.count)*optionGap + otherHeight
-                        return 8 + lines*bodyLine + 10 + options + (q.multiSelect ? 12 + buttonHeight : 10 + captionRow)
+                        let options = q.options.map(optionHeight).reduce(0, +) + CGFloat(q.options.count)*optionGap + (tour ? -optionGap : otherHeight)
+                        return 8 + lines*bodyLine + 10 + options + (q.multiSelect ? 12 + buttonHeight : (tour ? 0 : 10 + captionRow))
                     }.max() ?? 0
                     card = top + tallest
                 }
                 return headerGap + card + Island.cardPadding + Island.inset
             }
             let lines = messageLines(notification, panelWidth: panelWidth)
-            return headerGap + 4 + titleRow + 6 + metaRow + 8 + CGFloat(lines)*bodyLine + 16
+            return headerGap + 4 + titleRow + (tour ? 0 : 6 + metaRow) + 8 + CGFloat(lines)*bodyLine + 16
                 + (notification.canReply ? 10 + otherHeight : 0)
+                + (notification.tour?.primary != nil ? 12 + buttonHeight : 0)
         }
 
         static func wellWidth(_ panelWidth: CGFloat) -> CGFloat {
@@ -219,6 +230,11 @@ struct NotchNotificationView: View {
     // MARK: - Derived content
 
     private var isPermission: Bool { notification.isInteractivePermission }
+    private var isTour: Bool { notification.tour != nil }
+    private var isTourQuestion: Bool {
+        guard isTour, case .question = notification.interaction else { return false }
+        return true
+    }
     private var characterState: CharacterState { CharacterState(notification: notification) }
     /// Judged on the full command, never a shortened one.
     private var isDestructive: Bool {
@@ -331,7 +347,7 @@ struct NotchNotificationView: View {
         HStack(spacing: 0) {
             // Room below the strip, so a pose that reaches down (and its glow)
             // isn't cut off at the strip's edge.
-            CharacterView(state: characterState, framing: .notch(height: headerHeight))
+            CharacterView(state: characterState, framing: .notch(height: headerHeight), celebrate: notification.tour?.celebrate.flatMap(PeekTrick.init(rawValue:)))
                 .frame(width: Metrics.characterSlot.width, height: headerHeight + Metrics.characterOverhang)
                 .frame(width: Metrics.characterSlot.width, height: headerHeight, alignment: .top)
                 .allowsHitTesting(false)
@@ -360,7 +376,7 @@ struct NotchNotificationView: View {
     private func waitingCard(panelWidth: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             titleRow
-            metaRow.padding(.top, Metrics.rowGap)
+            if !isTourQuestion { metaRow.padding(.top, Metrics.rowGap) }
             switch notification.interaction {
             case .plan:
                 planBody(panelWidth: panelWidth)
@@ -404,12 +420,16 @@ struct NotchNotificationView: View {
                     .foregroundColor(Island.tertiary)
             }
             Spacer(minLength: 8)
-            TimelineView(.periodic(from: .now, by: 1)) { ctx in
-                Text(Self.waitLabel(ctx.date.timeIntervalSince(notification.timestamp)))
-                    .font(Island.numeric)
-                    .foregroundColor(Island.tertiary)
+            if let tour = notification.tour {
+                TourProgress(step: tour, onSkip: onTourSkip)
+            } else {
+                TimelineView(.periodic(from: .now, by: 1)) { ctx in
+                    Text(Self.waitLabel(ctx.date.timeIntervalSince(notification.timestamp)))
+                        .font(Island.numeric)
+                        .foregroundColor(Island.tertiary)
+                }
+                .accessibilityLabel("waiting")
             }
-            .accessibilityLabel("waiting")
         }
         .frame(height: Metrics.titleRow)
     }
@@ -581,11 +601,13 @@ struct NotchNotificationView: View {
                     choose(offset, in: questions)
                 }
             }
-            OtherAnswerField(text: Binding(get: { typed[index] ?? "" }, set: { typed[index] = $0 })) {
-                // Return: a single choice goes straight in; a multi-select keeps
-                // it alongside the ticked ones until Send.
-                guard !(typed[index] ?? "").trimmingCharacters(in: .whitespaces).isEmpty else { return }
-                if !question.multiSelect { picked[index] = [] ; advance(in: questions) }
+            if !isTour {
+                OtherAnswerField(text: Binding(get: { typed[index] ?? "" }, set: { typed[index] = $0 })) {
+                    // Return: a single choice goes straight in; a multi-select keeps
+                    // it alongside the ticked ones until Send.
+                    guard !(typed[index] ?? "").trimmingCharacters(in: .whitespaces).isEmpty else { return }
+                    if !question.multiSelect { picked[index] = [] ; advance(in: questions) }
+                }
             }
         }
         .padding(.top, 10)
@@ -605,7 +627,7 @@ struct NotchNotificationView: View {
                 .opacity(hasAnswer ? 1 : 0.5)
             }
             .padding(.top, 12)
-        } else {
+        } else if !isTour {
             HStack {
                 Spacer()
                 Button { onRespond?(.handOff) } label: {
@@ -670,17 +692,15 @@ struct NotchNotificationView: View {
                     .foregroundColor(Island.primary)
                     .lineLimit(1)
                 Spacer(minLength: 8)
-                if characterState == .done, let session, !session.turnEdited.isEmpty || session.turnTests != nil {
+                if let tour = notification.tour {
+                    TourProgress(step: tour, onSkip: tour.primary == nil && tour.index < tour.total - 1 ? onTourSkip : nil)
+                } else if characterState == .done, let session, !session.turnEdited.isEmpty || session.turnTests != nil {
                     TurnStats(edited: session.turnEdited.count, tests: session.turnTests)
-                } else {
-                    Text("just now")
-                        .font(Island.numeric)
-                        .foregroundColor(Island.tertiary)
                 }
             }
             .frame(height: Metrics.titleRow)
 
-            HStack(spacing: 8) {
+            if !isTour { HStack(spacing: 8) {
                 // Title first; the project, agent and branch join only when they
                 // fit whole, so nothing is ever cut to a stub.
                 ViewThatFits(in: .horizontal) {
@@ -701,6 +721,7 @@ struct NotchNotificationView: View {
             }
             .frame(height: Metrics.metaRow)
             .padding(.top, 6)
+            }
 
             Text(notification.message)
                 .font(Island.body)
@@ -710,9 +731,16 @@ struct NotchNotificationView: View {
                 .frame(maxWidth: .infinity, alignment: .topLeading)
                 .frame(height: CGFloat(lines)*Metrics.bodyLine, alignment: .topLeading)
                 .padding(.top, 8)
+            if let primary = notification.tour?.primary {
+                HStack(spacing: 8) {
+                    IslandButton(label: "Skip", shortcut: nil, style: .secondary, hint: "Skip the tour") { onTourSkip?() }
+                    IslandButton(label: primary, shortcut: nil, style: .primary, hint: primary) { onTourNext?() }
+                }
+                .padding(.top, 12)
+            }
             if notification.canReply {
                 // Answer the finished session right here: it carries on.
-                OtherAnswerField(text: $reply, placeholder: "Reply to \(session?.agentSource.displayName ?? "Claude")…",
+                OtherAnswerField(text: $reply, placeholder: "Reply to \(isTour ? CharacterSettings.shared.kind.displayName : session?.agentSource.displayName ?? "Claude")…",
                                  icon: "arrowshape.turn.up.left", onFocus: { onTyping?($0) }) {
                     let text = reply.trimmingCharacters(in: .whitespacesAndNewlines)
                     guard !text.isEmpty else { return }
@@ -960,4 +988,31 @@ extension Notification.Name {
     static let notchFocusField = Notification.Name("notchFocusField")
     /// ⌃⌥1–6: pick that option on the question showing (object: its offset).
     static let notchPickOption = Notification.Name("notchPickOption")
+}
+
+/// Where the tour is (a dot per step) and a way out.
+struct TourProgress: View {
+    let step: TourStep
+    var onSkip: (() -> Void)?
+
+    var body: some View {
+        HStack(spacing: 10) {
+            HStack(spacing: 4) {
+                ForEach(0..<step.total, id: \.self) { i in
+                    Capsule()
+                        .fill(i == step.index ? Island.primary : Color.white.opacity(i < step.index ? 0.4 : 0.16))
+                        .frame(width: i == step.index ? 12 : 5, height: 5)
+                }
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Step \(step.index + 1) of \(step.total)")
+            if let onSkip {
+                Button(action: onSkip) {
+                    Text("Skip").font(Island.caption.weight(.semibold)).foregroundColor(Island.tertiary)
+                }
+                .buttonStyle(.plain)
+                .help("Skip the tour")
+            }
+        }
+    }
 }
