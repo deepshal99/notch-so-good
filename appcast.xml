@@ -5,14 +5,14 @@
         <link>https://github.com/deepshal99/notch-so-good</link>
         <language>en</language>
         <item>
-            <title>Version 4.8.1</title>
-            <pubDate>Sat, 17 Oct 2026 10:32:45 +0000</pubDate>
-            <sparkle:version>28</sparkle:version>
-            <sparkle:shortVersionString>4.8.1</sparkle:shortVersionString>
-            <description><![CDATA[<h2>Notch So Good 4.8.1</h2><ul><li>Fixed: `claude -p` scripts no longer wait for a reply from the notch</li><li>Reply from the notch only where it can reach the session (each app&#x27;s own Claude Code version is checked)</li><li>Cards answered in Conductor, VS Code or Claude&#x27;s desktop app now close in the notch too</li><li>Hooks put themselves back if Claude Code or another tool removes them</li></ul>
+            <title>Version 4.9.0</title>
+            <pubDate>Sat, 17 Oct 2026 10:50:57 +0000</pubDate>
+            <sparkle:version>29</sparkle:version>
+            <sparkle:shortVersionString>4.9.0</sparkle:shortVersionString>
+            <description><![CDATA[<h2>Notch So Good 4.9.0</h2><ul><li>A 30-second practice run on first launch: allow one, answer one, reply to one (Settings → General to replay)</li><li>Context meter: sessions past half full show how full, and one heads-up before a known window fills</li><li>Ghostty: jump straight to the session&#x27;s terminal (Ghostty 1.3+)</li><li>Cleaner cards: less text, no &quot;just now&quot;</li></ul>
             <p><b>Install this one by hand</b>: run <code>brew upgrade notch-so-good</code>, or download it from the release page.
-            From 4.8.1 on, updates install themselves.</p>]]></description>
-            <link>https://github.com/deepshal99/notch-so-good/releases/tag/v4.8.1</link>
+            From 4.9.0 on, updates install themselves.</p>]]></description>
+            <link>https://github.com/deepshal99/notch-so-good/releases/tag/v4.9.0</link>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
         </item>
     </channel>

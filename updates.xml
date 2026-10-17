@@ -5,6 +5,15 @@
         <link>https://github.com/deepshal99/notch-so-good</link>
         <language>en</language>
         <item>
+            <title>Version 4.9.0</title>
+            <pubDate>Sat, 17 Oct 2026 10:50:57 +0000</pubDate>
+            <sparkle:version>29</sparkle:version>
+            <sparkle:shortVersionString>4.9.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[<ul><li>A 30-second practice run on first launch: allow one, answer one, reply to one (Settings → General to replay)</li><li>Context meter: sessions past half full show how full, and one heads-up before a known window fills</li><li>Ghostty: jump straight to the session&#x27;s terminal (Ghostty 1.3+)</li><li>Cleaner cards: less text, no &quot;just now&quot;</li></ul>]]></description>
+            <enclosure url="https://github.com/deepshal99/notch-so-good/releases/download/v4.9.0/NotchSoGood-4.9.0.zip" sparkle:edSignature="qyYXXOVH4g4ZGbqXGodb2SOlnhcAYw/RQW9vh4iqQni6T9ZKnblzfa3pAQZxBeRl8PJPPuZklGgpXvz6cdIzBA==" length="4002966" type="application/octet-stream"/>
+        </item>
+        <item>
             <title>Version 4.8.1</title>
             <pubDate>Sat, 17 Oct 2026 10:32:45 +0000</pubDate>
             <sparkle:version>28</sparkle:version>
@@ -39,15 +48,6 @@
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <description><![CDATA[<ul><li>Answer Conductor&#x27;s questions from the notch (and any app that brings its own question tool): tap an option and Claude gets your answer</li><li>Type your own answer: every question card has a &quot;Something else…&quot; field</li><li>Peek no longer gets cut off at the bottom of a card when it reaches down for you</li></ul>]]></description>
             <enclosure url="https://github.com/deepshal99/notch-so-good/releases/download/v4.7.2/NotchSoGood-4.7.2.zip" sparkle:edSignature="cir8bnsecVk7amnjbPc/yE+iX4VVC96xkJjjoSgVAIyt2O5pe2g11y6/zGGkuHcBKE7ilUkQVYCy8Fye0Yt2BQ==" length="3838730" type="application/octet-stream"/>
-        </item>
-        <item>
-            <title>Version 4.7.1</title>
-            <pubDate>Thu, 15 Oct 2026 17:00:00 +0000</pubDate>
-            <sparkle:version>24</sparkle:version>
-            <sparkle:shortVersionString>4.7.1</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <description><![CDATA[<ul><li>Fixes the anonymous counts never being sent (the analytics library only sends while an app is &quot;active&quot;, which a menu bar app rarely is)</li><li>The pill stays visible over the full-screen app your agents run in</li></ul>]]></description>
-            <enclosure url="https://github.com/deepshal99/notch-so-good/releases/download/v4.7.1/NotchSoGood-4.7.1.zip" sparkle:edSignature="gj5UcR0bZbCY0MaDBqRiq3VH9aB2YsxQxLoibXxlgWGgs6gIXl80P2odS5Uq3J+JXhniY9V0O2nQ0xBlmqWZDg==" length="3805363" type="application/octet-stream"/>
         </item>
     </channel>
 </rss>
