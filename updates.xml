@@ -5,6 +5,15 @@
         <link>https://github.com/deepshal99/notch-so-good</link>
         <language>en</language>
         <item>
+            <title>Version 4.7.2</title>
+            <pubDate>Sat, 17 Oct 2026 06:07:48 +0000</pubDate>
+            <sparkle:version>25</sparkle:version>
+            <sparkle:shortVersionString>4.7.2</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[<ul><li>Answer Conductor&#x27;s questions from the notch (and any app that brings its own question tool): tap an option and Claude gets your answer</li><li>Type your own answer: every question card has a &quot;Something else…&quot; field</li><li>Peek no longer gets cut off at the bottom of a card when it reaches down for you</li></ul>]]></description>
+            <enclosure url="https://github.com/deepshal99/notch-so-good/releases/download/v4.7.2/NotchSoGood-4.7.2.zip" sparkle:edSignature="cir8bnsecVk7amnjbPc/yE+iX4VVC96xkJjjoSgVAIyt2O5pe2g11y6/zGGkuHcBKE7ilUkQVYCy8Fye0Yt2BQ==" length="3838730" type="application/octet-stream"/>
+        </item>
+        <item>
             <title>Version 4.7.1</title>
             <pubDate>Thu, 15 Oct 2026 17:00:00 +0000</pubDate>
             <sparkle:version>24</sparkle:version>

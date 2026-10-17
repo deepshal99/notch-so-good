@@ -1,6 +1,6 @@
 {
   "name": "notch-so-good",
-  "version": "4.7.1",
+  "version": "4.7.2",
   "description": "The world's smallest coworker lives in your Mac's notch. Peek, a tiny 3D character, watches Claude Code and Codex CLI: notifications, permission approvals from the notch, and usage limits at a glance.",
   "bin": {
     "notch-so-good": "./install.mjs"
