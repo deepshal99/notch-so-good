@@ -5,6 +5,15 @@
         <link>https://github.com/deepshal99/notch-so-good</link>
         <language>en</language>
         <item>
+            <title>Version 4.7.3</title>
+            <pubDate>Sat, 17 Oct 2026 06:17:07 +0000</pubDate>
+            <sparkle:version>26</sparkle:version>
+            <sparkle:shortVersionString>4.7.3</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[<ul><li>&quot;Answer in terminal&quot; no longer leaves the next waiting card stuck</li><li>Approvals stay on for Claude Code installed with nvm, volta or bun</li><li>&quot;Only when blocked&quot; sound is remembered after a restart</li><li>Clicking an option after typing sends just that option</li><li>A signed-out Claude account clears its old usage numbers</li><li>Long questions keep their answers</li></ul>]]></description>
+            <enclosure url="https://github.com/deepshal99/notch-so-good/releases/download/v4.7.3/NotchSoGood-4.7.3.zip" sparkle:edSignature="ot2fPYqhUnTRjowZc/QPr5IFdbxi92CpfGKYZ5lKPs687V8FbYcfN7vbpcW0jAD+EChusEy6V1zWVjz+6NpsBg==" length="3848562" type="application/octet-stream"/>
+        </item>
+        <item>
             <title>Version 4.7.2</title>
             <pubDate>Sat, 17 Oct 2026 06:07:48 +0000</pubDate>
             <sparkle:version>25</sparkle:version>
