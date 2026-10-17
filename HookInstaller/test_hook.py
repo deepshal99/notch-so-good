@@ -213,15 +213,25 @@ class Questions(unittest.TestCase):
 
 
 class HostQuestions(unittest.TestCase):
-    def test_conductors_question_is_shown_not_answered(self):
-        payload = {"session_id": "s", "cwd": "/repo", "tool_name": "mcp__conductor__AskUserQuestion",
-                   "tool_input": {"questions": [{"question": "Ship it?", "header": "Release", "multiSelect": False,
-                                                 "options": ["Yes", {"label": "Not yet", "description": "Wait"}]}]}}
-        _, out, _, events = run_hook("PreToolUse", payload, reply={"answers": {"Ship it?": "Yes"}})
-        self.assertEqual(out.strip(), "")
-        self.assertEqual(events[0]["event"], "HostQuestion")
-        self.assertEqual(events[0]["host"], "conductor")
+    PAYLOAD = {"session_id": "s", "cwd": "/repo", "tool_name": "mcp__conductor__AskUserQuestion",
+               "tool_input": {"questions": [{"question": "Ship it?", "header": "Release", "multiSelect": False,
+                                             "options": ["Yes", {"label": "Not yet", "description": "Wait"}]}]}}
+
+    def test_conductor_question_answered_from_the_notch(self):
+        _, out, _, events = run_hook("Interactive", self.PAYLOAD, reply={"answers": {"Ship it?": "Yes"}})
+        self.assertEqual((events[0]["event"], events[0]["host"]), ("AskUserQuestion", "conductor"))
         self.assertEqual([o["label"] for o in events[0]["questions"][0]["options"]], ["Yes", "Not yet"])
+        specific = output(out)["hookSpecificOutput"]
+        self.assertEqual(specific["permissionDecision"], "deny")
+        self.assertIn('"Ship it?": Yes', specific["permissionDecisionReason"])
+
+    def test_handed_back_lets_conductor_ask(self):
+        _, out, _, _ = run_hook("Interactive", self.PAYLOAD, reply={})
+        self.assertEqual(out.strip(), "")
+
+    def test_activity_hook_never_raises_a_card(self):
+        _, out, _, events = run_hook("PreToolUse", self.PAYLOAD)
+        self.assertEqual((out.strip(), events[0]["event"]), ("", "PreToolUse"))
 
 
 class Activity(unittest.TestCase):

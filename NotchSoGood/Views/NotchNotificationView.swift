@@ -32,6 +32,8 @@ struct NotchNotificationView: View {
     /// Questions: which one is showing, and what's picked so far.
     @State private var questionIndex = 0
     @State private var picked: [Int: Set<Int>] = [:]
+    /// Typed "Other" answers, per question.
+    @State private var typed: [Int: String] = [:]
 
     private let session: NotificationManager.SessionInfo?
     private let branch: String?
@@ -92,6 +94,8 @@ struct NotchNotificationView: View {
 
         /// Where the character sits in the header strip, from the island wall.
         static let characterSlot = CGRect(x: Island.contentInset - 17, y: 0, width: PillLayout.wingCollapsed, height: 37)
+        /// How far the character may hang below the strip.
+        static let characterOverhang: CGFloat = 14
         static let titleRow: CGFloat = 20
         static let metaRow: CGFloat = 20
         static let rowGap: CGFloat = 8
@@ -105,6 +109,7 @@ struct NotchNotificationView: View {
         static let captionRow: CGFloat = 16
         static let optionGap: CGFloat = 6
         static func optionHeight(_ option: AgentQuestion.Option) -> CGFloat { option.description.isEmpty ? 34 : 44 }
+        static let otherHeight: CGFloat = 34
 
         static var monoLine: CGFloat { lineHeight(NSFont.monospacedSystemFont(ofSize: Island.monoSize, weight: .regular)) }
         static var bodyLine: CGFloat { lineHeight(NSFont.systemFont(ofSize: Island.bodySize)) + 2 }
@@ -126,7 +131,7 @@ struct NotchNotificationView: View {
                     // Sized for the tallest question, so stepping through never resizes the card.
                     let tallest = questions.map { q -> CGFloat in
                         let lines = CGFloat(questionLines(q.question, panelWidth: panelWidth))
-                        let options = q.options.map(optionHeight).reduce(0, +) + CGFloat(max(0, q.options.count - 1))*optionGap
+                        let options = q.options.map(optionHeight).reduce(0, +) + CGFloat(q.options.count)*optionGap + otherHeight
                         return 8 + lines*bodyLine + 10 + options + (q.multiSelect ? 12 + buttonHeight : 10 + captionRow)
                     }.max() ?? 0
                     card = top + tallest
@@ -260,7 +265,8 @@ struct NotchNotificationView: View {
                     .scaleEffect(x: expanded ? 1 : startScaleX, y: expanded ? 1 : startScaleY, anchor: .top)
 
                 VStack(spacing: 0) {
-                    header(width: width)
+                    // Above the card, so Peek can hang over its top edge.
+                    header(width: width).zIndex(1)
                     Group {
                         if isPermission {
                             waitingCard(panelWidth: panelWidth)
@@ -310,8 +316,12 @@ struct NotchNotificationView: View {
 
     private func header(width: CGFloat) -> some View {
         HStack(spacing: 0) {
-            CharacterView(state: characterState, framing: .pill)
-                .frame(width: Metrics.characterSlot.width, height: headerHeight)
+            // Room below the strip, so a pose that reaches down (and its glow)
+            // isn't cut off at the strip's edge.
+            CharacterView(state: characterState, framing: .notch(height: headerHeight))
+                .frame(width: Metrics.characterSlot.width, height: headerHeight + Metrics.characterOverhang)
+                .frame(width: Metrics.characterSlot.width, height: headerHeight, alignment: .top)
+                .allowsHitTesting(false)
                 .padding(.leading, Metrics.characterSlot.minX)
             Spacer(minLength: 0)
             if let runway {
@@ -548,32 +558,47 @@ struct NotchNotificationView: View {
                     choose(offset, in: questions)
                 }
             }
+            OtherAnswerField(text: Binding(get: { typed[index] ?? "" }, set: { typed[index] = $0 })) {
+                // Return: a single choice goes straight in; a multi-select keeps
+                // it alongside the ticked ones until Send.
+                guard !(typed[index] ?? "").trimmingCharacters(in: .whitespaces).isEmpty else { return }
+                if !question.multiSelect { picked[index] = [] ; advance(in: questions) }
+            }
         }
         .padding(.top, 10)
         if question.multiSelect {
             HStack(spacing: 8) {
-                IslandButton(label: "In terminal", shortcut: nil, style: .secondary, hint: "Answer in the terminal") { onRespond?(.handOff) }
+                IslandButton(label: "In \(answerElsewhere)", shortcut: nil, style: .secondary, hint: "Answer in \(answerElsewhere)") { onRespond?(.handOff) }
+                let hasAnswer = !selected.isEmpty || !(typed[index] ?? "").trimmingCharacters(in: .whitespaces).isEmpty
                 IslandButton(label: index + 1 < questions.count ? "Next" : "Send", shortcut: nil, style: .primary, hint: "Send these answers") {
                     advance(in: questions)
                 }
-                .disabled(selected.isEmpty)
-                .opacity(selected.isEmpty ? 0.5 : 1)
+                .disabled(!hasAnswer)
+                .opacity(hasAnswer ? 1 : 0.5)
             }
             .padding(.top, 12)
         } else {
             HStack {
                 Spacer()
                 Button { onRespond?(.handOff) } label: {
-                    Text("Answer in terminal")
+                    Text("Answer in \(answerElsewhere)")
                         .font(Island.caption)
                         .foregroundColor(Island.tertiary)
                 }
                 .buttonStyle(.plain)
-                .help("Hand this question back to the terminal (for a typed answer)")
+                .help("Ask it in \(answerElsewhere) instead")
             }
             .frame(height: Metrics.captionRow)
             .padding(.top, 10)
         }
+    }
+
+    /// Where the question would otherwise be asked: the app that owns it
+    /// (Conductor, for its own question tool) or the terminal.
+    private var answerElsewhere: String {
+        let tool = notification.toolName ?? ""
+        let parts = tool.components(separatedBy: "__")
+        return tool.hasPrefix("mcp__") && parts.count >= 3 ? parts[1].capitalized : "terminal"
     }
 
     private func choose(_ option: Int, in questions: [AgentQuestion]) {
@@ -596,7 +621,9 @@ struct NotchNotificationView: View {
         }
         var answers: [String: String] = [:]
         for (i, q) in questions.enumerated() {
-            let labels = (picked[i] ?? []).sorted().map { q.options[$0].label }
+            var labels = (picked[i] ?? []).sorted().map { q.options[$0].label }
+            let own = (typed[i] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            if !own.isEmpty { labels.append(own) }
             guard !labels.isEmpty else { return }
             answers[q.question] = AgentQuestion.answer(labels)
         }
@@ -829,3 +856,43 @@ struct TurnStats: View {
         .accessibilityElement(children: .combine)
     }
 }
+
+/// "Other": your own answer, typed. Return sends it.
+struct OtherAnswerField: View {
+    @Binding var text: String
+    let onSubmit: () -> Void
+
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "pencil")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(Island.tertiary)
+            TextField("", text: $text, prompt: Text("Something else…").foregroundColor(Island.secondary.opacity(0.75)))
+                .textFieldStyle(.plain)
+                .font(.system(size: 12.5, weight: .medium))
+                .foregroundColor(Island.primary)
+                .focused($focused)
+                .onSubmit(onSubmit)
+        }
+        .padding(.horizontal, 12)
+        .frame(height: NotchNotificationView.Metrics.otherHeight)
+        .frame(maxWidth: .infinity)
+        .background(
+            RoundedRectangle(cornerRadius: Island.wellRadius, style: .continuous)
+                .fill(Island.well)
+                .overlay(
+                    RoundedRectangle(cornerRadius: Island.wellRadius, style: .continuous)
+                        .strokeBorder(focused ? Color.white.opacity(0.28) : Island.hairline, lineWidth: 1)
+                )
+        )
+        .contentShape(Rectangle())
+        .onTapGesture {
+            NSApp.windows.first { $0.isVisible && $0.canBecomeKey && $0 is NotchPanel }?.makeKey()
+            focused = true
+        }
+        .accessibilityLabel("Type your own answer")
+    }
+}
+

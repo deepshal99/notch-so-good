@@ -58,7 +58,10 @@ class NotchPanel: NSPanel {
         acceptsMouseMovedEvents = true
     }
 
-    override var canBecomeKey: Bool { false }
+    /// A question card takes typing (its "Other" answer). The panel never
+    /// activates the app, so focus goes straight back to where it was.
+    var acceptsTyping = false
+    override var canBecomeKey: Bool { acceptsTyping }
     override var canBecomeMain: Bool { false }
 
     override func cancelOperation(_ sender: Any?) {

@@ -338,8 +338,8 @@ def handle_interactive(payload, agent):
         sys.exit(0)
     if tool_name == "ExitPlanMode":
         handle_plan(payload, agent, tool_input)
-    if tool_name == "AskUserQuestion":
-        handle_ask_user_question(payload, agent, tool_input)
+    if tool_name == "AskUserQuestion" or is_host_question(tool_name):
+        handle_ask_user_question(payload, agent, tool_input, tool_name)
     sys.exit(0)
 
 
@@ -363,18 +363,32 @@ def handle_plan(payload, agent, tool_input):
     sys.exit(0)
 
 
-def handle_ask_user_question(payload, agent, tool_input):
-    """Claude wants to ask a multiple-choice question: offer it in the notch."""
+def handle_ask_user_question(payload, agent, tool_input, tool_name="AskUserQuestion"):
+    """Claude wants to ask a multiple-choice question: offer it in the notch.
+
+    Claude's own AskUserQuestion takes the answers as updatedInput. An app's
+    question tool (Conductor's) shows its own dialog and can't be handed an
+    answer, so there the call is declined with the answers as the reason:
+    Claude reads them and carries on, and the app's dialog never opens."""
     questions = clean_questions(tool_input.get("questions"))
     if not questions:
         sys.exit(0)
+    host = tool_name.split("__")[1] if is_host_question(tool_name) else ""
     event = base_event(payload, agent)
-    event.update({"event": "AskUserQuestion", "questions": questions})
+    event.update({"event": "AskUserQuestion", "questions": questions, "tool_name": tool_name, "host": host})
     reply = send(event, wait=True)
     answers = reply.get("answers") if reply else None
     asked = [q["question"] for q in questions]
     if (isinstance(answers, dict) and asked
             and all(isinstance(answers.get(q), str) and answers.get(q) for q in asked)):
+        if host:
+            lines = "\n".join('- "%s": %s' % (q, answers[q]) for q in asked)
+            emit({"hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "deny",
+                "permissionDecisionReason": "The user already answered this in Notch So Good, so the dialog was not "
+                                            "shown. These are their answers; continue with them:\n" + lines,
+            }})
         updated = dict(tool_input)
         updated["answers"] = {q: answers[q] for q in asked}
         emit({"hookSpecificOutput": {
@@ -397,14 +411,6 @@ def handle_pre_tool_use(payload, agent):
     the background where the agent supports it, and never answers."""
     tool_name = str(payload.get("tool_name") or "")
     tool_input = payload.get("tool_input")
-    if is_host_question(tool_name) and isinstance(tool_input, dict):
-        questions = clean_questions(tool_input.get("questions"))
-        if questions:
-            event = base_event(payload, agent)
-            event.update({"event": "HostQuestion", "tool_name": tool_name, "questions": questions,
-                          "host": tool_name.split("__")[1] if tool_name.count("__") >= 2 else ""})
-            send(event)
-            sys.exit(0)
     event = base_event(payload, agent)
     event.update({
         "event": "PreToolUse",

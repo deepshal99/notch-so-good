@@ -590,7 +590,8 @@ class PermissionServer {
     private func handleQuestion(json: [String: Any], clientSocket: Int32, agent: String?) {
         let questions = (json["questions"] as? [[String: Any]] ?? []).compactMap(AgentQuestion.init(json:))
         guard !questions.isEmpty else { close(clientSocket); return }
-        hold(json: json, clientSocket: clientSocket, agent: agent, toolName: "AskUserQuestion",
+        hold(json: json, clientSocket: clientSocket, agent: agent,
+             toolName: NotchNotification.nonEmpty(json["tool_name"] as? String) ?? "AskUserQuestion",
              interaction: .question(Array(questions.prefix(4))), detail: nil, description: nil)
     }
 

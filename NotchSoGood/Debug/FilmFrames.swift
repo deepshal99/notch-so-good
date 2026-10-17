@@ -30,6 +30,7 @@ enum FilmFrames {
         var notchY: Float?                        // notch line in px (defaults to cy)
         var yaw: Float?, pitch: Float?, roll: Float?, dx: Float?, dy: Float?, squash: Float?
         var yawSet: Float?, pitchSet: Float?, rollSet: Float?, ySet: Float?
+        var setMix: Float?                        // how much gaze and the *Set values win over the puppet (default 1)
         var gaze: [Float]?, gazeAdd: [Float]?, eye: [Float]?, eyeMix: Float?, eyeScale: Float?
         var blink: Float?, lid: [Float]?, glow: Float?, rim: Float?, think: Float?, aura: Float?
         var skip: Bool?
@@ -97,11 +98,12 @@ enum FilmFrames {
             startTricks(t)
             var P = puppet.pose(now: t, motion: motion)
             if fr.skip == true { poses.append([]); continue }
-            if let v = fr.yawSet { P.yaw = v }; if let v = fr.pitchSet { P.pitch = v }
-            if let v = fr.rollSet { P.roll = v }; if let v = fr.ySet { P.pos.y = v }
+            let m = fr.setMix ?? 1
+            if let v = fr.yawSet { P.yaw += (v - P.yaw)*m }; if let v = fr.pitchSet { P.pitch += (v - P.pitch)*m }
+            if let v = fr.rollSet { P.roll += (v - P.roll)*m }; if let v = fr.ySet { P.pos.y += (v - P.pos.y)*m }
             P.yaw += fr.yaw ?? 0; P.pitch += fr.pitch ?? 0; P.roll += fr.roll ?? 0
             P.pos.x += fr.dx ?? 0; P.pos.y += fr.dy ?? 0; P.squash *= fr.squash ?? 1
-            if let g = fr.gaze, g.count == 2 { P.gaze = SIMD2(g[0], g[1]) }
+            if let g = fr.gaze, g.count == 2 { P.gaze += (SIMD2(g[0], g[1]) - P.gaze)*m }
             if let g = fr.gazeAdd, g.count == 2 { P.gaze += SIMD2(g[0], g[1]) }
             if let e = fr.eye, e.count == 5 {
                 let m = fr.eyeMix ?? 1

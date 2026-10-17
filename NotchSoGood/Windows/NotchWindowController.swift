@@ -328,6 +328,7 @@ class NotchWindowController {
             panel?.setFrame(frame, display: true)
         }
 
+        if case .question = notification.interaction { panel?.acceptsTyping = true } else { panel?.acceptsTyping = false }
         // Over a full-screen video or slides, only a card that needs an answer
         // shows; over the full-screen app your agents run in, everything does.
         panel?.showsOverFullScreen = isPermission || TerminalLauncher.frontmostRunsAgents(

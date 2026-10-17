@@ -814,7 +814,7 @@ class NotificationManager: ObservableObject {
 
     /// Bump when the hook bridge's wire format or command line changes, so an
     /// upgrade reinstalls hooks even if the app version didn't move.
-    private static let hooksSchemaVersion = 7
+    private static let hooksSchemaVersion = 8
 
     /// Install hooks on first launch, on version updates, and whenever the hook
     /// bridge itself changes shape.

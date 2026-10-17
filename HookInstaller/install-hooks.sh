@@ -140,8 +140,10 @@ for event in FIRE_AND_FORGET + [e for e in ("StopFailure", "PostCompact", "PostT
 # What the agent is doing right now, for the pill; plus, where Claude Code can
 # take the answer from a hook, questions and plans answered in the notch.
 pre = [group("PreToolUse", 5, run_async=background)]
-if supports(ANSWERS_SINCE):
-    pre.append(group("Interactive", 130, matcher="AskUserQuestion|ExitPlanMode"))
+# Apps that bring their own question tool (Conductor's mcp__conductor__AskUserQuestion)
+# are answered by declining the call with the answers, which any version takes.
+pre.append(group("Interactive", 130, matcher="^(AskUserQuestion|ExitPlanMode|mcp__.*__AskUserQuestion)$"
+                 if supports(ANSWERS_SINCE) else "^mcp__.*__AskUserQuestion$"))
 ours_by_event["PreToolUse"] = pre
 # The one place we ever answer for the user: when Claude Code is about to ask
 # them. Has to outlast the app's own 120 s decision window.

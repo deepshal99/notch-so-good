@@ -139,6 +139,9 @@ final class CharacterRenderer {
 enum CharacterFraming: Equatable {
     /// The compact pill's ear: the view's top edge is the notch line.
     case pill
+    /// The pill's size, set by the notch height, in a view taller than the
+    /// notch: room below for poses that hang lower (reaching for you).
+    case notch(height: CGFloat)
     /// A notification card: hangs beside the notch at a fixed size (points per unit).
     case card(scale: CGFloat)
     /// A square preview tile (settings), framed like the lab's tiles.
@@ -155,6 +158,8 @@ enum CharacterFraming: Equatable {
         case .pill:
             let scale = h/kind.notchUnits
             return CharacterViewport(size: [w, h], center: [w/2, h/2], scale: scale)
+        case .notch(let height):
+            return CharacterViewport(size: [w, h], center: [w/2, h/2], scale: Float(height*s)/kind.notchUnits)
         case .card(let unit):
             return CharacterViewport(size: [w, h], center: [w/2, h/2], scale: Float(unit*s))
         // Tiles and portraits hang from their top edge like the notch does, sized
