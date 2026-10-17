@@ -156,7 +156,7 @@ def answered_with(event, key):
     box = {}
     worker = threading.Thread(target=lambda: box.update(reply=send(event, wait=True, timeout=10)))
     worker.start()
-    wait_ui(1.4)          # the card appears, and hotkeys ignore its first half second
+    wait_ui(2.2)          # the card appears (after any previous one leaves), and hotkeys ignore its first half second
     shot("card-%s" % event["tool_name"])
     hotkey(key)
     worker.join(12)
