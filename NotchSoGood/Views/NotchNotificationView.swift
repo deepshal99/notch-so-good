@@ -115,7 +115,7 @@ struct NotchNotificationView: View {
         /// Where the character sits in the header strip, from the island wall.
         static let characterSlot = CGRect(x: Island.contentInset - 17, y: 0, width: PillLayout.wingCollapsed, height: 37)
         /// How far the character may hang below the strip.
-        static let characterOverhang: CGFloat = 14
+        static let characterOverhang = PillLayout.characterOverhang
         static let titleRow: CGFloat = 20
         static let metaRow: CGFloat = 20
         static let rowGap: CGFloat = 8

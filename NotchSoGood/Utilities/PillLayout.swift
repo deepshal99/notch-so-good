@@ -6,6 +6,9 @@ import Foundation
 /// so it and `SessionPillView` both derive the drop-down height from here.
 enum PillLayout {
     static let dropTopPad: CGFloat = 4
+    /// How far the character may hang below the notch line (pill and cards):
+    /// reaching for you, it swings lower than the strip.
+    static let characterOverhang: CGFloat = 14
     static let dropBottomPad: CGFloat = 10
     static let sessionRow: CGFloat = 46
     static let groupHeader: CGFloat = 26

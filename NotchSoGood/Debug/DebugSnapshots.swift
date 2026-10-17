@@ -137,8 +137,11 @@ enum DebugSnapshots {
     /// across states and moments (a glance, a swing), to judge size and clipping.
     static func notchSheet(to url: URL) {
         let notchH: CGFloat = 37, wing: CGFloat = 56, s: CGFloat = 2
-        let moments: [(CharacterState, Double)] = [(.idle, 1), (.idle, 6.6), (.work, 1.2), (.work, 5.5), (.think, 1.5), (.need, 1.6), (.done, 0.45), (.error, 1.6)]
-        let cell = CGSize(width: wing + 30, height: notchH)
+        let moments: [(CharacterState, Double)] = [(.idle, 1), (.work, 1.2), (.think, 1.5), (.need, 0.4), (.need, 0.9), (.need, 1.6),
+                                                   (.need, 2.3), (.need, 3.1), (.done, 0.45), (.error, 1.6)]
+        // As the pill draws it: a view reaching below the notch line, unclipped.
+        let hang = PillLayout.characterOverhang
+        let cell = CGSize(width: wing + 30, height: notchH + hang)
         let W = Int((cell.width*CGFloat(moments.count) + 10*CGFloat(moments.count + 1))*s)
         let H = Int((cell.height*CGFloat(CharacterKind.allCases.count) + 10*CGFloat(CharacterKind.allCases.count + 1))*s)
         let ctx = canvas(W, H)
@@ -148,11 +151,13 @@ enum DebugSnapshots {
                 let x = (10 + CGFloat(c)*(cell.width + 10))*s
                 let y = CGFloat(H) - (10 + CGFloat(r)*(cell.height + 10) + cell.height)*s
                 let rect = CGRect(x: x, y: y, width: cell.width*s, height: cell.height*s)
-                ctx.setFillColor(CGColor(gray: 0, alpha: 1)); ctx.fill(rect)
+                // The black pill strip on top, the desktop below it.
+                let strip = CGRect(x: rect.minX, y: rect.maxY - notchH*s, width: rect.width, height: notchH*s)
+                ctx.setFillColor(CGColor(gray: 0, alpha: 1)); ctx.fill(strip)
                 ctx.setFillColor(CGColor(gray: 0.16, alpha: 1))
-                ctx.fill(CGRect(x: rect.minX + wing*s, y: rect.minY, width: 30*s, height: rect.height))
-                if let img = render(kind: kind, state: m.0, framing: .pill, sizePt: CGSize(width: wing, height: notchH), scale: s, t: m.1) {
-                    ctx.draw(img, in: CGRect(x: rect.minX, y: rect.minY, width: wing*s, height: notchH*s))
+                ctx.fill(CGRect(x: strip.minX + wing*s, y: strip.minY, width: 30*s, height: strip.height))
+                if let img = render(kind: kind, state: m.0, framing: .notch(height: notchH), sizePt: CGSize(width: wing, height: notchH + hang), scale: s, t: m.1) {
+                    ctx.draw(img, in: CGRect(x: rect.minX, y: rect.minY, width: wing*s, height: (notchH + hang)*s))
                 }
             }
         }

@@ -82,6 +82,9 @@ struct SessionPillView: View {
             }
             .frame(width: pillWidth, height: pillTotalHeight, alignment: .top)
             .clipShape(pillShape)
+            // Peek sits outside the clip: reaching for you, it swings a little
+            // below the notch line, and a hard cut there looks broken.
+            .overlay(alignment: .topLeading) { character() }
             .contentShape(pillShape)
             .onTapGesture { onTap(sessions.first?.id) }
             .scaleEffect(x: appeared ? 1 : 0.85, y: 1, anchor: .center)
@@ -100,22 +103,8 @@ struct SessionPillView: View {
 
     private func header() -> some View {
         HStack(spacing: 0) {
-            // Left wing: the character, hanging from the notch edge. Open, it
-            // slides to the text column and looks down at the list.
-            CharacterView(
-                state: characterState,
-                framing: .pill,
-                gaze: hovered ? SIMD2<Float>(0.03, -0.09) : nil,
-                // On screen for hours: resting motion runs at 30 fps, full rate
-                // when it wants you, you're looking, or it's doing a trick.
-                // Frames that wouldn't visibly change are skipped either way.
-                framesPerSecond: (hovered || characterState == .need) ? 60 : PillLayout.restingFPS,
-                lively: true,
-                activity: activity
-            )
-            .frame(width: wingCollapsed, height: notchHeight)
-            .padding(.leading, hovered ? wall + column - 17 : 0)
-            .frame(width: wing, alignment: .leading)
+            // Left wing: the character's place (it's drawn above, unclipped).
+            Color.clear.frame(width: wing, height: notchHeight)
 
             Spacer().frame(width: notchWidth)
 
@@ -128,6 +117,27 @@ struct SessionPillView: View {
                 .frame(width: wing, alignment: .trailing)
         }
         .frame(width: pillWidth, height: notchHeight)
+        .opacity(appeared ? 1 : 0)
+    }
+
+    /// The character, hanging from the notch edge. Open, it slides to the
+    /// text column and looks down at the list. Its view reaches below the
+    /// notch so poses that hang lower are never cut off.
+    private func character() -> some View {
+        CharacterView(
+            state: characterState,
+            framing: .notch(height: notchHeight),
+            gaze: hovered ? SIMD2<Float>(0.03, -0.09) : nil,
+            // On screen for hours: resting motion runs at 30 fps, full rate
+            // when it wants you, you're looking, or it's doing a trick.
+            // Frames that wouldn't visibly change are skipped either way.
+            framesPerSecond: (hovered || characterState == .need) ? 60 : PillLayout.restingFPS,
+            lively: true,
+            activity: activity
+        )
+        .frame(width: wingCollapsed, height: notchHeight + PillLayout.characterOverhang)
+        .allowsHitTesting(false)
+        .padding(.leading, hovered ? wall + column - 17 : 0)
         .opacity(appeared ? 1 : 0)
     }
 
