@@ -5,6 +5,15 @@
         <link>https://github.com/deepshal99/notch-so-good</link>
         <language>en</language>
         <item>
+            <title>Version 4.9.1</title>
+            <pubDate>Sat, 17 Oct 2026 16:44:19 +0000</pubDate>
+            <sparkle:version>30</sparkle:version>
+            <sparkle:shortVersionString>4.9.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[<ul><li>Peek no longer gets clipped at the bottom while swinging for you in the notch</li></ul>]]></description>
+            <enclosure url="https://github.com/deepshal99/notch-so-good/releases/download/v4.9.1/NotchSoGood-4.9.1.zip" sparkle:edSignature="xCrDms/GWTuAWisjwXAmY7TIV2Qslh6mcOAZFq9QoSxJmwaOov+2j2SNLu6TAZGMI0GSopMX/PHm8iZUqb5VDg==" length="4007764" type="application/octet-stream"/>
+        </item>
+        <item>
             <title>Version 4.9.0</title>
             <pubDate>Sat, 17 Oct 2026 10:50:57 +0000</pubDate>
             <sparkle:version>29</sparkle:version>
@@ -39,15 +48,6 @@
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <description><![CDATA[<ul><li>&quot;Answer in terminal&quot; no longer leaves the next waiting card stuck</li><li>Approvals stay on for Claude Code installed with nvm, volta or bun</li><li>&quot;Only when blocked&quot; sound is remembered after a restart</li><li>Clicking an option after typing sends just that option</li><li>A signed-out Claude account clears its old usage numbers</li><li>Long questions keep their answers</li></ul>]]></description>
             <enclosure url="https://github.com/deepshal99/notch-so-good/releases/download/v4.7.3/NotchSoGood-4.7.3.zip" sparkle:edSignature="ot2fPYqhUnTRjowZc/QPr5IFdbxi92CpfGKYZ5lKPs687V8FbYcfN7vbpcW0jAD+EChusEy6V1zWVjz+6NpsBg==" length="3848562" type="application/octet-stream"/>
-        </item>
-        <item>
-            <title>Version 4.7.2</title>
-            <pubDate>Sat, 17 Oct 2026 06:07:48 +0000</pubDate>
-            <sparkle:version>25</sparkle:version>
-            <sparkle:shortVersionString>4.7.2</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <description><![CDATA[<ul><li>Answer Conductor&#x27;s questions from the notch (and any app that brings its own question tool): tap an option and Claude gets your answer</li><li>Type your own answer: every question card has a &quot;Something else…&quot; field</li><li>Peek no longer gets cut off at the bottom of a card when it reaches down for you</li></ul>]]></description>
-            <enclosure url="https://github.com/deepshal99/notch-so-good/releases/download/v4.7.2/NotchSoGood-4.7.2.zip" sparkle:edSignature="cir8bnsecVk7amnjbPc/yE+iX4VVC96xkJjjoSgVAIyt2O5pe2g11y6/zGGkuHcBKE7ilUkQVYCy8Fye0Yt2BQ==" length="3838730" type="application/octet-stream"/>
         </item>
     </channel>
 </rss>
