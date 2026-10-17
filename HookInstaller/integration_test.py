@@ -251,7 +251,8 @@ def test_reply_from_the_notch():
     worker = threading.Thread(target=lambda: box.update(r=send(waiter, wait=True, timeout=20)))
     worker.start()
     stop = base("reply-1")
-    stop.update({"event": "Stop", "last_assistant_message": "Added the backoff. Remove the old retry flag too?"})
+    stop.update({"event": "Stop", "last_assistant_message": "Added the backoff. Remove the old retry flag too?",
+                 "can_reply": True})
     send(stop)
     wait_ui(1.4)
     shot("reply-card")
@@ -291,6 +292,31 @@ def test_plan_progress():
         {"title": "Run the tests", "status": "pending"}]})
     send(event)
     return check("plan progress accepted (visual: 'Step 2 of 3 · Write the fix', 1/3)", True)
+
+
+def test_card_answered_elsewhere_goes_away():
+    """The host app (Conductor, VS Code) answered its own prompt: the tool ran,
+    so our card closes and the hook leaves without a decision."""
+    box = {}
+    ask = permission_request("stale-1", "Bash", "touch /tmp/x", tool_key="k-touch")
+    worker = threading.Thread(target=lambda: box.update(r=send(ask, wait=True, timeout=15)))
+    worker.start()
+    wait_ui(1.5)
+    other = base("stale-1"); other.update({"event": "PostToolUse", "tool_name": "Bash", "tool_key": "k-other"})
+    send(other)
+    wait_ui(0.8)
+    still_waiting = worker.is_alive()
+    late = base("stale-1"); late.update({"event": "UserPromptSubmit", "at": time.time() - 60})
+    send(late)
+    wait_ui(0.8)
+    still_waiting_after_late = worker.is_alive()
+    ran = base("stale-1"); ran.update({"event": "PostToolUse", "tool_name": "Bash", "tool_key": "k-touch"})
+    send(ran)
+    worker.join(4)
+    reply = box.get("r", ("missing",))[0]
+    return check("a card answered in the host app closes (and only that one)",
+                 still_waiting and still_waiting_after_late and not worker.is_alive() and reply is None,
+                 "waiting=%s/%s reply=%r" % (still_waiting, still_waiting_after_late, reply))
 
 
 def test_decision_not_needed_is_non_blocking():
@@ -431,7 +457,7 @@ def test_long_message_is_clamped():
 def test_cleanup():
     for sid in ("adopt-1", "status-1", "bypass-notif", "keep-a", "keep-b",
                 "prio-working", "prio-blocked", "long-1", "old-1", "perm-1", "perm-2", "ask-1",
-                "perm-3", "cycle-1", "cycle-2", "ask-2", "reply-1", "radar-a", "radar-b", "plan-1"):
+                "perm-3", "cycle-1", "cycle-2", "ask-2", "reply-1", "radar-a", "radar-b", "plan-1", "stale-1"):
         event = base(sid)
         event["event"] = "SessionEnd"
         send(event)
@@ -468,6 +494,7 @@ def main():
     test_next_card_hotkey()
     test_question_number_hotkey()
     test_reply_from_the_notch()
+    test_card_answered_elsewhere_goes_away()
     test_agent_radar()
     test_plan_progress()
     test_decision_not_needed_is_non_blocking()

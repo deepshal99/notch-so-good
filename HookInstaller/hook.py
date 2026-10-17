@@ -24,6 +24,7 @@ import json
 import os
 import re
 import sys
+import time
 
 # One socket per user: /tmp is shared, and a second account's app must never
 # receive (or answer) our hooks. Tests point it elsewhere.
@@ -36,6 +37,8 @@ DECISION_TIMEOUT = 120.0
 # How long a finished session listens for a reply from the notch. The hook's
 # own timeout (set by the installer) is a little longer.
 REPLY_TIMEOUT = 3500.0
+# Claude Code that can be woken by a background hook ("asyncRewake").
+REWAKE_SINCE = (2, 1, 287)
 
 MAX_SUMMARY = 200
 MAX_MESSAGE = 300
@@ -127,6 +130,9 @@ def base_event(payload, agent):
         "cwd": str(payload.get("cwd") or ""),
         "permission_mode": str(payload.get("permission_mode") or ""),
         "pid": os.getpid(),
+        # When it happened: reporting hooks run in the background and can
+        # arrive after a newer event.
+        "at": round(time.time(), 3),
         "source_app": agent,
         "source_bundle_id": (
             os.environ.get("__CFBundleIdentifier")
@@ -142,6 +148,14 @@ def emit(output):
 
 
 # ---------------------------------------------------------------- tool summary
+
+def tool_key(tool_name, tool_input):
+    """A short fingerprint of one tool call. A waiting card and the tool
+    running later share it, so the app knows which card that answered."""
+    import hashlib
+    blob = json.dumps([tool_name, tool_input], sort_keys=True, default=str)
+    return hashlib.sha1(blob.encode()).hexdigest()[:16]
+
 
 def tool_summary(tool_name, tool_input, limit=MAX_SUMMARY):
     """One human-readable line describing what the tool will do."""
@@ -268,6 +282,7 @@ def handle_permission_request(payload, agent):
         "event": "PermissionRequest",
         "tool_name": tool_name,
         "tool_input": change_preview(tool_name, tool_input) or tool_summary(tool_name, tool_input, MAX_COMMAND),
+        "tool_key": tool_key(tool_name, tool_input),
     })
     if isinstance(tool_input, dict):
         description = tool_input.get("description")
@@ -435,16 +450,140 @@ def handle_pre_tool_use(payload, agent):
     sys.exit(0)
 
 
+def claude_version():
+    """The version of the Claude Code running this hook. Apps like Conductor,
+    VS Code and Claude's desktop app bring their own copy, so it isn't
+    necessarily the one on PATH. None when it can't be told."""
+    path = os.environ.get("CLAUDE_CODE_EXECPATH") or ""
+    if not path:
+        # A terminal session doesn't say: ask the process (native installs
+        # live in .../versions/<version>; npm ones run cli.js under node).
+        path = os.path.realpath(claude_executable() or "")
+        if os.path.basename(path) in ("node", "bun"):
+            script = re.search(r"\s(/\S*?\.js)\b", claude_args())
+            path = os.path.realpath(script.group(1)) if script else ""
+        if "claude" not in path.lower():
+            return None      # not Claude Code above us: don't guess
+    found = re.search(r"(\d+)\.(\d+)\.(\d+)", path)
+    if found:
+        return tuple(int(n) for n in found.groups())
+    if path.endswith(".js"):
+        # npm install: the version is in the package next to cli.js.
+        try:
+            with open(os.path.join(os.path.dirname(path), "package.json")) as f:
+                found = re.match(r"(\d+)\.(\d+)\.(\d+)", json.load(f).get("version", ""))
+        except Exception:
+            found = None
+    elif path:
+        try:
+            import subprocess
+            out = subprocess.run([path, "--version"], capture_output=True, text=True, timeout=5).stdout
+            found = re.match(r"\s*(\d+)\.(\d+)\.(\d+)", out)
+        except Exception:
+            found = None
+    return tuple(int(n) for n in found.groups()) if found else None
+
+
+def claude_executable():
+    """The file the Claude Code process is running (argv[0] is often just "claude")."""
+    try:
+        import subprocess
+        out = subprocess.run(["/usr/sbin/lsof", "-a", "-p", str(claude_pid()), "-d", "txt", "-Fn"],
+                             capture_output=True, text=True, timeout=3).stdout
+        return next((line[1:] for line in out.splitlines() if line.startswith("n/")), None)
+    except Exception:
+        return None
+
+
+def claude_pid():
+    """The Claude Code process this hook belongs to."""
+    try:
+        return int(os.environ.get("CLAUDE_PID") or 0) or os.getppid()
+    except ValueError:
+        return os.getppid()
+
+
+def claude_args():
+    try:
+        import subprocess
+        return subprocess.run(["ps", "-o", "args=", "-p", str(claude_pid())],
+                              capture_output=True, text=True, timeout=2).stdout
+    except Exception:
+        return ""
+
+
+def can_reply(agent):
+    """Whether a reply typed on the finished card can reach this session: a
+    Claude Code that can be woken, in a session that stays open for one. An
+    interactive terminal does; so does an app that keeps Claude running and
+    feeds it messages (Conductor, VS Code). A one-shot `claude -p` run doesn't,
+    and listening there would keep it from exiting."""
+    if agent != "claude":
+        return False
+    version = claude_version()
+    if version is None or version < REWAKE_SINCE:
+        return False
+    entry = os.environ.get("CLAUDE_CODE_ENTRYPOINT", "cli")
+    if entry == "cli":
+        return True
+    args = claude_args()
+    return "--input-format" in args and "stream-json" in args
+
+
+def wait_for_reply(event):
+    """Wait for the app's answer, but only while the session lives: when its
+    Claude Code exits, so do we."""
+    import socket
+    sock = None
+    try:
+        if os.stat(SOCKET_PATH).st_uid != os.getuid():
+            return None
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        sock.settimeout(SEND_TIMEOUT)
+        sock.connect(SOCKET_PATH)
+        sock.sendall(json.dumps(event).encode())
+        sock.shutdown(socket.SHUT_WR)
+        sock.settimeout(2.0)
+        owner = claude_pid()
+        chunks = []
+        deadline = time.time() + REPLY_TIMEOUT
+        while time.time() < deadline:
+            try:
+                chunk = sock.recv(4096)
+            except socket.timeout:
+                try:
+                    os.kill(owner, 0)
+                except ProcessLookupError:
+                    return None
+                except PermissionError:
+                    pass
+                continue
+            if not chunk:
+                break
+            chunks.append(chunk)
+        body = b"".join(chunks)
+        reply = json.loads(body.decode()) if body else None
+        return reply if isinstance(reply, dict) else None
+    except Exception:
+        return None
+    finally:
+        if sock is not None:
+            try:
+                sock.close()
+            except Exception:
+                pass
+
+
 def handle_reply(payload, agent):
     """A turn just ended (Stop). Run in the background (`asyncRewake`), wait
     for a reply typed in the notch; if one comes, wake Claude with it (exit 2:
     Claude Code shows stderr to Claude and starts a turn). A new prompt typed
     in the terminal, or the session ending, closes the wait quietly."""
-    if agent != "claude":
+    if not can_reply(agent):
         sys.exit(0)
     event = base_event(payload, agent)
     event["event"] = "ReplyWait"
-    reply = send(event, wait=True, timeout=REPLY_TIMEOUT)
+    reply = wait_for_reply(event)
     text = reply.get("reply") if isinstance(reply, dict) else None
     if isinstance(text, str) and text.strip():
         sys.stderr.write("The user replied from the Notch So Good notch (not typed here). "
@@ -494,7 +633,7 @@ def handle_post_tool_use(event_name, payload, agent):
     tool_name = str(payload.get("tool_name") or "")
     tool_input = payload.get("tool_input")
     event = base_event(payload, agent)
-    event.update({"event": "PostToolUse", "tool_name": tool_name})
+    event.update({"event": "PostToolUse", "tool_name": tool_name, "tool_key": tool_key(tool_name, tool_input)})
     paths = edited_paths(tool_name, tool_input)
     if paths:
         event["edited"] = paths
@@ -623,6 +762,7 @@ def handle_simple(event_name, payload, agent):
         event["source"] = str(payload.get("source") or "")[:20]
     elif event_name == "Stop":
         event["last_assistant_message"] = (last_assistant_message(payload) or "Task completed")[:MAX_MESSAGE]
+        event["can_reply"] = can_reply(agent)
     elif event_name == "StopFailure":
         # The turn died on an API error: the app says which, in plain words.
         event["error"] = str(payload.get("error") or "unknown")[:40]

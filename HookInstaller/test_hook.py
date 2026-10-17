@@ -13,6 +13,7 @@ import os
 import socket
 import subprocess
 import sys
+import time
 import tempfile
 import threading
 import unittest
@@ -36,6 +37,7 @@ class FakeApp:
     def __init__(self, reply=None):
         self.reply = reply
         self.received = []
+        self.held = []
         self.dir = tempfile.mkdtemp()
         self.path = os.path.join(self.dir, "sock")
         self.server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -63,6 +65,10 @@ class FakeApp:
                         self.received.append(json.loads(body.decode()))
                     except Exception:
                         pass
+                if self.reply == "HOLD":
+                    # Like a card nobody answers: keep the hook waiting.
+                    self.held.append(conn)
+                    continue
                 if self.reply is not None:
                     try:
                         conn.sendall(json.dumps(self.reply).encode())
@@ -70,7 +76,8 @@ class FakeApp:
                         # Fire-and-forget clients close the read end; expected.
                         pass
             finally:
-                conn.close()
+                if conn not in self.held:
+                    conn.close()
 
     def close(self):
         try:
@@ -79,7 +86,12 @@ class FakeApp:
             pass
 
 
-def run_hook(event, payload, agent=None, socket_path=None, reply=None):
+# A current interactive Claude Code, unless a test says otherwise.
+CLAUDE_ENV = {"CLAUDE_CODE_EXECPATH": "/Users/x/.local/share/claude/versions/2.1.300",
+              "CLAUDE_CODE_ENTRYPOINT": "cli", "CLAUDE_PID": str(os.getpid())}
+
+
+def run_hook(event, payload, agent=None, socket_path=None, reply=None, claude=None):
     """Run hook.py as a subprocess. Returns (exit_code, stdout, stderr, events)."""
     app = FakeApp(reply=reply) if socket_path is None else None
     path = socket_path or app.path
@@ -88,7 +100,10 @@ def run_hook(event, payload, agent=None, socket_path=None, reply=None):
         args += ["--agent", agent]
 
     # Point the bridge at the fake socket without touching the real one.
-    env = dict(os.environ, NOTCHSOGOOD_SOCKET=path)
+    # The agent's own variables come from the test, never from whoever runs it.
+    env = {k: v for k, v in os.environ.items() if not k.startswith("CLAUDE")}
+    env.update(CLAUDE_ENV if claude is None else claude)
+    env["NOTCHSOGOOD_SOCKET"] = path
 
     proc = subprocess.run(
         args,
@@ -245,6 +260,29 @@ class Replies(unittest.TestCase):
             code, out, err, _ = run_hook("Reply", {"session_id": "s"}, reply=reply)
             self.assertEqual((code, out.strip(), err.strip()), (0, "", ""))
 
+    def test_only_sessions_that_can_take_a_reply_listen(self):
+        # A one-shot `claude -p` would never exit; an old Claude Code can't be woken.
+        for claude in (dict(CLAUDE_ENV, CLAUDE_CODE_ENTRYPOINT="sdk-cli"),
+                       dict(CLAUDE_ENV, CLAUDE_CODE_EXECPATH="/Users/x/.local/share/claude/versions/2.1.237"),
+                       {"CLAUDE_CODE_ENTRYPOINT": "cli"}):
+            code, _, _, events = run_hook("Reply", {"session_id": "s"}, reply={"reply": "x"}, claude=claude)
+            self.assertEqual((code, events), (0, []), claude)
+
+    def test_the_finished_event_says_whether_a_reply_can_reach_it(self):
+        _, _, _, events = run_hook("Stop", {"session_id": "s"})
+        self.assertIs(events[0]["can_reply"], True)
+        _, _, _, events = run_hook("Stop", {"session_id": "s"}, claude=dict(CLAUDE_ENV, CLAUDE_CODE_ENTRYPOINT="sdk-cli"))
+        self.assertIs(events[0]["can_reply"], False)
+
+    def test_listener_leaves_with_its_session(self):
+        # Claude Code exits mid-wait: the hook goes too, instead of waiting an hour.
+        dead = subprocess.Popen(["true"]); dead.wait()
+        started = time.time()
+        code, _, _, _ = run_hook("Reply", {"session_id": "s"}, reply="HOLD",
+                                 claude=dict(CLAUDE_ENV, CLAUDE_PID=str(dead.pid)))
+        self.assertEqual(code, 0)
+        self.assertLess(time.time() - started, 10)
+
     def test_codex_never_waits(self):
         code, _, _, events = run_hook("Reply", {"session_id": "s"}, agent="codex", reply={"reply": "x"})
         self.assertEqual((code, events), (0, []))
@@ -255,6 +293,19 @@ class Replies(unittest.TestCase):
         updates = output(out)["hookSpecificOutput"]["decision"]["updatedPermissions"]
         self.assertEqual([u["destination"] for u in updates], ["session"])
         self.assertEqual(updates[0]["rules"], SUGGESTION["rules"])
+
+
+class StaleCards(unittest.TestCase):
+    def test_a_card_and_its_tool_running_share_a_key(self):
+        _, _, _, asked = run_hook("PermissionRequest", BASH)
+        _, _, _, ran = run_hook("PostToolUse", BASH)
+        _, _, _, other = run_hook("PostToolUse", dict(BASH, tool_input={"command": "ls"}))
+        self.assertEqual(asked[0]["tool_key"], ran[0]["tool_key"])
+        self.assertNotEqual(asked[0]["tool_key"], other[0]["tool_key"])
+
+    def test_every_event_says_when(self):
+        _, _, _, events = run_hook("UserPromptSubmit", {"session_id": "s", "prompt": "hi"})
+        self.assertAlmostEqual(events[0]["at"], time.time(), delta=30)
 
 
 class Plans(unittest.TestCase):

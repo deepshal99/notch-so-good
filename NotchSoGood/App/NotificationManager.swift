@@ -877,7 +877,7 @@ class NotificationManager: ObservableObject {
 
     /// Bump when the hook bridge's wire format or command line changes, so an
     /// upgrade reinstalls hooks even if the app version didn't move.
-    private static let hooksSchemaVersion = 9
+    private static let hooksSchemaVersion = 11
 
     /// Install hooks on first launch, on version updates, and whenever the hook
     /// bridge itself changes shape.
@@ -886,7 +886,7 @@ class NotificationManager: ObservableObject {
         let stamp = "\(currentVersion)#\(Self.hooksSchemaVersion)"
         let installed = UserDefaults.standard.string(forKey: "hooksInstalledVersion") ?? ""
 
-        if installed != stamp {
+        if installed != stamp || Health.hooksMissing() {
             // Recorded only once the install actually succeeded, so a failure
             // (no python3, unreadable settings) is retried on the next launch.
             installHooks { ok in
@@ -922,7 +922,6 @@ class NotificationManager: ObservableObject {
             }
             DispatchQueue.main.async {
                 self.hooksInstallFailed = !ok
-                Replies.shared.refreshSupport()
                 completion?(ok)
             }
         }

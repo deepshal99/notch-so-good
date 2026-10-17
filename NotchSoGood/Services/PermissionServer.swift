@@ -35,6 +35,8 @@ class PermissionServer {
         let sessionId: String?
         let clientSocket: Int32
         let receivedAt: Date
+        /// Fingerprint of the tool call (permission cards), to spot it running.
+        var toolKey: String? = nil
     }
 
     /// Pending permission requests indexed by request ID — supports concurrent requests
@@ -343,6 +345,8 @@ class PermissionServer {
         let event = json["event"] as? String ?? ""
         let sessionId = NotchNotification.nonEmpty(json["session_id"] as? String)
         let cwd = NotchNotification.nonEmpty(json["cwd"] as? String)
+        // When the hook saw it (older hooks don't say: now).
+        let eventTime = (json["at"] as? Double).map { Date(timeIntervalSince1970: $0) } ?? Date()
         let sourceBundleId = Self.bundleId(from: json)
         let agentPid = Self.peer(of: clientSocket)?.agent
         let modeRaw = json["permission_mode"] as? String
@@ -364,6 +368,8 @@ class PermissionServer {
 
         case "PostToolUse":
             close(clientSocket)
+            // The tool ran: if its card is still up, it was answered elsewhere.
+            if let key = json["tool_key"] as? String { resolvedElsewhere(sessionId: sessionId, toolKey: key) }
             let toolName = json["tool_name"] as? String ?? ""
             let edited = (json["edited"] as? [String]) ?? []
             let tests = json["tests"] as? String
@@ -426,12 +432,14 @@ class PermissionServer {
         case "SessionEnd":
             close(clientSocket)
             cancelReply(sessionId: sessionId)
+            resolvedElsewhere(sessionId: sessionId, before: eventTime)
             DispatchQueue.main.async {
                 NotificationManager.shared.endSession(sessionId: sessionId)
             }
 
         case "Stop":
             close(clientSocket)
+            resolvedElsewhere(sessionId: sessionId, before: eventTime)
             if let sessionId {
                 lock.lock()
                 autoAcceptEdits.remove(sessionId)
@@ -449,7 +457,9 @@ class PermissionServer {
                     type: .complete,
                     message: message,
                     sessionId: sessionId,
-                    canReply: (agent ?? "claude") == "claude" && sessionId != nil && Replies.shared.supported
+                    // The hook knows whether this session can take a reply
+                    // (its Claude Code version, and whether it stays open).
+                    canReply: sessionId != nil && json["can_reply"] as? Bool == true
                 )
                 NotificationManager.shared.handleNotification(notification)
             }
@@ -503,6 +513,7 @@ class PermissionServer {
         case "UserPromptSubmit":
             close(clientSocket)
             cancelReply(sessionId: sessionId)          // they answered in the terminal
+            resolvedElsewhere(sessionId: sessionId, before: eventTime)
             DispatchQueue.main.async {
                 NotificationManager.shared.handleUserPromptSubmit(
                     sessionId: sessionId,
@@ -609,7 +620,8 @@ class PermissionServer {
         lock.lock()
         pendingRequests[requestId] = PendingRequest(
             id: requestId, toolName: toolName, interaction: interaction,
-            sessionId: sessionId, clientSocket: clientSocket, receivedAt: Date()
+            sessionId: sessionId, clientSocket: clientSocket, receivedAt: Date(),
+            toolKey: json["tool_key"] as? String
         )
         lock.unlock()
 
@@ -749,6 +761,21 @@ class PermissionServer {
     }
 
     // MARK: - Timeout & socket I/O
+
+    /// The session got past a waiting card without us: the app it runs in
+    /// (Conductor, VS Code, Claude's desktop app) asked too and was answered
+    /// there, or the turn ended. The card goes, so it never asks for an answer
+    /// nobody needs. With a key, only the card for that exact tool call.
+    func resolvedElsewhere(sessionId: String?, toolKey: String? = nil, before: Date? = nil) {
+        guard let sessionId else { return }
+        lock.lock()
+        let stale = pendingRequests.values
+            .filter { $0.sessionId == sessionId && (toolKey == nil || $0.toolKey == toolKey) }
+            .filter { before == nil || $0.receivedAt < before! }
+            .map(\.id)
+        lock.unlock()
+        stale.forEach(timeoutRequest)
+    }
 
     /// Give up on answering from the notch: the hook gets no decision, so
     /// Claude Code falls back to its normal prompt in the terminal.

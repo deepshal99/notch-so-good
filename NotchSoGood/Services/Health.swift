@@ -28,7 +28,24 @@ enum Health {
 
     // MARK: - Checks
 
-    private static func ourEvents(in file: String) -> Set<String> {
+    static var claudeDir: String {
+        ProcessInfo.processInfo.environment["CLAUDE_CONFIG_DIR"].flatMap { $0.isEmpty ? nil : $0 }
+            ?? NSHomeDirectory() + "/.claude"
+    }
+
+    /// Claude Code is here but our hooks aren't (something rewrote its
+    /// settings), or Codex is here without them.
+    nonisolated static func hooksMissing() -> Bool {
+        let home = NSHomeDirectory()
+        let claude = ProcessInfo.processInfo.environment["CLAUDE_CONFIG_DIR"].flatMap { $0.isEmpty ? nil : $0 } ?? home + "/.claude"
+        if FileManager.default.fileExists(atPath: claude), !ourEvents(in: claude + "/settings.json").contains("Stop") { return true }
+        let codex = home + "/.codex"
+        // Codex only once it has a hooks file (versions without hooks never get one).
+        if FileManager.default.fileExists(atPath: codex + "/hooks.json"), ourEvents(in: codex + "/hooks.json").isEmpty { return true }
+        return false
+    }
+
+    nonisolated private static func ourEvents(in file: String) -> Set<String> {
         guard let data = FileManager.default.contents(atPath: file),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let hooks = json["hooks"] as? [String: Any] else { return [] }
@@ -45,9 +62,7 @@ enum Health {
     }
 
     private static func claudeHooks() -> Check {
-        let dir = ProcessInfo.processInfo.environment["CLAUDE_CONFIG_DIR"].flatMap { $0.isEmpty ? nil : $0 }
-            ?? NSHomeDirectory() + "/.claude"
-        let events = ourEvents(in: dir + "/settings.json")
+        let events = ourEvents(in: claudeDir + "/settings.json")
         if events.isEmpty {
             return Check(id: "claude", title: "Claude Code hooks", detail: "Not installed. Reinstall in General.", level: .warning)
         }
