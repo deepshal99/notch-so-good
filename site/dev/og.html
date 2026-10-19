@@ -1,27 +1,43 @@
 <!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="../styles.css"><style>
-html,body{margin:0;width:1200px;height:630px;overflow:hidden;background:#fff}
-.mac{position:absolute;left:44px;right:44px;top:40px;bottom:-40px;border:14px solid #0B0B0C;border-bottom:0;border-radius:40px 40px 0 0;
-  -webkit-mask-image:linear-gradient(#000 0,#000 55%,transparent 98%);mask-image:linear-gradient(#000 0,#000 55%,transparent 98%)}
-.n{position:absolute;left:50%;top:54px;transform:translateX(-50%);width:260px;height:52px;background:#000;z-index:3}
-canvas{position:absolute;left:50%;transform:translateX(-50%);z-index:2}
-h1{position:absolute;left:0;right:0;top:268px;text-align:center;font-size:66px;line-height:1.02;letter-spacing:-.045em;margin:0;opacity:1;transform:none;filter:none}
-p{position:absolute;left:0;right:0;top:432px;text-align:center;margin:0;font-size:22px;color:#76767B;letter-spacing:-.01em}
-.brandrow{position:absolute;left:50%;top:500px;white-space:nowrap;transform:translateX(-50%);display:flex;align-items:center;gap:10px;font:650 20px var(--sans);letter-spacing:-.02em;color:#0B0B0C}
-.brandrow svg{width:26px;height:26px;fill:#0B0B0C}
+html,body{margin:0;width:1200px;height:630px;overflow:hidden;background:#000}
+svg.edge{position:absolute;inset:0;width:1200px;height:630px}
+canvas{position:absolute;left:50%;transform:translateX(-50%)}
+.glow{position:absolute;left:50%;top:330px;width:700px;height:420px;transform:translate(-50%,-50%);background:radial-gradient(closest-side,rgba(255,150,60,0.16),rgba(255,150,60,0) 70%);filter:blur(10px)}
+.brandline{position:absolute;left:0;right:0;bottom:40px;display:flex;align-items:center;justify-content:center;gap:11px;font:600 22px var(--sans);letter-spacing:-0.02em;color:rgba(255,255,255,0.92)}
+.brandline svg{width:24px;height:24px}
 </style></head><body>
-<div class="mac"></div><div class="n" id="n"></div><canvas id="c"></canvas>
-<h1>Your coding agents,<br>right in your Mac’s notch.</h1>
-<p>Approve, answer and reply to Claude Code and Codex.</p>
-<div class="brandrow"><svg viewBox="0 0 32 32"><rect x="3" y="5" width="26" height="23" rx="9"/><rect x="10.5" y="11.5" width="3.4" height="9" rx="1.7" fill="#fff"/><rect x="18.1" y="11.5" width="3.4" height="9" rx="1.7" fill="#fff"/></svg>Notch So Good · free for Mac</div>
+<div class="glow"></div>
+<svg class="edge" viewBox="0 0 1200 630" aria-hidden="true">
+  <defs>
+    <linearGradient id="fade" x1="0" x2="1"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset="0.22" stop-color="#fff"/><stop offset="0.78" stop-color="#fff"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
+    <mask id="m"><rect width="1200" height="630" fill="url(#fade)"/></mask>
+    <filter id="b1" x="-10%" y="-50%" width="120%" height="200%"><feGaussianBlur stdDeviation="9"/></filter>
+    <filter id="b2" x="-10%" y="-50%" width="120%" height="200%"><feGaussianBlur stdDeviation="2.2"/></filter>
+  </defs>
+  <g mask="url(#m)" fill="none" stroke-linecap="round">
+    <path id="edgePath" d=""/>
+    <use href="#edgePath" stroke="#FF8A2A" stroke-width="10" opacity="0.55" filter="url(#b1)"/>
+    <use href="#edgePath" stroke="#FFA54D" stroke-width="3" filter="url(#b2)"/>
+    <use href="#edgePath" stroke="#FFE2BF" stroke-width="1.2"/>
+  </g>
+</svg>
+<canvas id="c"></canvas>
+<div class="brandline"><svg viewBox="0 0 32 32"><rect x="3" y="5" width="26" height="23" rx="9" fill="#fff"/><rect x="10.5" y="11.5" width="3.4" height="9" rx="1.7" fill="#000"/><rect x="18.1" y="11.5" width="3.4" height="9" rx="1.7" fill="#000"/></svg>Notch So Good</div>
 <script type="module">
 import { PeekView } from '../peek.js';
-import { notchPath } from '../island.js';
-const n = document.getElementById('n'); n.style.clipPath = notchPath(260, 52, 8, 26);
-const q = new URLSearchParams(location.search);
-const U = +(q.get('u') || 62), c = document.getElementById('c');
-const v = new PeekView(c, { finish: q.get('f') || 'neon', unitsW: 4.4, unitsH: 3.4, notchY: 0.12, state: q.get('s') || 'need' });
-v.resize(4.4*U, 3.4*U, +(q.get('dpr') || 1)); c.style.top = (54 + 52 - 0.12*U) + 'px';
-const t = performance.now()/1000; v.puppet.since = t - 1.1; v.draw(t);
-if (q.has('peek')) { document.body.innerHTML = ''; document.body.style.background = 'transparent'; window.peekPng = c.toDataURL('image/png'); }
-window.done = true;
+// the screen's top edge with the notch cut into it, traced like the app's NotchShape (concave top fillets, round bottom)
+const top = 112, nh = 78, nw = 420, t = 14, b = 26, cx = 600, x0 = cx - nw / 2, x1 = cx + nw / 2, y1 = top + nh;
+const d = `M 40 ${top} L ${x0} ${top} Q ${x0 + t} ${top} ${x0 + t} ${top + t} L ${x0 + t} ${y1 - b} Q ${x0 + t} ${y1} ${x0 + t + b} ${y1}
+  L ${x1 - t - b} ${y1} Q ${x1 - t} ${y1} ${x1 - t} ${y1 - b} L ${x1 - t} ${top + t} Q ${x1 - t} ${top} ${x1} ${top} L 1160 ${top}`;
+document.getElementById('edgePath').setAttribute('d', d);
+const q = new URLSearchParams(location.search), U = +(q.get('u') || 142);
+const c = document.getElementById('c');
+const v = new PeekView(c, { finish: q.get('f') || 'neon', unitsW: 4.4, unitsH: 3.6, notchY: 0.12, state: 'need' });
+v.resize(4.4 * U, 3.6 * U, 2); c.style.top = (y1 - 0.12 * U) + 'px';
+const at = +(q.get('t') || 3.25), t0 = performance.now() / 1000;
+v.puppet.since = t0 - at;
+v.puppet.drop = +(q.get('d') || -0.08);   // hug the notch: a shorter reach than its usual "needs you" hang
+// render until the shader is compiled, then hold the pose
+const tick = () => { v.draw(t0); if (!v.shown) return requestAnimationFrame(tick); window.done = true; };
+tick();
 </script></body></html>
