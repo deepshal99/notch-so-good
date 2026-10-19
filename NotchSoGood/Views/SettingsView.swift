@@ -357,12 +357,25 @@ private struct CharacterPane: View {
                         Text("Finish").font(Panel.title).foregroundColor(Panel.primary)
                         Spacer()
                     }
-                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), spacing: 14) {
+                    HStack(spacing: 6) {
                         ForEach(settings.kind.finishes) { finish in
                             swatch(finish)
                         }
                     }
                     .padding(.leading, Panel.iconColumn + 12)
+                    // the finish's colours, when it has any
+                    let tones = settings.finish.tones
+                    if !tones.isEmpty {
+                        HStack(spacing: 10) {
+                            ForEach(tones) { tone in toneSwatch(tone) }
+                            Text(settings.tone?.name ?? "")
+                                .font(.system(size: 11.5, weight: .medium))
+                                .foregroundColor(Panel.secondary)
+                                .padding(.leading, 2)
+                        }
+                        .padding(.leading, Panel.iconColumn + 12)
+                        .transition(.opacity)
+                    }
                 }
                 .padding(.horizontal, Panel.rowPadding)
                 .padding(.vertical, 13)
@@ -409,6 +422,24 @@ private struct CharacterPane: View {
         .buttonStyle(IslandPressStyle())
         .accessibilityLabel(kind.displayName)
         .accessibilityHint(kind.tagline)
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+
+    private func toneSwatch(_ tone: CharacterTone) -> some View {
+        let selected = settings.tone == tone
+        return Button {
+            withAnimation(Island.press) { settings.setTone(tone, for: settings.finish) }
+        } label: {
+            Circle()
+                .fill(tone.swatch)
+                .overlay(Circle().strokeBorder(Color.white.opacity(0.14), lineWidth: 1))
+                .frame(width: 18, height: 18)
+                .padding(2.5)
+                .overlay(Circle().strokeBorder(Color.white.opacity(selected ? 0.9 : 0), lineWidth: 1.5))
+                .contentShape(Circle())
+        }
+        .buttonStyle(IslandPressStyle())
+        .accessibilityLabel(tone.name)
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
 

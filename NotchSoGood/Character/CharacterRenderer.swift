@@ -72,7 +72,7 @@ final class CharacterRenderer {
     /// Blocks until the pipeline exists (it compiles on first use), so call it
     /// off the main thread. Used where a live Metal layer can't be composited
     /// (menu bar windows) and by the debug snapshot harness.
-    func snapshot(kind: CharacterKind, state: CharacterState, finish: CharacterFinish, motion: CharacterMotion = .gooey,
+    func snapshot(kind: CharacterKind, state: CharacterState, finish: CharacterFinish, tone: CharacterTone? = nil, motion: CharacterMotion = .gooey,
                   framing: CharacterFraming, sizePt: CGSize, scale: CGFloat, t: Double, gaze: SIMD2<Float>? = nil,
                   aura: Bool = true) -> CGImage? {
         guard let device, let queue, let pipeline = pipelineBlocking(kind: kind, finish: finish) else { return nil }
@@ -86,7 +86,7 @@ final class CharacterRenderer {
         var pose = puppet.pose(now: 0, motion: motion.params)
         for f in 1...max(1, Int(t*60)) { pose = puppet.pose(now: Double(f)/60, motion: motion.params) }
         let vp = framing.viewport(sizePt: sizePt, pixelsPerPoint: scale, kind: kind, state: state)
-        var (u, pts) = puppet.uniforms(pose, viewport: vp, finish: finish, time: t, gazeOverride: gaze)
+        var (u, pts) = puppet.uniforms(pose, viewport: vp, finish: finish, tone: tone, time: t, gazeOverride: gaze)
         if !framing.allowsAura || !aura { u.c.w = 0 }
         let pass = MTLRenderPassDescriptor()
         pass.colorAttachments[0].texture = tex
@@ -201,6 +201,7 @@ final class CharacterMTKView: MTKView, MTKViewDelegate {
     private(set) var kind: CharacterKind = .peek
     private(set) var state: CharacterState = .idle
     var finish: CharacterFinish = .obsidian
+    var tone: CharacterTone?
     var motion: CharacterMotion = .gooey
     var framing: CharacterFraming = .pill
     var gazeOverride: SIMD2<Float>? {
@@ -480,7 +481,7 @@ final class CharacterMTKView: MTKView, MTKViewDelegate {
         live(&pose, at: t)
         let pixelsPerPoint = bounds.width > 0 ? drawableSize.width/bounds.width : (window?.backingScaleFactor ?? 2)
         let vp = framing.viewport(sizePt: bounds.size, pixelsPerPoint: pixelsPerPoint, kind: kind, state: state)
-        var (uniforms, points) = puppet.uniforms(pose, viewport: vp, finish: finish, time: t, gazeOverride: gazeOverride)
+        var (uniforms, points) = puppet.uniforms(pose, viewport: vp, finish: finish, tone: tone, time: t, gazeOverride: gazeOverride)
         if !framing.allowsAura { uniforms.c.w = 0 }
 
         if let last = lastDrawn, last.pipeline == ObjectIdentifier(pipeline),

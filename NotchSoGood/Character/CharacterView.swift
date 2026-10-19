@@ -32,6 +32,22 @@ final class CharacterSettings: ObservableObject {
         if let raw, let finish = CharacterFinish(rawValue: raw), kind.finishes.contains(finish) { return finish }
         return kind.finishes[0]
     }
+    /// The tone picked for each finish (by finish), remembered separately so
+    /// switching finish and back keeps your colour.
+    @Published private var toneIDs: [String: String] {
+        didSet { UserDefaults.standard.set(toneIDs, forKey: "character.tones") }
+    }
+
+    /// A finish's chosen tone, or its first; nil for finishes without tones.
+    func tone(for finish: CharacterFinish) -> CharacterTone? {
+        let tones = finish.tones
+        return tones.first { $0.id == toneIDs[finish.rawValue] } ?? tones.first
+    }
+    /// The current finish's tone.
+    var tone: CharacterTone? { tone(for: finish) }
+
+    func setTone(_ tone: CharacterTone, for finish: CharacterFinish) { toneIDs[finish.rawValue] = tone.id }
+
     @Published var motion: CharacterMotion {
         didSet { UserDefaults.standard.set(motion.rawValue, forKey: "character.motion") }
     }
@@ -44,6 +60,7 @@ final class CharacterSettings: ObservableObject {
         self.kind = kind
         finish = Self.storedFinish(for: kind)
         motion = d.string(forKey: "character.motion").flatMap(CharacterMotion.init) ?? .gooey
+        toneIDs = d.dictionary(forKey: "character.tones") as? [String: String] ?? [:]
     }
 }
 
@@ -55,6 +72,7 @@ struct CharacterView: NSViewRepresentable {
     var gaze: SIMD2<Float>? = nil
     var kind: CharacterKind? = nil
     var finish: CharacterFinish? = nil
+    var tone: CharacterTone? = nil
     var framesPerSecond: Int = 60
     /// Tricks, dozing and pointer-watching (the pill only). `activity` changes
     /// whenever something happens, which wakes it and puts off the next trick.
@@ -67,7 +85,7 @@ struct CharacterView: NSViewRepresentable {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     init(state: CharacterState, framing: CharacterFraming, gaze: SIMD2<Float>? = nil,
-         kind: CharacterKind? = nil, finish: CharacterFinish? = nil, framesPerSecond: Int = 60,
+         kind: CharacterKind? = nil, finish: CharacterFinish? = nil, tone: CharacterTone? = nil, framesPerSecond: Int = 60,
          lively: Bool = false, activity: Int = 0, celebrate: PeekTrick? = nil) {
         self.celebrate = celebrate
         self.lively = lively
@@ -77,6 +95,7 @@ struct CharacterView: NSViewRepresentable {
         self.gaze = gaze
         self.kind = kind
         self.finish = finish
+        self.tone = tone
         self.framesPerSecond = framesPerSecond
     }
 
@@ -96,7 +115,9 @@ struct CharacterView: NSViewRepresentable {
 
     private func apply(to view: CharacterMTKView) {
         view.setKind(kind ?? settings.kind)
-        view.finish = finish ?? settings.finish(for: kind ?? settings.kind)
+        let f = finish ?? settings.finish(for: kind ?? settings.kind)
+        view.finish = f
+        view.tone = tone ?? settings.tone(for: f)
         view.motion = settings.motion
         view.reduceMotion = reduceMotion
         view.framing = framing

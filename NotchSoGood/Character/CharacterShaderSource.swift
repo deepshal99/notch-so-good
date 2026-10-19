@@ -97,7 +97,8 @@ static float3 toObj(thread Ctx& c, float3 p) {
 // ---------------------------------------------------------------- characters
 // Peek: a soft squircle hanging off the notch edge by two stretchy arms.
 static float peek(thread Ctx& c, float3 q, float3 p) {
-    float b = sdRoundBox(q, float3(0.92, 0.80, 0.64), 0.60);
+    // Balloon is a touch softer at the corners, as if inflated; still Peek's shape
+    float b = sdRoundBox(q, float3(0.92, 0.80, 0.64), FINISH == 14 ? 0.66 : 0.60);
     float pl = sdEll(p - uV(c, 0), float3(0.21, 0.12, 0.19));
     float pr = sdEll(p - uV(c, 1), float3(0.21, 0.12, 0.19));
     float al = sdCap(p, uV(c, 0), uV(c, 2), 0.085);
@@ -296,7 +297,11 @@ static float4 shade(thread Ctx& c, float2 xy) {
     float3 base = uBase*(1.0 - 0.6*uDark);
     float3 col;
     if (FINISH == 0) {          // obsidian: black glass, with a cool edge light so it reads on a black notch
-        col = base*(0.2 + 0.8*dif) + envMap(c, R, 0.0)*(mix(0.1, 1.0, fres) + 0.26) + pow(nh, 160.0)*1.0;
+        // A tinted obsidian (midnight, plum, forest) reads as coloured glass: its body is a touch
+        // brighter and its reflections take a whisper of the hue. Black stays exactly black glass.
+        float hi = max(base.r, max(base.g, base.b)), sat = smoothstep(0.004, 0.03, hi - min(base.r, min(base.g, base.b)));
+        float3 tint = mix3(float3(1.0), base/max(hi, 1e-3), 0.5*sat);
+        col = base*(0.2 + 0.8*dif)*mix(1.0, 1.6, sat) + envMap(c, R, 0.0)*(mix(0.1, 1.0, fres) + 0.26)*tint + pow(nh, 160.0)*1.0;
     } else if (FINISH == 1) {   // soft-touch rubber
         col = base*(0.16 + 0.95*wrap)*occ + float3(pow(nh, 10.0)*0.10) + envMap(c, R, 0.35)*fres*0.25;
     } else if (FINISH == 2) {   // porcelain
@@ -338,10 +343,21 @@ static float4 shade(thread Ctx& c, float2 xy) {
     } else if (FINISH == 8) {   // velvet
         float sheen = pow(1.0 - ndv, 2.4);
         col = base*(0.10 + 0.55*wrap)*occ + mix3(base, float3(1.0), 0.35)*sheen*0.9*(0.4 + 0.6*wrap);
-    } else if (FINISH == 9) {   // gold: polished, warm reflections
-        float sk = smoothstep(-0.05, 0.9, R.y);
-        float3 e = envMap(c, R, 0.04)*1.05 + float3(0.10 + sk*0.42);
-        col = e*base*mix(0.85, 1.15, fres) + base*(0.06 + 0.22*wrap)*occ + pow(nh, 220.0)*float3(1.0, 0.95, 0.8)*1.3;
+    } else if (FINISH == 9) {   // gold: polished metal in a warm studio close by
+        // A bright sky, a soft lit horizon, two softboxes and a warm floor bounce, and no dark
+        // band, so it reads as metal (not mud) in the notch and on a light page alike. The tone
+        // (gold, rose, white gold) colours its own reflections; grazing angles go warm white.
+        float3 Rl = normalize(R + (p - uPos)*0.8);
+        float y = Rl.y;
+        float3 e = float3(0.34) + float3(0.5)*smoothstep(-0.25, 0.9, y);
+        e += float3(0.28)*exp(-pow((y + 0.28)*6.0, 2.0));
+        e += float3(0.12)*smoothstep(-0.2, -0.9, y);
+        float g1 = smoothstep(0.82, 0.97, dot(Rl, normalize(float3(-0.5, 0.7, 0.5))));
+        float g2 = smoothstep(0.88, 0.985, dot(Rl, normalize(float3(0.8, 0.3, 0.52))));
+        e += float3(1.0)*g1 + float3(0.5)*g2;
+        float3 metal = base*mix3(base, float3(1.0), 0.25);
+        col = e*mix3(metal, mix3(base, float3(1.0, 0.97, 0.9), 0.5), fres*0.8) + pow(nh, 240.0)*float3(1.0, 0.97, 0.9)*1.3;
+        col *= mix(0.86, 1.0, occ);
     } else if (FINISH == 10) {  // holo: chrome with a thin film that shifts colour with angle
         float sk = smoothstep(-0.05, 0.9, R.y);
         // pastel, like a holographic sticker: bright silver under a soft rainbow
@@ -356,6 +372,15 @@ static float4 shade(thread Ctx& c, float2 xy) {
         float inner = pow(ndv, 1.6);
         col = base*(0.28 + 0.55*wrap)*occ*0.9 + mix3(base, float3(1.0), 0.25)*inner*0.4
             + envMap(c, R, 0.08)*(0.05 + 0.7*fres5) + float3(pow(nh, 90.0)*0.9);
+    } else if (FINISH == 14) {  // balloon: satin, like bubble letters
+        // Soft, deeply saturated colour, broad gentle highlights, shadows that sink into the
+        // creases and a soft lift at the edges. Matte-ish, not glossy.
+        float3 sat = base*mix3(float3(1.0), base, 0.35);
+        float3 bodyc = sat*(0.34 + 0.8*pow(wrap, 1.2))*mix(0.6, 1.0, occ);
+        float broad = pow(max(dot(n, normalize(float3(-0.35, 0.75, 0.55))), 0.0), 6.0);
+        float3 soft = mix3(base, float3(1.0), 0.55)*broad*0.4;
+        float3 lift = mix3(base, float3(1.0), 0.35)*pow(f1, 2.6)*0.18;
+        col = bodyc + soft + lift + float3(1.0)*pow(nh, 60.0)*0.1;
     } else {                    // frosted: milky glass with a soft inner glow
         col = base*(0.16 + 0.42*wrap)*occ + envMap(c, R, 0.45)*(0.12 + 0.55*fres)
             + uAccent*uGlow*pow(ndv, 2.0)*0.22 + float3(pow(nh, 30.0)*0.12);

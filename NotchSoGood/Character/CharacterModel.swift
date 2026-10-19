@@ -52,7 +52,8 @@ enum CharacterKind: String, CaseIterable, Identifiable {
 
     var finishes: [CharacterFinish] {
         switch self {
-        case .peek: return [.neon, .obsidian, .chrome, .gold, .holo, .porcelain, .gummy, .frosted]
+        // Five, each tuned for Peek, so every one reads in the notch and on a light page alike.
+        case .peek: return [.neon, .obsidian, .porcelain, .gold, .balloon, .gummy]
         case .tail: return [.obsidian, .glass, .chrome, .pearl]
         case .roost: return [.obsidian, .velvet, .anodised, .porcelain]
         case .bubble: return [.glass, .pearl, .obsidian, .chrome]
@@ -116,7 +117,7 @@ enum CharacterState: String, CaseIterable {
 enum CharacterFinish: String, CaseIterable, Identifiable {
     // Order is the shader's FINISH index: append new finishes at the end.
     case obsidian, soft, porcelain, clay, glass, chrome, anodised, pearl, velvet
-    case gold, holo, neon, gummy, frosted
+    case gold, holo, neon, gummy, frosted, balloon
 
     var id: String { rawValue }
 
@@ -165,6 +166,7 @@ enum CharacterFinish: String, CaseIterable, Identifiable {
         case .neon: return "Neon"
         case .gummy: return "Gummy"
         case .frosted: return "Frosted"
+        case .balloon: return "Balloon"
         }
     }
 
@@ -182,8 +184,9 @@ enum CharacterFinish: String, CaseIterable, Identifiable {
         case .gold: return [1.0, 0.77, 0.34]
         case .holo: return [0.55, 0.56, 0.62]
         case .neon: return [0.03, 0.03, 0.04]
-        case .gummy: return [1.0, 0.36, 0.48]
+        case .gummy: return [0.96, 0.14, 0.3]
         case .frosted: return [0.86, 0.9, 0.97]
+        case .balloon: return [1.0, 0.16, 0.52]
         }
     }
 
@@ -192,10 +195,49 @@ enum CharacterFinish: String, CaseIterable, Identifiable {
         switch self {
         case .chrome: return [0.04, 0.04, 0.05]
         case .glass: return [0.98, 0.98, 1.0]
-        default:
-            let b = base
-            let lum = b.x*0.299 + b.y*0.587 + b.z*0.114
-            return lum < 0.42 ? [0.97, 0.97, 0.98] : [0.05, 0.05, 0.06]
+        default: return Self.eyeColor(on: base)
+        }
+    }
+
+    /// Eyes glow white on a dark body and go dark on a light one.
+    static func eyeColor(on b: SIMD3<Float>) -> SIMD3<Float> {
+        let lum = b.x*0.299 + b.y*0.587 + b.z*0.114
+        return lum < 0.42 ? [0.97, 0.97, 0.98] : [0.05, 0.05, 0.06]
+    }
+
+    /// The colours this finish comes in, first one the default. Empty when the
+    /// finish takes its colour from elsewhere (Neon glows in the state's colour).
+    var tones: [CharacterTone] {
+        switch self {
+        case .obsidian: return [
+            CharacterTone(id: "black", name: "Black", base: [0.02, 0.02, 0.025]),
+            CharacterTone(id: "midnight", name: "Midnight", base: [0.012, 0.03, 0.085]),
+            CharacterTone(id: "plum", name: "Plum", base: [0.055, 0.016, 0.06]),
+            CharacterTone(id: "forest", name: "Forest", base: [0.01, 0.045, 0.03]),
+        ]
+        case .porcelain: return [
+            CharacterTone(id: "white", name: "White", base: [0.92, 0.91, 0.89]),
+            CharacterTone(id: "sage", name: "Sage", base: [0.72, 0.8, 0.72]),
+            CharacterTone(id: "blush", name: "Blush", base: [0.95, 0.8, 0.78]),
+            CharacterTone(id: "sky", name: "Sky", base: [0.76, 0.84, 0.93]),
+        ]
+        case .gold: return [
+            CharacterTone(id: "gold", name: "Gold", base: [1.0, 0.79, 0.42]),
+            CharacterTone(id: "rose", name: "Rose", base: [1.0, 0.68, 0.58]),
+            CharacterTone(id: "white", name: "White gold", base: [0.93, 0.9, 0.84]),
+        ]
+        case .balloon: return [
+            CharacterTone(id: "pink", name: "Hot pink", base: [1.0, 0.16, 0.52]),
+            CharacterTone(id: "sky", name: "Sky", base: [0.26, 0.58, 1.0]),
+            CharacterTone(id: "lemon", name: "Lemon", base: [1.0, 0.78, 0.2]),
+            CharacterTone(id: "lilac", name: "Lilac", base: [0.6, 0.38, 1.0]),
+        ]
+        case .gummy: return [
+            CharacterTone(id: "cherry", name: "Cherry", base: [0.96, 0.14, 0.3]),
+            CharacterTone(id: "lime", name: "Lime", base: [0.42, 0.86, 0.16]),
+            CharacterTone(id: "tangerine", name: "Tangerine", base: [1.0, 0.5, 0.1]),
+        ]
+        default: return []
         }
     }
 
@@ -216,7 +258,26 @@ enum CharacterFinish: String, CaseIterable, Identifiable {
         case .neon: return AnyShapeStyle(RadialGradient(colors: [Color(hex: "101014"), Color(hex: "101014"), Color(hex: "6FB6FF")], center: .center, startRadius: 0, endRadius: 13))
         case .gummy: return AnyShapeStyle(RadialGradient(colors: [Color(hex: "FFB3C0"), Color(hex: "FF5C7A"), Color(hex: "B8233F")], center: .init(x: 0.4, y: 0.35), startRadius: 0, endRadius: 14))
         case .frosted: return AnyShapeStyle(LinearGradient(colors: [Color.white.opacity(0.9), Color(hex: "C9D6EC").opacity(0.75)], startPoint: .topLeading, endPoint: .bottomTrailing))
+        case .balloon: return AnyShapeStyle(RadialGradient(colors: [Color(hex: "FF7AB4"), Color(hex: "FF2985"), Color(hex: "B0105A")], center: .init(x: 0.36, y: 0.3), startRadius: 0, endRadius: 15))
         }
+    }
+}
+
+/// One colour of a finish: the same shader with a different body. The eyes
+/// follow the body (light on dark, dark on light).
+struct CharacterTone: Identifiable, Hashable {
+    let id: String
+    let name: String
+    let base: SIMD3<Float>
+
+    var eyeColor: SIMD3<Float> { CharacterFinish.eyeColor(on: base) }
+
+    /// The swatch: a glossy sphere of the body colour.
+    var swatch: AnyShapeStyle {
+        let c = Color(.sRGB, red: Double(base.x), green: Double(base.y), blue: Double(base.z))
+        let lum = Double(base.x*0.299 + base.y*0.587 + base.z*0.114)
+        let hi = Color.white.opacity(lum < 0.2 ? 0.28 : 0.55)
+        return AnyShapeStyle(RadialGradient(colors: [hi, c, c.opacity(0.85)], center: .init(x: 0.35, y: 0.3), startRadius: 0, endRadius: 15))
     }
 }
 

@@ -513,7 +513,7 @@ private func chain(base: SIMD2<Float>, L: Float, th0: Float, k0: Float, k1: Floa
 }
 
 extension CharacterPuppet {
-    func uniforms(_ P: CharacterPose, viewport vp: CharacterViewport, finish: CharacterFinish, time: Double, gazeOverride: SIMD2<Float>?) -> (CharacterUniforms, [SIMD4<Float>]) {
+    func uniforms(_ P: CharacterPose, viewport vp: CharacterViewport, finish: CharacterFinish, tone: CharacterTone? = nil, time: Double, gazeOverride: SIMD2<Float>?) -> (CharacterUniforms, [SIMD4<Float>]) {
         let K = kind.spec
         let topY = vp.topY
         var pos = SIMD3(P.pos.x, P.pos.y + topY, P.pos.z)
@@ -522,7 +522,7 @@ extension CharacterPuppet {
         var V = [SIMD3<Float>](repeating: .zero, count: 4)
         var T = [SIMD4<Float>](repeating: .zero, count: 32)
         var face = K.face, eyeSize = SIMD2(K.eyeSize.x*min(P.eyeScale, 1.06), K.eyeSize.y*P.eyeScale), sep = K.eyeSeparation
-        var eyeCol = finish.eyeColor
+        var eyeCol = tone?.eyeColor ?? finish.eyeColor
         var bc = SIMD3<Float>(0, topY - 1.1, 0), br: Float = 1.9
 
         switch kind {
@@ -578,7 +578,7 @@ extension CharacterPuppet {
         u.gazeEye = SIMD4(gaze.x, gaze.y, eyeSize.x, eyeSize.y)
         u.lidFace = SIMD4(P.lid.x, P.lid.y, face.x, face.y)
         u.eyeA = SIMD4(P.eye[0], P.eye[1], P.eye[2], P.eye[3])
-        u.base = SIMD4(finish.base, 0); u.eyeCol = SIMD4(eyeCol, 0); u.accent = SIMD4(P.accent, 0)
+        u.base = SIMD4(tone?.base ?? finish.base, 0); u.eyeCol = SIMD4(eyeCol, 0); u.accent = SIMD4(P.accent, 0)
         u.bound = SIMD4(bc, br + 0.8)
         u.P0 = SIMD4(params[0], params[1], params[2], params[3]); u.P1 = SIMD4(params[4], params[5], params[6], params[7])
         u.V0 = SIMD4(V[0], 0); u.V1 = SIMD4(V[1], 0); u.V2 = SIMD4(V[2], 0); u.V3 = SIMD4(V[3], 0)

@@ -7,7 +7,8 @@ The world's smallest coworker lives in your Mac's notch. A little 3D character (
 - Swift Package Manager (no Xcode required for pre-built installs)
 - Island design tokens (spacing, concentric radii, type scale) live in `NotchSoGood/Views/IslandStyle.swift`; card and pill geometry the window controller needs before layout lives in `NotchNotificationView.Metrics` and `PillLayout`.
 - Custom NSPanels for the notch (pill, cards); the menu bar item and its panel are our own `MenuBarController` (NSStatusItem + clear panel), not MenuBarExtra, so the menu can take the island's shape
-- Only Peek is offered (`CharacterKind.available`); the other characters stay in the engine. Each character has its own finishes (`CharacterKind.finishes`)
+- Only Peek is offered (`CharacterKind.available`); the other characters stay in the engine. Each character has its own finishes (`CharacterKind.finishes`), and a finish can come in tones (`CharacterFinish.tones`, the user's pick kept per finish in `CharacterSettings`)
+- The landing page lives in `site/` (static, no build). Its Peek is a WebGL port of `CharacterShaderSource`/`CharacterEngine` in `site/peek.js`: keep the two shaders in step when a finish changes. `site/dev/README.md` has the tools
 - Hooks: Notch So Good only answers "allow" after a user click; anything it wouldn't ask about gets no decision so the agent's own rules decide. Installers merge with the user's own hooks
 - Notch characters (Peek, Tail, Roost, Bubble) are signed-distance fields raymarched in a Metal shader (`NotchSoGood/Character/`), compiled from source at runtime because `swift build` doesn't compile `.metal` files. Choreography and Bubble's physics live in `CharacterEngine.swift`.
 - Debug builds can render offscreen snapshots: `.build/out/Products/Debug/NotchSoGood --snapshots <dir>` (runs alongside an installed copy, starts no servers)

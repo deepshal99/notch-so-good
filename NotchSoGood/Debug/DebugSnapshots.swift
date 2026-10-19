@@ -96,9 +96,9 @@ enum DebugSnapshots {
 
     // MARK: Offscreen Metal
 
-    static func render(kind: CharacterKind, state: CharacterState, finish: CharacterFinish = .obsidian, motion: CharacterMotion = .gooey,
+    static func render(kind: CharacterKind, state: CharacterState, finish: CharacterFinish = .obsidian, tone: CharacterTone? = nil, motion: CharacterMotion = .gooey,
                        framing: CharacterFraming, sizePt: CGSize, scale: CGFloat = 2, t: Double, gaze: SIMD2<Float>? = nil) -> CGImage? {
-        CharacterRenderer.shared.snapshot(kind: kind, state: state, finish: finish, motion: motion, framing: framing,
+        CharacterRenderer.shared.snapshot(kind: kind, state: state, finish: finish, tone: tone, motion: motion, framing: framing,
                                           sizePt: sizePt, scale: scale, t: t, gaze: gaze)
     }
 
@@ -122,12 +122,12 @@ enum DebugSnapshots {
 
     static func finishSheet(to url: URL) {
         let tile: CGFloat = 150, gap: CGFloat = 8
-        // Peek's finishes, at rest (work) and wanting you (need).
-        let fins = CharacterKind.peek.finishes
-        sheet(cols: fins.count, rows: 2, tile: tile, gap: gap, url: url) { ctx, cell in
-            let finish = fins[cell.col]
+        // Every look Peek offers (each finish in each of its tones), at rest (work) and wanting you (need).
+        let looks: [(CharacterFinish, CharacterTone?)] = CharacterKind.peek.finishes.flatMap { f in f.tones.isEmpty ? [(f, nil)] : f.tones.map { (f, $0) } }
+        sheet(cols: looks.count, rows: 2, tile: tile, gap: gap, url: url) { ctx, cell in
+            let (finish, tone) = looks[cell.col]
             let state: CharacterState = cell.row == 0 ? .work : .need
-            if let img = render(kind: .peek, state: state, finish: finish, framing: .tile, sizePt: CGSize(width: tile/2, height: tile/2), t: 1.6) {
+            if let img = render(kind: .peek, state: state, finish: finish, tone: tone, framing: .tile, sizePt: CGSize(width: tile/2, height: tile/2), t: 1.6) {
                 ctx.draw(img, in: cell.rect)
             }
         }

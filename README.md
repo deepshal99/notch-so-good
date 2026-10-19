@@ -62,7 +62,7 @@ It never approves anything you didn't click. Leave a card alone and Claude asks 
 
 **Knows your limits.** The menu bar shows Claude Code and Codex usage (5-hour and weekly windows), when each resets, and when you'll run out at the pace you're going. Heads-ups at 80%, 95% and when it's used up, and a "usage is back" the moment it resets.
 
-**Has style.** Eight finishes for Peek: Obsidian, Chrome, Gold, Holo, Neon, Porcelain, Gummy and Frosted. Neon glows in the colour of what's happening, so you can read the state from the outline alone.
+**Has style.** Six finishes for Peek, most in a few colours: Neon, Obsidian (black, midnight, plum, forest), Porcelain (white, sage, blush, sky), Gold (gold, rose, white gold), Balloon (hot pink, sky, lemon, lilac) and Gummy (cherry, lime, tangerine). Neon glows in the colour of what's happening, so you can read the state from the outline alone.
 
 **Stays out of the way.** No Dock icon, no window, 1–2% of one core while agents work and none when they don't. Over a full-screen app only what needs you shows; sound can be blockers-only; and it can hide from screen sharing. Hooks install themselves and leave yours alone. Settings → About shows a health check of every connection.
 

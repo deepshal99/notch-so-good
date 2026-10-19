@@ -14,7 +14,7 @@ Notch So Good is a free, open-source macOS menu bar app for developers who run A
 - Permission-mode aware: no prompt in bypass, auto or plan mode
 - Usage: 5-hour and weekly limits for Claude Code and Codex, reset times, pace forecast, heads-ups at 80% and 95%
 - Task names taken from your prompt, session identity colours, jump to the right terminal tab and display
-- Eight finishes for Peek: Obsidian, Chrome, Gold, Holo, Neon, Porcelain, Gummy, Frosted
+- Six finishes for Peek, most in a few colours: Neon, Obsidian, Porcelain, Gold, Balloon, Gummy
 - Light on resources: frames that would not change are not drawn; idles at a couple of percent of one core
 - Launch at login, auto-update notices via Sparkle
 
