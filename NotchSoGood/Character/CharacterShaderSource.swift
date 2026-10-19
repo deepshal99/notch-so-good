@@ -40,6 +40,7 @@ struct Ctx {
     constant float4* T;  // Tail: chain points (xyz, radius) · Bubble: droplets
     float mat;           // 0 body with a face · 1 no face · 3 soap drop (face) · 4 burst rim
     float rim;
+    float edge;          // how near the ray passed the outline, in pixels (0: on a grazing rim)
 };
 
 #define U        (*(c.u))
@@ -263,7 +264,7 @@ vertex VOut characterVertex(uint vid [[vertex_id]]) {
 
 // One sample of the character at a point on the image plane (character units).
 static float4 shade(thread Ctx& c, float2 xy) {
-    c.mat = 0.0; c.rim = 1e9;
+    c.mat = 0.0; c.rim = 1e9; c.edge = 1e9;
     float D = 9.0;
     float3 ro = float3(0.0, 0.0, D), rd = normalize(float3(xy, -D));
     float3 oc = ro - uBound.xyz; float bb = dot(oc, rd), disc = bb*bb - (dot(oc, oc) - uBound.w*uBound.w);
@@ -278,6 +279,7 @@ static float4 shade(thread Ctx& c, float2 xy) {
     // Supersampling handles the silhouette; this only softens the last half pixel.
     float pix = 1.0/uScale;
     float cov = hit ? 1.0 : 1.0 - smoothstep(0.0, pix*0.6, minD);
+    if (!hit) c.edge = minD*uScale;
     if (cov < 0.01) return bgl;
     float3 p = ro + rd*t, V = -rd;
     if (p.y > uTopY) return bgl;                                 // tucked behind the notch
@@ -287,6 +289,7 @@ static float4 shade(thread Ctx& c, float2 xy) {
     float3 L = normalize(float3(-0.55, 0.8, 0.65));
     float ndl = dot(n, L), dif = max(ndl, 0.0), wrap = max((ndl + 0.6)/1.6, 0.0);
     float ndv = max(dot(n, V), 0.0), f1 = 1.0 - ndv, fres = f1*f1*f1, fres5 = fres*f1*f1;
+    if (ndv < 0.45) c.edge = 0.0;                                // the bright rim, a pixel or two wide
     float3 R = reflect(rd, n), H = normalize(L + V);
     float nh = max(dot(n, H), 0.0);
     float occ = KIND <= 2 ? ao(c, p, n) : 1.0;
@@ -305,11 +308,28 @@ static float4 shade(thread Ctx& c, float2 xy) {
     } else if (FINISH == 4) {   // smoked glass, lit from inside
         float3 inside = base*0.10 + uAccent*uGlow*pow(ndv, 2.2)*0.85 + envMap(c, refract(rd, n, 0.7), 0.2)*0.25*base;
         col = mix3(inside, envMap(c, R, 0.0), 0.06 + 0.9*fres5) + pow(nh, 240.0)*1.2;
-    } else if (FINISH == 5) {   // chrome
-        float sk = smoothstep(-0.05, 0.9, R.y), gr = smoothstep(0.0, -0.6, R.y);
-        float3 e = envMap(c, R, 0.0)*1.1 + float3(0.08 + sk*0.55 + gr*0.2) - float3(0.04)*smoothstep(0.1, 0.0, abs(R.y - 0.02));
-        col = e*mix3(float3(0.85), float3(1.0), fres)*mix3(float3(1.0), base, 0.25) + pow(nh, 300.0)*1.2;
-        col *= mix(0.7, 1.0, occ);
+    } else if (FINISH == 5) {   // chrome: a mirror in a dark studio
+        // Contrast is what reads as metal: a bright sky with softboxes, a crisp
+        // horizon (a lit line over a dark band), and a near-black floor. Nothing
+        // lifts the whole body to grey. The state colour is a light reflected
+        // low on the body, not paint.
+        // A studio close by, not at infinity: the lookup shifts with where on the
+        // body the ray lands, so even flat faces carry a gradient instead of one
+        // flat reflected colour.
+        float3 Rl = normalize(R + (p - uPos)*1.1);
+        float y = Rl.y + 0.62;                      // horizon low, so the face (and its eyes) sits on bright metal
+        float sky = smoothstep(0.0, 0.75, y);
+        float3 e = float3(0.05 + 0.62*pow(sky, 1.4));
+        e += float3(0.55)*smoothstep(0.015, 0.05, y)*smoothstep(0.16, 0.05, y);      // the lit horizon line
+        e *= 1.0 - 0.7*smoothstep(-0.30, -0.02, y)*smoothstep(0.03, 0.0, y);        // dark band just under it
+        e += float3(0.10)*smoothstep(-0.15, -0.8, y);                               // a graphite floor, not a hole
+        float s1 = smoothstep(0.86, 0.975, dot(Rl, normalize(float3(-0.5, 0.7, 0.5))));
+        float s2 = smoothstep(0.90, 0.985, dot(Rl, normalize(float3(0.8, 0.3, 0.52))));
+        e += float3(1.25)*s1 + float3(0.7)*s2;                                      // two softboxes
+        float pool = smoothstep(0.0, -0.35, y)*smoothstep(-1.3, -0.45, y);             // a soft pool of state-coloured light on the floor
+        e += uAccent*(0.2 + 0.6*uGlow)*pool*0.3;
+        col = e*mix3(float3(0.82), float3(1.0), fres)*mix3(float3(1.0), base, 0.2) + pow(nh, 300.0)*1.4;
+        col *= mix(0.75, 1.0, occ);
     } else if (FINISH == 6) {   // anodised aluminium
         col = base*(0.25 + 0.55*wrap)*occ + base*envMap(c, R, 0.25)*0.9 + float3(pow(nh, 40.0)*0.25) + envMap(c, R, 0.2)*fres*0.25;
     } else if (FINISH == 7) {   // pearl
@@ -389,9 +409,10 @@ static float4 shade(thread Ctx& c, float2 xy) {
         }
     }
     // state light: rim + bounce from below
-    float rimK = uRimK*(FINISH == 5 ? 0.5 : 1.0)*(KIND == 3 ? 0.28 : 1.0);
+    float rimK = uRimK*(FINISH == 5 ? 0.8 : 1.0)*(KIND == 3 ? 0.28 : 1.0);
     col += uAccent*fres*rimK;
-    col += uAccent*pow(max(dot(n, normalize(float3(0.0, -0.7, 0.7))), 0.0), 2.5)*rimK*0.18;
+    // (a mirror has no diffuse bounce: chrome takes the state colour as a reflection instead)
+    if (FINISH != 5) col += uAccent*pow(max(dot(n, normalize(float3(0.0, -0.7, 0.7))), 0.0), 2.5)*rimK*0.18;
     if (KIND == 3) alpha = clamp(max(alpha, dot(col, float3(0.38))), 0.0, 1.0);
     if (FINISH == 4) col += uAccent*uGlow*pow(ndv, 1.6)*0.25;
     // painted-on eyes (Roost hangs upside down, so its face is flipped)
@@ -415,24 +436,30 @@ static float4 shade(thread Ctx& c, float2 xy) {
     return float4(col*cov, a) + bgl*(1.0 - a);
 }
 
-// Adaptive anti-aliasing: one ray per pixel, and three more on a rotated grid
-// wherever the result changes across the pixel quad (the silhouette, the eyes,
-// a specular edge). Interior and empty pixels stay at one ray, so the notch
-// pill, which is on screen all day, pays for edges only.
+// Adaptive anti-aliasing: one ray per pixel, and seven more (the standard 8×
+// pattern) on the outline and wherever the result changes across the pixel
+// quad (the eyes, a specular edge). The outline is found from the ray itself,
+// not only from the quad: an edge running between two quads changes nothing
+// inside either, and left at one ray its sub-pixel rim light stair-steps.
+// Interior and empty pixels stay at one ray, so the notch pill, which is on
+// screen all day, pays for edges only.
+constant float2 kSamples[8] = {
+    float2( 1, -3)/16.0, float2(-1,  3)/16.0, float2( 5,  1)/16.0, float2(-3, -5)/16.0,
+    float2(-5,  5)/16.0, float2(-7, -1)/16.0, float2( 3,  7)/16.0, float2( 7, -7)/16.0,
+};
+
 fragment float4 characterFragment(VOut in [[stage_in]],
                                   constant Uniforms& uniforms [[buffer(0)]],
                                   constant float4* points [[buffer(1)]]) {
-    Ctx c; c.u = &uniforms; c.T = points; c.mat = 0.0; c.rim = 1e9;
+    Ctx c; c.u = &uniforms; c.T = points; c.mat = 0.0; c.rim = 1e9; c.edge = 1e9;
     float2 px = in.position.xy;
     float2 toUnits = float2(1.0, -1.0)/uScale;
-    float4 s0 = shade(c, (px + float2(-0.125, -0.375) - U.resCenter.zw)*toUnits);
-    float edge = fwidth(s0.a) + fwidth(dot(s0.rgb, float3(0.33)));
-    if (edge < 0.04) return s0;
+    float4 s0 = shade(c, (px + kSamples[0] - U.resCenter.zw)*toUnits);
+    float change = fwidth(s0.a) + fwidth(dot(s0.rgb, float3(0.33)));
+    if (change < 0.04 && c.edge > 1.5) return s0;
     float4 acc = s0;
-    acc += shade(c, (px + float2( 0.375, -0.125) - U.resCenter.zw)*toUnits);
-    acc += shade(c, (px + float2( 0.125,  0.375) - U.resCenter.zw)*toUnits);
-    acc += shade(c, (px + float2(-0.375,  0.125) - U.resCenter.zw)*toUnits);
-    return acc*0.25;
+    for (int i = 1; i < 8; i++) acc += shade(c, (px + kSamples[i] - U.resCenter.zw)*toUnits);
+    return acc*0.125;
 }
 """#
 }

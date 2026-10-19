@@ -4,6 +4,9 @@ import AppKit
 /// Controller→view signal so the exit can mirror the entrance (see PillDataSource pattern).
 final class NotificationPhase: ObservableObject {
     @Published var dismissing = false
+    /// The pill the card folds back into on its way out (set before `dismissing`);
+    /// nil when no pill comes back, and the card goes into the notch.
+    var intoPill: NotchNotificationView.PillFrame?
 }
 
 /// A card that drops out of the notch. It is the open pill's exact shape and
@@ -44,9 +47,21 @@ struct NotchNotificationView: View {
     /// Typed "Other" answers, per question.
     @State private var typed: [Int: String] = [:]
     @State private var reply = ""
+    /// The pill this card opens out of (or folds back into): the island starts
+    /// and ends as its exact shape, and the character rides between the two spots.
+    @State private var pill: PillFrame?
 
     private let session: NotificationManager.SessionInfo?
     private let branch: String?
+
+    /// The session pill as the card meets it: its size, its corners, and where
+    /// its character sits from its own left edge. Pill and card share a centre.
+    struct PillFrame: Equatable {
+        var size: CGSize
+        var topRadius: CGFloat
+        var bottomRadius: CGFloat
+        var characterX: CGFloat
+    }
 
     init(
         notification: NotchNotification,
@@ -63,6 +78,7 @@ struct NotchNotificationView: View {
         onTourSkip: (() -> Void)? = nil,
         phase: NotificationPhase = NotificationPhase(),
         session: NotificationManager.SessionInfo? = nil,
+        fromPill: PillFrame? = nil,
         appearImmediately: Bool = false
     ) {
         self.notification = notification
@@ -80,6 +96,7 @@ struct NotchNotificationView: View {
         self.phase = phase
         self.session = session
         self.branch = GitBranch.current(in: session?.cwd)
+        _pill = State(initialValue: fromPill)
         if appearImmediately {
             _expanded = State(initialValue: true)
             _contentAppeared = State(initialValue: true)
@@ -273,12 +290,11 @@ struct NotchNotificationView: View {
             let panelWidth = geo.size.width
             let width = Metrics.islandWidth(panelWidth)
             let height = geo.size.height
-            let startScaleX = hasNotch ? (notchWidth + 8) / panelWidth : 0.6
-            let startScaleY = hasNotch ? (notchHeight + 2) / height : 0.2
+            let size = islandSize(panelWidth: panelWidth, height: height)
 
             ZStack(alignment: .top) {
-                // Only the black shape stretches out of the notch; scaling text or
-                // the character non-uniformly would distort them.
+                // Only the black shape grows out of the notch; text and the
+                // character never scale, which would distort them.
                 islandShape
                     .fill(Color.black)
                     .overlay(
@@ -290,12 +306,10 @@ struct NotchNotificationView: View {
                                 lineWidth: 1
                             )
                     )
-                    .frame(width: hasNotch ? panelWidth : width)
-                    .scaleEffect(x: expanded ? 1 : startScaleX, y: expanded ? 1 : startScaleY, anchor: .top)
+                    .frame(width: size.width, height: size.height)
 
                 VStack(spacing: 0) {
-                    // Above the card, so Peek can hang over its top edge.
-                    header(width: width).zIndex(1)
+                    header(width: width)
                     Group {
                         if isPermission {
                             waitingCard(panelWidth: panelWidth)
@@ -315,11 +329,18 @@ struct NotchNotificationView: View {
             }
             .frame(width: panelWidth, height: height, alignment: .top)
             // Content never shows outside the island while it's still growing.
-            .mask(
-                islandShape
-                    .frame(width: hasNotch ? panelWidth : width, height: height)
-                    .scaleEffect(x: expanded ? 1 : startScaleX, y: expanded ? 1 : startScaleY, anchor: .top)
-            )
+            .mask(alignment: .top) { islandShape.frame(width: size.width, height: size.height) }
+            // Over the card, so the character can hang across its top edge.
+            .overlay(alignment: .topLeading) {
+                character(panelWidth: panelWidth)
+                    .frame(width: panelWidth, height: height, alignment: .topLeading)
+                    // Out of the notch it's inside the island like the rest;
+                    // from the pill it's already out, and stays whole.
+                    .mask(alignment: .top) {
+                        if pill == nil { islandShape.frame(width: size.width, height: size.height) } else { Rectangle() }
+                    }
+                    .allowsHitTesting(false)
+            }
             .contentShape(islandShape)
             .onTapGesture { if !isPermission { onTap() } }
             .onHover { hovered = $0 }
@@ -330,28 +351,51 @@ struct NotchNotificationView: View {
         .onAppear(perform: animateIn)
         .onChange(of: phase.dismissing) { _, dismissing in
             guard dismissing else { return }
-            withAnimation(.spring(response: 0.28, dampingFraction: 0.9)) { expanded = false }
+            pill = phase.intoPill
+            withAnimation(Island.retract) { expanded = false }
             withAnimation(.easeOut(duration: 0.12)) { contentAppeared = false }
         }
     }
 
+    /// The island's size right now: the whole card once open; before that (and
+    /// on the way out) the shape it grows from, the pill when there is one,
+    /// else a sliver under the notch. Frame and corners morph, as the pill's
+    /// own do on hover, so the corners never squash the way a scale would.
+    private func islandSize(panelWidth: CGFloat, height: CGFloat) -> CGSize {
+        let width = Metrics.islandWidth(panelWidth)
+        if expanded { return CGSize(width: hasNotch ? panelWidth : width, height: height) }
+        if let pill { return CGSize(width: pill.size.width, height: min(pill.size.height, height)) }
+        return hasNotch ? CGSize(width: notchWidth + 8, height: notchHeight + 2)
+                        : CGSize(width: 0.6 * width, height: 0.2 * height)
+    }
+
     private var islandShape: AnyShape {
-        hasNotch
-            ? AnyShape(NotchShape(topRadius: Metrics.wall, bottomRadius: Island.radius))
-            : AnyShape(RoundedRectangle(cornerRadius: Island.radius, style: .continuous))
+        let top = expanded ? Metrics.wall : pill?.topRadius ?? Metrics.wall
+        let bottom = expanded ? Island.radius : pill?.bottomRadius ?? Island.radius
+        return hasNotch
+            ? AnyShape(NotchShape(topRadius: top, bottomRadius: bottom))
+            : AnyShape(RoundedRectangle(cornerRadius: bottom, style: .continuous))
+    }
+
+    /// The character in the header strip, with room below so a pose that
+    /// reaches down (and its glow) isn't cut off at the strip's edge. Opening
+    /// from the pill it never leaves: it rides from the pill's spot to its own,
+    /// and back on the way out.
+    private func character(panelWidth: CGFloat) -> some View {
+        let home = Metrics.wall + Metrics.characterSlot.minX
+        let travel = pill.map { (panelWidth - $0.size.width) / 2 + $0.characterX - home } ?? 0
+        return CharacterView(state: characterState, framing: .notch(height: headerHeight), celebrate: notification.tour?.celebrate.flatMap(PeekTrick.init(rawValue:)))
+            .frame(width: Metrics.characterSlot.width, height: headerHeight + Metrics.characterOverhang)
+            .allowsHitTesting(false)
+            .offset(x: expanded || reduceMotion ? 0 : travel)
+            .padding(.leading, home)
+            .opacity(pill != nil || contentAppeared ? 1 : 0)
     }
 
     // MARK: - Header strip (level with the notch)
 
     private func header(width: CGFloat) -> some View {
         HStack(spacing: 0) {
-            // Room below the strip, so a pose that reaches down (and its glow)
-            // isn't cut off at the strip's edge.
-            CharacterView(state: characterState, framing: .notch(height: headerHeight), celebrate: notification.tour?.celebrate.flatMap(PeekTrick.init(rawValue:)))
-                .frame(width: Metrics.characterSlot.width, height: headerHeight + Metrics.characterOverhang)
-                .frame(width: Metrics.characterSlot.width, height: headerHeight, alignment: .top)
-                .allowsHitTesting(false)
-                .padding(.leading, Metrics.characterSlot.minX)
             Spacer(minLength: 0)
             if let runway {
                 RunwayIndicator(percentLeft: runway.percentLeft)
@@ -418,6 +462,7 @@ struct NotchNotificationView: View {
                 Text("\(questionIndex + 1) of \(questions.count)")
                     .font(Island.numeric)
                     .foregroundColor(Island.tertiary)
+                    .contentTransition(.numericText(value: Double(questionIndex)))
             }
             Spacer(minLength: 8)
             if let tour = notification.tour {

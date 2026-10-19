@@ -8,6 +8,9 @@ class PillDataSource: ObservableObject {
     /// Whether the drop-down shows the runway footer. Decided by the controller
     /// in the same place it sizes the hover rect, so the two can't disagree.
     @Published var showsRunway = false
+    /// Folded back into the notch (the last session ended). The view retracts;
+    /// the controller orders the panel out once it has.
+    @Published var retracted = false
 }
 
 class NotchWindowController {
@@ -112,6 +115,9 @@ class NotchWindowController {
             height: expandedH
         )
 
+        // A session started while the pill was folding away (or after): out it comes again.
+        if pillDataSource.retracted { pillDataSource.retracted = false }
+
         // Only publish real changes: every hook event lands here, and each
         // assignment re-renders the pill.
         if pillDataSource.sessions != sessions { pillDataSource.sessions = sessions }
@@ -179,21 +185,35 @@ class NotchWindowController {
         hasPillSession = false
         pillHoverMonitor.stop()
 
-        NSAnimationContext.runAnimationGroup({ context in
-            context.duration = 0.22
-            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
-            pillPanel?.animator().alphaValue = 0
-        }, completionHandler: { [weak self] in
-            guard let self else { return }
-            // A session can start during the fade (`/clear` ends one and starts
-            // the next): then the pill has been shown again and must stay.
-            guard !self.hasPillSession else {
-                self.pillPanel?.alphaValue = 1.0
-                return
-            }
+        // The view folds the wings back into the notch, the way they came out;
+        // then the panel goes.
+        pillDataSource.retracted = true
+        pillHideGeneration &+= 1
+        let generation = pillHideGeneration
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            // A session can start meanwhile (`/clear` ends one and starts the
+            // next): then the pill has come back out and must stay.
+            guard let self, !self.hasPillSession, self.pillHideGeneration == generation else { return }
             self.pillPanel?.orderOut(nil)
-            self.pillPanel?.alphaValue = 1.0
-        })
+        }
+    }
+
+    private var pillHideGeneration = 0
+
+    /// The pill as a card meets it, on the display the card is on: open if
+    /// you're hovering it, else collapsed. Nil when it's elsewhere or unbuilt.
+    private func pillFrame(on screenFrame: NSRect, open: Bool) -> NotchNotificationView.PillFrame? {
+        guard pillPanel != nil, pillScreen == screenFrame,
+              let geo = resolveGeometry(NSScreen.screens.first { $0.frame == screenFrame }) else { return nil }
+        // Mirrors SessionPillView's shape and character placement.
+        let rect = open ? pillHoverMonitor.expandedScreenRect : pillHoverMonitor.collapsedScreenRect
+        let wall: CGFloat = geo.hasNotch ? (open ? 9 : 6) : 0
+        return NotchNotificationView.PillFrame(
+            size: rect.size,
+            topRadius: wall,
+            bottomRadius: open ? 24 : geo.barHeight / 2,
+            characterX: open ? wall + Island.contentInset - 17 : 0
+        )
     }
 
     var isShowingPill: Bool {
@@ -305,13 +325,18 @@ class NotchWindowController {
         dismissGeneration &+= 1
         isDismissing = false
 
+        guard let geo = resolveGeometry(screen) else { return }
+
+        // On screen, the pill is what the card opens out of.
+        let fromPill = (pillPanel?.isVisible == true && pillPanel?.alphaValue ?? 0 > 0 && !pillDataSource.retracted)
+            ? pillFrame(on: geo.screenFrame, open: pillHoverMonitor.isHovered) : nil
+
         // Hide pill while notification is visible — set alpha directly (not animated)
         // to prevent a stale animation from overwriting alpha if refreshPill runs later.
         pillPanel?.alphaValue = 0
         pillPanel?.orderOut(nil)
         pillHoverMonitor.stop()
 
-        guard let geo = resolveGeometry(screen) else { return }
         notificationScreen = NSScreen.screens.first { $0.frame == geo.screenFrame }
         let hasNotch = geo.hasNotch
         let notchH = geo.barHeight
@@ -418,7 +443,8 @@ class NotchWindowController {
             // Always called on the main thread (UI entry points only).
             session: MainActor.assumeIsolated {
                 NotificationManager.shared.activeSessions.first { $0.id == notification.sessionId }
-            }
+            },
+            fromPill: fromPill
         )
 
         let hostingView = TransparentHostingView(rootView: AnyView(view))
@@ -703,8 +729,14 @@ class NotchWindowController {
             return
         }
 
-        // View-driven exit first — the island shrinks back into the notch —
-        // then a short window fade catches whatever's left.
+        // When the pill is coming back, the card folds into its exact shape and
+        // the pill takes over underneath; otherwise it goes back into the notch.
+        let intoPill = MainActor.assumeIsolated { willRestorePill }
+            ? notificationScreen.flatMap { pillFrame(on: $0.frame, open: false) } : nil
+
+        // View-driven exit first — the island shrinks back into the pill or the
+        // notch — then a short window fade catches whatever's left.
+        notificationPhase?.intoPill = intoPill
         notificationPhase?.dismissing = true
         notificationPhase = nil
 
@@ -714,6 +746,9 @@ class NotchWindowController {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.24) { [weak self] in
             // A new notification took over the panel mid-dismiss — leave it alone.
             guard let self, self.dismissGeneration == generation else { return }
+            // The card is the pill's shape now: put the pill under it, whole, so
+            // only the character's pose crossfades as the card goes.
+            if intoPill != nil { MainActor.assumeIsolated { self.restorePillIfNeeded(underCard: true) } }
             NSAnimationContext.runAnimationGroup({ context in
                 context.duration = 0.15
                 context.timingFunction = CAMediaTimingFunction(name: .easeOut)
@@ -730,6 +765,8 @@ class NotchWindowController {
                 self.panel?.alphaValue = 1.0
                 self.isDismissing = false
                 self.isNotificationActive = false
+                // Already out under the card (unless something stopped it).
+                if intoPill != nil, self.pillPanel?.isVisible == true { return }
                 Task { @MainActor [weak self] in
                     self?.restorePillIfNeeded()
                 }
@@ -737,9 +774,16 @@ class NotchWindowController {
         }
     }
 
+    /// Whether the pill comes back once the card on screen goes.
+    @MainActor private var willRestorePill: Bool {
+        let manager = NotificationManager.shared
+        return manager.hasActiveSession && manager.showSessionPill && !isMenuBarHidden && pillPanel != nil
+    }
+
     /// Restore the session pill after a notification dismisses, but only if sessions are still active.
     /// Uses NotificationManager as the source of truth instead of the local hasPillSession flag.
-    @MainActor private func restorePillIfNeeded() {
+    /// Under a card that has folded into its shape it appears whole, with no fade.
+    @MainActor private func restorePillIfNeeded(underCard: Bool = false) {
         let manager = NotificationManager.shared
         guard manager.hasActiveSession, manager.showSessionPill else {
             if hasPillSession {
@@ -753,6 +797,13 @@ class NotchWindowController {
         // Sessions are active — restore the pill panel
         if let pillPanel {
             hasPillSession = true
+            if pillDataSource.retracted { pillDataSource.retracted = false }
+            if underCard {
+                pillPanel.alphaValue = 1.0
+                pillPanel.orderFrontRegardless()
+                pillHoverMonitor.start(panel: pillPanel)
+                return
+            }
             pillPanel.alphaValue = 0
             pillPanel.orderFrontRegardless()
             pillHoverMonitor.start(panel: pillPanel)

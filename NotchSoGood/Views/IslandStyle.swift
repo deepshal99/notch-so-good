@@ -69,6 +69,8 @@ enum Island {
 
     /// One clean overshoot: the island's only spring.
     static let spring = Animation.spring(response: 0.38, dampingFraction: 0.78)
+    /// Folding back into the notch: quicker than the way out, no overshoot.
+    static let retract = Animation.spring(response: 0.28, dampingFraction: 0.9)
     /// Presses: quick, no bounce.
     static let press = Animation.easeOut(duration: 0.15)
 }

@@ -129,7 +129,7 @@ final class MenuBarController: NSObject, NSWindowDelegate {
         // A quick fade, then gone.
         NSAnimationContext.runAnimationGroup({ context in
             context.duration = 0.12
-            context.timingFunction = CAMediaTimingFunction(name: .easeIn)
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
             panel.animator().alphaValue = 0
         }, completionHandler: { [weak self] in
             Task { @MainActor in

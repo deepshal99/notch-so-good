@@ -14,6 +14,7 @@ struct SessionPillView: View {
     @ObservedObject var hoverMonitor: PillHoverMonitor
 
     @State private var appeared: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Bumped whenever a session changes, so the character knows something happened.
     @State private var activity = 0
     @ObservedObject private var limits = UsageLimitsStore.shared
@@ -57,6 +58,16 @@ struct SessionPillView: View {
     }
     private var pillTotalHeight: CGFloat { hovered ? (notchHeight + expandedContentHeight) : notchHeight }
 
+    /// With a notch the pill comes out of the hardware itself, so it grows
+    /// rather than fades. Without one (or with Reduce Motion) it fades in.
+    private var emergesFromNotch: Bool { hasNotch && !reduceMotion }
+    /// The mask's width before it's out: the notch's own, so the wings start at
+    /// its edges; a touch under full size when there's no notch to come from.
+    private var tuckedScale: CGFloat {
+        if reduceMotion { return 1 }
+        return hasNotch ? notchWidth / pillWidth : 0.95
+    }
+
     var body: some View {
         Group {
             ZStack(alignment: .top) {
@@ -81,13 +92,15 @@ struct SessionPillView: View {
                 }
             }
             .frame(width: pillWidth, height: pillTotalHeight, alignment: .top)
-            .clipShape(pillShape)
+            // The wings grow out from the notch's own edges (and fold back in);
+            // only the mask moves, so nothing inside is ever squashed.
+            .mask(pillShape.scaleEffect(x: appeared ? 1 : tuckedScale, y: 1, anchor: .center))
             // Peek sits outside the clip: reaching for you, it swings a little
             // below the notch line, and a hard cut there looks broken.
             .overlay(alignment: .topLeading) { character() }
             .contentShape(pillShape)
             .onTapGesture { onTap(sessions.first?.id) }
-            .scaleEffect(x: appeared ? 1 : 0.85, y: 1, anchor: .center)
+            .opacity(appeared || emergesFromNotch ? 1 : 0)
             .animation(Island.spring, value: hovered)
             .accessibilityElement(children: .contain)
             .accessibilityLabel(pillAccessibilityLabel)
@@ -95,6 +108,9 @@ struct SessionPillView: View {
         .frame(width: maxWidth, height: maxHeight, alignment: .top)
         .onAppear {
             withAnimation(Island.spring) { appeared = true }
+        }
+        .onChange(of: dataSource.retracted) { _, retracted in
+            withAnimation(retracted ? Island.retract : Island.spring) { appeared = !retracted }
         }
         .onChange(of: sessions) { _, _ in activity &+= 1 }
     }
@@ -138,7 +154,8 @@ struct SessionPillView: View {
         .frame(width: wingCollapsed, height: notchHeight + PillLayout.characterOverhang)
         .allowsHitTesting(false)
         .padding(.leading, hovered ? wall + column - 17 : 0)
-        .opacity(appeared ? 1 : 0)
+        // Out from behind the notch, and back in when the last session ends.
+        .offset(x: appeared || !emergesFromNotch ? 0 : wingCollapsed)
     }
 
     @ViewBuilder
