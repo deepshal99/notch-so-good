@@ -1,0 +1,14 @@
+import { createRequire } from 'module';
+const require = createRequire(new URL('../../launch-film/package.json', import.meta.url));
+const { chromium } = require('playwright');
+const [out, w, h] = process.argv.slice(2);
+const b = await chromium.launch({ args: ['--use-angle=metal', '--enable-gpu', '--ignore-gpu-blocklist'] });
+const p = await b.newPage({ viewport: { width: +w, height: +h }, deviceScaleFactor: 2 });
+const errs = []; p.on('pageerror', e => errs.push(e.message)); p.on('console', m => m.type() === 'error' && errs.push(m.text()));
+await p.goto('http://127.0.0.1:8787/index.html');
+await p.mouse.move(+w * 0.75, +h * 0.6);
+await p.waitForSelector('.layer.in [data-act=allow]', { timeout: 20000 });
+await p.waitForTimeout(2200);
+await p.screenshot({ path: out });
+console.log('errors:', errs.length ? errs : 'none');
+await b.close();

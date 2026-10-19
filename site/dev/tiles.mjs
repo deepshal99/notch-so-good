@@ -1,0 +1,30 @@
+// screenshot each bento tile, a couple of them mid-interaction. usage: node site/dev/tiles.mjs <outdir>
+import { createRequire } from 'module';
+const require = createRequire(new URL('../../launch-film/package.json', import.meta.url));
+const { chromium } = require('playwright');
+const [out] = process.argv.slice(2);
+const b = await chromium.launch({ args: ['--use-angle=metal', '--enable-gpu', '--ignore-gpu-blocklist'] });
+const p = await b.newPage({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2 });
+const errs = []; p.on('pageerror', e => errs.push(e.message));
+await p.goto('http://127.0.0.1:8787/index.html');
+await p.waitForTimeout(800);
+const tile = n => p.locator(`.tile[data-tile="${n}"]`);
+const snap = async (n, name, wait = 900) => { await tile(n).evaluate(e => { e.scrollIntoView({ block: 'center' }); scrollBy(0, -60); }); await p.waitForTimeout(wait); await tile(n).screenshot({ path: `${out}/${name}.png` }); console.log('shot', name); };
+await snap('answer', 'answer-ask', 1500);
+await p.click('.tile[data-tile=answer] .opt >> nth=1');
+await snap('answer', 'answer-done', 1200);
+await p.fill('.tile[data-tile=answer] [data-reply] input', 'Great, now add a migration');
+await p.press('.tile[data-tile=answer] [data-reply] input', 'Enter');
+await snap('answer', 'answer-sent', 900);
+await snap('agents', 'agents', 1500);
+await p.hover('.tile[data-tile=agents] .orb >> nth=1', { force: true, timeout: 3000 });
+await snap('agents', 'agents-hover', 1400);
+
+await snap('sessions', 'sessions-pick', 700);
+await snap('states', 'states', 2500);
+await snap('approve', 'approve-a', 3600);
+await snap('approve', 'approve-b', 2600);
+await snap('limits', 'limits', 1500);
+await snap('limits', 'limits-low', 6000);
+console.log('errors:', errs.length ? errs : 'none');
+await b.close();

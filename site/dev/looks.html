@@ -1,0 +1,20 @@
+<!doctype html><html><body style="margin:0;font:12px -apple-system">
+<div id="row" style="display:grid;grid-template-columns:repeat(var(--n,8),var(--w,180px))"></div>
+<script type="module">
+import { PeekView } from '../peek.js';
+const looks = (new URLSearchParams(location.search).get('l') || 'balloon,balloon-blue,balloon-yellow,balloon-purple,gummy,obsidian,porcelain,gold').split(',');
+const W0 = +(new URLSearchParams(location.search).get('w') || 180); document.getElementById('row').style.setProperty('--w', W0 + 'px'); document.getElementById('row').style.setProperty('--n', looks.length);
+const src = document.createElement('canvas');
+const v = new PeekView(src, { finish: 'neon', state: 'work', unitsW: 4.4, unitsH: 3.4 }); v.resize(+(new URLSearchParams(location.search).get('w') || 180), +(new URLSearchParams(location.search).get('w') || 180) * 150 / 180, 2);
+const t0 = performance.now()/1000; v.puppet.since = t0 - 3;
+for (const bg of ['#F7F7F6', '#000']) for (const f of looks) {
+  const wrap = document.createElement('div'); wrap.style.cssText = `position:relative;height:calc(var(--w,180px) * 0.95);background:${bg}`;
+  const n = document.createElement('div'); n.style.cssText = `position:absolute;left:${W0/9}px;right:${W0/9}px;top:0;height:${W0/8}px;` + 'background:#000;border-radius:0 0 11px 11px;z-index:2' + (bg === '#000' ? ';box-shadow:0 0 0 1px #222' : '');
+  const c = document.createElement('canvas'); const W = +(new URLSearchParams(location.search).get('w') || 180); c.width = W*2; c.height = W*150/180*2; c.style.cssText = `position:absolute;left:0;top:${W/15}px;width:${W}px;height:${W*150/180}px`;
+  const l = document.createElement('span'); l.textContent = f; l.style.cssText = `position:absolute;left:8px;bottom:6px;color:${bg === '#000' ? '#888' : '#666'}`;
+  wrap.append(n, c, l); document.getElementById('row').append(wrap);
+  v.finish = f; v.draw(t0);
+  c.getContext('2d').drawImage(src, 0, 0);
+}
+window.done = true;
+</script></body></html>
