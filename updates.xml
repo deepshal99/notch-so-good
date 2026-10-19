@@ -5,6 +5,15 @@
         <link>https://github.com/deepshal99/notch-so-good</link>
         <language>en</language>
         <item>
+            <title>Version 4.9.2</title>
+            <pubDate>Mon, 19 Oct 2026 12:10:07 +0000</pubDate>
+            <sparkle:version>31</sparkle:version>
+            <sparkle:shortVersionString>4.9.2</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[<ul><li>Cards open out of the pill and fold back into it, with Peek staying on screen the whole way</li><li>The pill grows out of the notch when a session starts and tucks back in when the last one ends</li><li>Smoother edges on Peek: no more jagged rim light</li><li>Chrome looks like real chrome now: a bright mirror face, a crisp horizon, the state colour as a reflection</li></ul>]]></description>
+            <enclosure url="https://github.com/deepshal99/notch-so-good/releases/download/v4.9.2/NotchSoGood-4.9.2.zip" sparkle:edSignature="O+4c9IYmx1qUExRHAr5kmpIuNkVNCkzs/1sKZGijZBvjtfa5deSwV6xb0zaLtyJyO4jthAf+Zew5pncwq1tOAQ==" length="4025855" type="application/octet-stream"/>
+        </item>
+        <item>
             <title>Version 4.9.1</title>
             <pubDate>Sat, 17 Oct 2026 16:44:19 +0000</pubDate>
             <sparkle:version>30</sparkle:version>
@@ -39,15 +48,6 @@
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <description><![CDATA[<ul><li>Reply from the notch: when Claude finishes, type your next message on the card and it carries on (Claude Code 2.1.287+)</li><li>Allow for this session: one click or ⌃⌥S allows the same thing until the session ends, nothing saved</li><li>Keyboard first: ⌃⌥1–6 picks an option, ⌃⌥R replies, ⌃⌥N shows the next waiting card, ⌃⌥O opens the terminal</li><li>Plan progress: sessions show &quot;Step 2 of 5&quot; while they work through a plan</li><li>Agent radar: a heads-up when two sessions edit the same file</li><li>Cleaner cards: Peek carries the status, so the extra dot beside the title is gone</li></ul>]]></description>
             <enclosure url="https://github.com/deepshal99/notch-so-good/releases/download/v4.8.0/NotchSoGood-4.8.0.zip" sparkle:edSignature="4UdnddwaiDJQ/Ur8dBweUvQUUfriUKv4zXg2oMTx88lw0POM6d2f/dwuR29C1bu6B54qGfFHNAkpksMGmTp/Bg==" length="3935993" type="application/octet-stream"/>
-        </item>
-        <item>
-            <title>Version 4.7.3</title>
-            <pubDate>Sat, 17 Oct 2026 06:17:07 +0000</pubDate>
-            <sparkle:version>26</sparkle:version>
-            <sparkle:shortVersionString>4.7.3</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <description><![CDATA[<ul><li>&quot;Answer in terminal&quot; no longer leaves the next waiting card stuck</li><li>Approvals stay on for Claude Code installed with nvm, volta or bun</li><li>&quot;Only when blocked&quot; sound is remembered after a restart</li><li>Clicking an option after typing sends just that option</li><li>A signed-out Claude account clears its old usage numbers</li><li>Long questions keep their answers</li></ul>]]></description>
-            <enclosure url="https://github.com/deepshal99/notch-so-good/releases/download/v4.7.3/NotchSoGood-4.7.3.zip" sparkle:edSignature="ot2fPYqhUnTRjowZc/QPr5IFdbxi92CpfGKYZ5lKPs687V8FbYcfN7vbpcW0jAD+EChusEy6V1zWVjz+6NpsBg==" length="3848562" type="application/octet-stream"/>
         </item>
     </channel>
 </rss>
