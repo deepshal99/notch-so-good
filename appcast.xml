@@ -5,14 +5,14 @@
         <link>https://github.com/deepshal99/notch-so-good</link>
         <language>en</language>
         <item>
-            <title>Version 4.9.2</title>
-            <pubDate>Mon, 19 Oct 2026 12:10:07 +0000</pubDate>
-            <sparkle:version>31</sparkle:version>
-            <sparkle:shortVersionString>4.9.2</sparkle:shortVersionString>
-            <description><![CDATA[<h2>Notch So Good 4.9.2</h2><ul><li>Cards open out of the pill and fold back into it, with Peek staying on screen the whole way</li><li>The pill grows out of the notch when a session starts and tucks back in when the last one ends</li><li>Smoother edges on Peek: no more jagged rim light</li><li>Chrome looks like real chrome now: a bright mirror face, a crisp horizon, the state colour as a reflection</li></ul>
+            <title>Version 4.10.0</title>
+            <pubDate>Tue, 20 Oct 2026 09:08:25 +0000</pubDate>
+            <sparkle:version>32</sparkle:version>
+            <sparkle:shortVersionString>4.10.0</sparkle:shortVersionString>
+            <description><![CDATA[<h2>Notch So Good 4.10.0</h2><ul><li>Peek comes in colours: pick a finish, then a colour, in Settings → Character</li><li>New Balloon finish: satin bubble letters in hot pink, sky, lemon and lilac</li><li>Gummy looks like real jelly now, in cherry, lime, tangerine and a new grape</li><li>Obsidian in black, midnight, plum and forest, Porcelain in white, sage, blush and sky, and Gold in gold, rose and white gold, with a warmer, cleaner shine</li><li>Chrome, Holo and Frosted are retired: if you used one, Peek switches to Neon</li></ul>
             <p><b>Install this one by hand</b>: run <code>brew upgrade notch-so-good</code>, or download it from the release page.
-            From 4.9.2 on, updates install themselves.</p>]]></description>
-            <link>https://github.com/deepshal99/notch-so-good/releases/tag/v4.9.2</link>
+            From 4.10.0 on, updates install themselves.</p>]]></description>
+            <link>https://github.com/deepshal99/notch-so-good/releases/tag/v4.10.0</link>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
         </item>
     </channel>

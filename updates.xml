@@ -5,6 +5,15 @@
         <link>https://github.com/deepshal99/notch-so-good</link>
         <language>en</language>
         <item>
+            <title>Version 4.10.0</title>
+            <pubDate>Tue, 20 Oct 2026 09:08:25 +0000</pubDate>
+            <sparkle:version>32</sparkle:version>
+            <sparkle:shortVersionString>4.10.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[<ul><li>Peek comes in colours: pick a finish, then a colour, in Settings → Character</li><li>New Balloon finish: satin bubble letters in hot pink, sky, lemon and lilac</li><li>Gummy looks like real jelly now, in cherry, lime, tangerine and a new grape</li><li>Obsidian in black, midnight, plum and forest, Porcelain in white, sage, blush and sky, and Gold in gold, rose and white gold, with a warmer, cleaner shine</li><li>Chrome, Holo and Frosted are retired: if you used one, Peek switches to Neon</li></ul>]]></description>
+            <enclosure url="https://github.com/deepshal99/notch-so-good/releases/download/v4.10.0/NotchSoGood-4.10.0.zip" sparkle:edSignature="r+vTHh6C1/dJ5VVvmMzLZowPFyvB/YLyKgP5pC8V4ujlDLFKRifJeGRHYhIz7YjgJSZVG0NHqvng2rzTUgnBAA==" length="4057035" type="application/octet-stream"/>
+        </item>
+        <item>
             <title>Version 4.9.2</title>
             <pubDate>Mon, 19 Oct 2026 12:10:07 +0000</pubDate>
             <sparkle:version>31</sparkle:version>
@@ -39,15 +48,6 @@
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <description><![CDATA[<ul><li>Fixed: `claude -p` scripts no longer wait for a reply from the notch</li><li>Reply from the notch only where it can reach the session (each app&#x27;s own Claude Code version is checked)</li><li>Cards answered in Conductor, VS Code or Claude&#x27;s desktop app now close in the notch too</li><li>Hooks put themselves back if Claude Code or another tool removes them</li></ul>]]></description>
             <enclosure url="https://github.com/deepshal99/notch-so-good/releases/download/v4.8.1/NotchSoGood-4.8.1.zip" sparkle:edSignature="UuY2KAcehurcGmbLlxinBJ85m1U2QD5JkoKahPuWYXI04A7KFD21VS75xf7QBnU3W7GpM4bbpx7XUHYMcL37CQ==" length="3951895" type="application/octet-stream"/>
-        </item>
-        <item>
-            <title>Version 4.8.0</title>
-            <pubDate>Sat, 17 Oct 2026 07:24:29 +0000</pubDate>
-            <sparkle:version>27</sparkle:version>
-            <sparkle:shortVersionString>4.8.0</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <description><![CDATA[<ul><li>Reply from the notch: when Claude finishes, type your next message on the card and it carries on (Claude Code 2.1.287+)</li><li>Allow for this session: one click or ⌃⌥S allows the same thing until the session ends, nothing saved</li><li>Keyboard first: ⌃⌥1–6 picks an option, ⌃⌥R replies, ⌃⌥N shows the next waiting card, ⌃⌥O opens the terminal</li><li>Plan progress: sessions show &quot;Step 2 of 5&quot; while they work through a plan</li><li>Agent radar: a heads-up when two sessions edit the same file</li><li>Cleaner cards: Peek carries the status, so the extra dot beside the title is gone</li></ul>]]></description>
-            <enclosure url="https://github.com/deepshal99/notch-so-good/releases/download/v4.8.0/NotchSoGood-4.8.0.zip" sparkle:edSignature="4UdnddwaiDJQ/Ur8dBweUvQUUfriUKv4zXg2oMTx88lw0POM6d2f/dwuR29C1bu6B54qGfFHNAkpksMGmTp/Bg==" length="3935993" type="application/octet-stream"/>
         </item>
     </channel>
 </rss>
