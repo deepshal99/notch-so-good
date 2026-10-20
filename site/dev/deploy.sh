@@ -10,4 +10,8 @@ rsync -a --exclude dev --exclude .env.local ./ "$OUT/"
 V=$(date +%s)
 sed -i '' -E "s#(styles\.css|app\.js|peek\.js|island\.js|lenis\.mjs|world\.js)\?v=[0-9]+#\1?v=$V#g" "$OUT/index.html"
 sed -i '' -E "s#(peek\.js|island\.js|lenis\.mjs)\?v=[0-9]+#\1?v=$V#g" "$OUT/app.js"
+# ship it minified (the source stays readable): scripts and styles, one file each, imports untouched
+( cd "$OUT" && npx --yes esbuild@0.24.0 app.js peek.js island.js world.js styles.css --minify --outdir=. --allow-overwrite --log-level=warning )
+# DRY=1 stops here, so the exact build can be checked locally first
+if [ "${DRY:-0}" = 1 ]; then echo "$OUT"; exit 0; fi
 cd "$OUT" && npx --yes vercel@latest deploy --prod --yes

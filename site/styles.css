@@ -343,13 +343,6 @@ h2 { margin: 0; text-align: center; font-size: clamp(34px, 4.1vw, 54px); line-he
 .veil { transition: opacity 0.3s ease-out; }
 body.at-end .veil { opacity: 0; }
 
-/* the window around the MacBook stays white: nothing scrolls into the margin above the frame */
-.bezel-top { position: fixed; left: 0; right: 0; top: 0; height: var(--gap); background: #fff; z-index: 45; pointer-events: none; }
-.bezel-side { position: fixed; top: 0; bottom: 0; width: var(--gap); background: #fff; z-index: 45; pointer-events: none;
-  -webkit-mask-image: linear-gradient(#000 0, #000 46%, transparent 92%); mask-image: linear-gradient(#000 0, #000 46%, transparent 92%); }
-.bezel-side.l { left: 0; } .bezel-side.r { right: 0; }
-@media (max-width: 720px) { .bezel-top, .bezel-side { display: none; } }
-
 /* ------------------------------------------------------------ v8 */
 /* the end: exactly one screen tall once it fills the frame, footer at its foot */
 .end { padding-bottom: 0; }
@@ -497,7 +490,7 @@ h2 { font-size: clamp(28px, 3.1vw, 42px); letter-spacing: -0.035em; }
 [data-tile=states], [data-tile=limits] { min-height: 320px; }
 @media (max-width: 720px) {
   :root { --bz: 0px; --gap: 0px; }
-  .bezel, .bezel-top, .bezel-side { display: none; }
+  .bezel { display: none; }
   .tile.wide .vis.states { min-height: 260px; }
   .tile.wide .morph { width: 50%; }
   .dial { left: 25%; }
