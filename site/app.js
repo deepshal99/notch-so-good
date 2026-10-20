@@ -1024,6 +1024,8 @@ voiced(view2.puppet, () => panelVisible);
     $('span', hint).textContent = matchMedia('(hover: none)').matches ? 'Tap for sound' : 'Click for sound';
     const t = setTimeout(() => { if (!audioReady() && sound.on) { hint.hidden = false; requestAnimationFrame(() => requestAnimationFrame(() => hint.classList.add('in'))); } }, 2000);
     onAudio(() => { clearTimeout(t); hint.classList.remove('in'); hint.classList.add('gone'); setTimeout(() => hint.remove(), 450); });
+    // plain text has no backdrop, so it steps aside once the bento scrolls under it
+    new IntersectionObserver(([e]) => hint.classList.toggle('past', e.boundingClientRect.top < innerHeight * 0.9), { threshold: [0, 0.01, 0.5, 1] }).observe($('#features'));
   } else hint?.remove();
 }
 // the moment sound becomes possible (the first click or key), Peek says hi
