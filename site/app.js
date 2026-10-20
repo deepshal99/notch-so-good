@@ -22,7 +22,7 @@ const LOOKS = [
   { id: 'porcelain', name: 'Porcelain', tones: [['porcelain', 'White', '#ECEAE5'], ['porcelain-sage', 'Sage', '#B9CDB9'], ['porcelain-blush', 'Blush', '#F2CFCA'], ['porcelain-sky', 'Sky', '#C3D5EC']] },
   { id: 'gold', name: 'Gold', tones: [['gold', 'Gold', '#E8B24E'], ['gold-rose', 'Rose', '#E8A08C'], ['gold-white', 'White gold', '#DCD6C8']] },
   { id: 'balloon', name: 'Balloon', tones: [['balloon', 'Hot pink', '#FF2985'], ['balloon-sky', 'Sky', '#4294FF'], ['balloon-lemon', 'Lemon', '#FFC733'], ['balloon-lilac', 'Lilac', '#9961FF']] },
-  { id: 'gummy', name: 'Gummy', tones: [['gummy', 'Cherry', '#F5244D'], ['gummy-lime', 'Lime', '#6BDB29'], ['gummy-tangerine', 'Tangerine', '#FF801A']] },
+  { id: 'gummy', name: 'Gummy', tones: [['gummy', 'Cherry', '#EB0D24'], ['gummy-lime', 'Lime', '#61D10F'], ['gummy-tangerine', 'Tangerine', '#FF6B05'], ['gummy-grape', 'Grape', '#6B1AB3']] },
 ];
 const FINISHES = LOOKS.flatMap(l => l.tones.map(t => t[0]));
 const lookOf = id => LOOKS.find(l => l.tones.some(t => t[0] === id)) || LOOKS[0];

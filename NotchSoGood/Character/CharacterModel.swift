@@ -52,7 +52,7 @@ enum CharacterKind: String, CaseIterable, Identifiable {
 
     var finishes: [CharacterFinish] {
         switch self {
-        // Five, each tuned for Peek, so every one reads in the notch and on a light page alike.
+        // Six, each tuned for Peek, so every one reads in the notch and on a light page alike.
         case .peek: return [.neon, .obsidian, .porcelain, .gold, .balloon, .gummy]
         case .tail: return [.obsidian, .glass, .chrome, .pearl]
         case .roost: return [.obsidian, .velvet, .anodised, .porcelain]
@@ -181,10 +181,10 @@ enum CharacterFinish: String, CaseIterable, Identifiable {
         case .anodised: return [0.24, 0.27, 0.34]
         case .pearl: return [0.92, 0.92, 0.92]
         case .velvet: return [0.42, 0.29, 0.60]
-        case .gold: return [1.0, 0.77, 0.34]
+        case .gold: return [1.0, 0.79, 0.42]
         case .holo: return [0.55, 0.56, 0.62]
         case .neon: return [0.03, 0.03, 0.04]
-        case .gummy: return [0.96, 0.14, 0.3]
+        case .gummy: return [0.92, 0.05, 0.14]
         case .frosted: return [0.86, 0.9, 0.97]
         case .balloon: return [1.0, 0.16, 0.52]
         }
@@ -233,9 +233,10 @@ enum CharacterFinish: String, CaseIterable, Identifiable {
             CharacterTone(id: "lilac", name: "Lilac", base: [0.6, 0.38, 1.0]),
         ]
         case .gummy: return [
-            CharacterTone(id: "cherry", name: "Cherry", base: [0.96, 0.14, 0.3]),
-            CharacterTone(id: "lime", name: "Lime", base: [0.42, 0.86, 0.16]),
-            CharacterTone(id: "tangerine", name: "Tangerine", base: [1.0, 0.5, 0.1]),
+            CharacterTone(id: "cherry", name: "Cherry", base: [0.92, 0.05, 0.14]),
+            CharacterTone(id: "lime", name: "Lime", base: [0.38, 0.82, 0.06]),
+            CharacterTone(id: "tangerine", name: "Tangerine", base: [1.0, 0.42, 0.02]),
+            CharacterTone(id: "grape", name: "Grape", base: [0.42, 0.1, 0.7]),
         ]
         default: return []
         }
@@ -256,7 +257,7 @@ enum CharacterFinish: String, CaseIterable, Identifiable {
         case .gold: return AnyShapeStyle(LinearGradient(colors: [Color(hex: "FFF1C4"), Color(hex: "E7B04A"), Color(hex: "FFE08A"), Color(hex: "9A6A1C")], startPoint: .topLeading, endPoint: .bottomTrailing))
         case .holo: return AnyShapeStyle(AngularGradient(colors: [Color(hex: "9FE7FF"), Color(hex: "C7A6FF"), Color(hex: "FFB3E0"), Color(hex: "FFE3A3"), Color(hex: "A6FFD4"), Color(hex: "9FE7FF")], center: .center))
         case .neon: return AnyShapeStyle(RadialGradient(colors: [Color(hex: "101014"), Color(hex: "101014"), Color(hex: "6FB6FF")], center: .center, startRadius: 0, endRadius: 13))
-        case .gummy: return AnyShapeStyle(RadialGradient(colors: [Color(hex: "FFB3C0"), Color(hex: "FF5C7A"), Color(hex: "B8233F")], center: .init(x: 0.4, y: 0.35), startRadius: 0, endRadius: 14))
+        case .gummy: return AnyShapeStyle(RadialGradient(colors: [Color(hex: "FF5A6E"), Color(hex: "EB0D24"), Color(hex: "8A0414")], center: .init(x: 0.4, y: 0.35), startRadius: 0, endRadius: 14))
         case .frosted: return AnyShapeStyle(LinearGradient(colors: [Color.white.opacity(0.9), Color(hex: "C9D6EC").opacity(0.75)], startPoint: .topLeading, endPoint: .bottomTrailing))
         case .balloon: return AnyShapeStyle(RadialGradient(colors: [Color(hex: "FF7AB4"), Color(hex: "FF2985"), Color(hex: "B0105A")], center: .init(x: 0.36, y: 0.3), startRadius: 0, endRadius: 15))
         }

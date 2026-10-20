@@ -368,10 +368,19 @@ static float4 shade(thread Ctx& c, float2 xy) {
     } else if (FINISH == 11) {  // neon: dark body, its edge glowing in the state colour
         col = base*(0.2 + 0.6*wrap)*occ + uAccent*(pow(f1, 2.4)*1.7 + 0.05) + float3(pow(nh, 140.0)*0.35);
         col += uAccent*uGlow*pow(f1, 6.0)*0.6;
-    } else if (FINISH == 12) {  // gummy: translucent candy, lit from within
-        float inner = pow(ndv, 1.6);
-        col = base*(0.28 + 0.55*wrap)*occ*0.9 + mix3(base, float3(1.0), 0.25)*inner*0.4
-            + envMap(c, R, 0.08)*(0.05 + 0.7*fres5) + float3(pow(nh, 90.0)*0.9);
+    } else if (FINISH == 12) {  // gummy: dense, saturated jelly
+        // The thick middle goes deep, light passing through glows on the side away from the key
+        // light and leaves underneath, the core holds a little scattered light, and the skin is
+        // wet: a soft window and a crisp highlight. No white in the colour, so it never turns pastel.
+        float3 jelly = base*base;
+        float3 bodyc = mix3(base, jelly*0.7, pow(ndv, 0.8))*(0.4 + 0.6*wrap)*mix(0.7, 1.0, occ);
+        float through = pow(clamp(0.5 - 0.5*dot(n, L), 0.0, 1.0), 2.0)*(0.35 + 0.65*f1);
+        float under = smoothstep(0.25, -0.85, n.y)*(0.45 + 0.55*ndv);
+        float3 glow = base*mix3(float3(1.0), base, 0.3)*(through*0.8 + under*0.55);
+        float3 core = base*pow(ndv, 3.0)*0.18;
+        float pane = pow(max(dot(R, normalize(float3(-0.45, 0.72, 0.53))), 0.0), 28.0);
+        col = bodyc + glow + core + envMap(c, R, 0.02)*(0.03 + 0.45*fres5)*mix3(float3(1.0), base, 0.3)
+            + float3(pane*0.32) + float3(pow(nh, 180.0)*1.3);
     } else if (FINISH == 14) {  // balloon: satin, like bubble letters
         // Soft, deeply saturated colour, broad gentle highlights, shadows that sink into the
         // creases and a soft lift at the edges. Matte-ish, not glossy.
@@ -392,7 +401,7 @@ static float4 shade(thread Ctx& c, float2 xy) {
         col += float3(0.62, 0.66, 0.74)*pow(f1, 6.0)*0.75*(1.0 - lum);
     }
     float alpha = 1.0;
-    if (KIND != 3 && FINISH == 12) alpha = 0.86 + 0.14*fres;          // gummy lets a little through
+    if (KIND != 3 && FINISH == 12) alpha = 0.8 + 0.2*ndv;             // gummy: the thin edges let a little through
     if (KIND != 3 && FINISH == 13) alpha = 0.72 + 0.26*fres;          // frosted, more so
     if (KIND == 3 && FINISH == 5 && mat < 0.5) {
         // Mercury: a liquid-metal bubble. Keeps the chrome shading, solid.

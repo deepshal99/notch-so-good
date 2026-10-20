@@ -65,9 +65,10 @@ export const FINISHES = {
   gold: { index: 9, base: [1.0, 0.79, 0.42] },
   'gold-rose': { index: 9, base: [1.0, 0.68, 0.58] },
   'gold-white': { index: 9, base: [0.93, 0.9, 0.84] },
-  gummy: { index: 12, base: [0.96, 0.14, 0.3] },
-  'gummy-lime': { index: 12, base: [0.42, 0.86, 0.16] },
-  'gummy-tangerine': { index: 12, base: [1.0, 0.5, 0.1] },
+  gummy: { index: 12, base: [0.92, 0.05, 0.14] },
+  'gummy-lime': { index: 12, base: [0.38, 0.82, 0.06] },
+  'gummy-tangerine': { index: 12, base: [1.0, 0.42, 0.02] },
+  'gummy-grape': { index: 12, base: [0.42, 0.1, 0.7] },
   balloon: { index: 14, base: [1.0, 0.16, 0.52] },
   'balloon-sky': { index: 14, base: [0.26, 0.58, 1.0] },
   'balloon-lemon': { index: 14, base: [1.0, 0.78, 0.2] },
@@ -588,8 +589,11 @@ vec4 shade(vec2 xy){
   vec3 base = uBase*(1.0 - 0.6*uDark);
   vec3 col;
 #if FINISH == 0
-  vec3 tint = mix(vec3(1.0), base/max(max(base.r, max(base.g, base.b)), 1e-3), 0.5*smoothstep(0.004, 0.03, max(base.r, max(base.g, base.b)) - min(base.r, min(base.g, base.b))));
-  col = base*(0.2 + 0.8*dif)*1.6 + envMap(R, 0.0)*(mix(0.1, 1.0, fres) + 0.26)*tint + pow(nh, 160.0)*1.0;
+  // a tinted obsidian (midnight, plum, forest) reads as coloured glass: a touch brighter, its reflections
+  // taking a whisper of the hue. Black stays exactly black glass.
+  float hi = max(base.r, max(base.g, base.b)), sat = smoothstep(0.004, 0.03, hi - min(base.r, min(base.g, base.b)));
+  vec3 tint = mix(vec3(1.0), base/max(hi, 1e-3), 0.5*sat);
+  col = base*(0.2 + 0.8*dif)*mix(1.0, 1.6, sat) + envMap(R, 0.0)*(mix(0.1, 1.0, fres) + 0.26)*tint + pow(nh, 160.0)*1.0;
 #elif FINISH == 2
   col = base*(0.22 + 0.80*wrap)*occ + envMap(R, 0.0)*(0.04 + 0.6*fres5)*0.9 + pow(nh, 200.0)*0.8;
   col += vec3(0.05, 0.03, 0.02)*pow(1.0 - dif, 2.0);
@@ -632,9 +636,18 @@ vec4 shade(vec2 xy){
   col = base*(0.2 + 0.6*wrap)*occ + uAccent*(pow(f1, 2.4)*1.7 + 0.05) + vec3(pow(nh, 140.0)*0.35);
   col += uAccent*uGlow*pow(f1, 6.0)*0.6;
 #elif FINISH == 12
-  float inner = pow(ndv, 1.6);
-  col = base*(0.28 + 0.55*wrap)*occ*0.9 + mix(base, vec3(1.0), 0.25)*inner*0.4
-      + envMap(R, 0.08)*(0.05 + 0.7*fres5) + vec3(pow(nh, 90.0)*0.9);
+  // gummy: dense, saturated jelly. The thick middle goes deep, light passing through glows on the
+  // side away from the key light, the core holds a little scattered light, and the skin is wet:
+  // a crisp highlight and a faint sheen. No white mixed into the colour, so it never turns pastel.
+  vec3 jelly = base*base;
+  vec3 bodyc = mix(base, jelly*0.7, pow(ndv, 0.8))*(0.4 + 0.6*wrap)*mix(0.7, 1.0, occ);
+  float through = pow(clamp(0.5 - 0.5*dot(n, L), 0.0, 1.0), 2.0)*(0.35 + 0.65*f1);
+  float under = smoothstep(0.25, -0.85, n.y)*(0.45 + 0.55*ndv);            // light that came in on top, leaving underneath
+  vec3 glow = base*mix(vec3(1.0), base, 0.3)*(through*0.8 + under*0.55);
+  vec3 core = base*pow(ndv, 3.0)*0.18;
+  float pane = pow(max(dot(R, normalize(vec3(-0.45, 0.72, 0.53))), 0.0), 28.0);  // a soft window, wet on the skin
+  col = bodyc + glow + core + envMap(R, 0.02)*(0.03 + 0.45*fres5)*mix(vec3(1.0), base, 0.3)
+      + vec3(pane*0.32) + vec3(pow(nh, 180.0)*1.3);
 #elif FINISH == 14
   // a satin balloon (bubble letters): soft, deeply saturated colour, broad gentle highlights,
   // shadows that sink into the creases, and a soft lift at the edges. Matte-ish, not glossy.
@@ -652,7 +665,7 @@ vec4 shade(vec2 xy){
   col += vec3(0.62, 0.66, 0.74)*pow(f1, 6.0)*0.75*(1.0 - lum);
   float alpha = 1.0;
 #if FINISH == 12
-  alpha = 0.86 + 0.14*fres;
+  alpha = 0.8 + 0.2*ndv;                 // the thin edges let a little through
 #elif FINISH == 13
   alpha = 0.72 + 0.26*fres;
 #elif FINISH == 14

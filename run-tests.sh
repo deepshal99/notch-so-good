@@ -57,7 +57,7 @@ swiftc -O NotchSoGood/Character/CharacterModel.swift NotchSoGood/Character/Chara
   NotchSoGood/Character/CharacterStateMapping.swift NotchSoGood/Models/NotchNotification.swift \
   NotchSoGood/Models/NotificationType.swift NotchSoGood/Models/StopFailure.swift NotchSoGood/Models/AgentRequest.swift NotchSoGood/Utilities/ColorHex.swift \
   Tests/CharacterEngineTests/main.swift -o "$TMP/character"
-"$TMP/character" | tail -6 || fail=1
+"$TMP/character" | tail -7 || fail=1
 rm -rf "$TMP"
 
 echo -e "\n${BOLD}8/10  Usage forecast${RESET}"

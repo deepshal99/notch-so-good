@@ -105,5 +105,45 @@ do {
     if ok { print("PASS stop failures read as plain words") }
 }
 
+// Peek's six finishes and their colours: what Settings offers, and what the landing page
+// mirrors (site/peek.js FINISHES and site/app.js LOOKS use the same indices, ids and colours).
+do {
+    var ok = true
+    func bad(_ m: String) { ok = false; failed += 1; print("FAIL finishes: \(m)") }
+    let peek = CharacterKind.peek.finishes
+    if peek != [.neon, .obsidian, .porcelain, .gold, .balloon, .gummy] { bad("Peek offers \(peek)") }
+    // the shader picks a finish by index, and the web port hard-codes the same ones
+    let index: [(CharacterFinish, Int32)] = [(.obsidian, 0), (.porcelain, 2), (.gold, 9), (.neon, 11), (.gummy, 12), (.balloon, 14)]
+    for (f, i) in index where f.shaderIndex != i { bad("\(f) is shader index \(f.shaderIndex), want \(i)") }
+    let tones: [CharacterFinish: [String]] = [
+        .neon: [],
+        .obsidian: ["black", "midnight", "plum", "forest"],
+        .porcelain: ["white", "sage", "blush", "sky"],
+        .gold: ["gold", "rose", "white"],
+        .balloon: ["pink", "sky", "lemon", "lilac"],
+        .gummy: ["cherry", "lime", "tangerine", "grape"],
+    ]
+    for f in peek {
+        let ts = f.tones
+        if ts.map(\.id) != tones[f] { bad("\(f) has tones \(ts.map(\.id))") }
+        if Set(ts.map(\.name)).count != ts.count || ts.contains(where: { $0.name.isEmpty }) { bad("\(f) tone names are empty or repeated") }
+        for t in ts where !(0...2).allSatisfy({ (0...1).contains(t.base[$0]) }) { bad("\(f).\(t.id) base \(t.base) is out of range") }
+        // with no colour saved, the finish looks exactly like its first colour
+        if let first = ts.first, first.base != f.base { bad("\(f) base \(f.base) isn't its first tone's \(first.base)") }
+        // every look renders: finite uniforms, its colour in the body, eyes that stand out from it
+        for t in ts.isEmpty ? [nil] : ts.map(Optional.some) {
+            let puppet = CharacterPuppet(kind: .peek, state: .work, now: 0)
+            let (u, pts) = puppet.uniforms(puppet.pose(now: 1, motion: CharacterMotion.gooey.params), viewport: vp, finish: f, tone: t, time: 1, gazeOverride: nil)
+            let name = "\(f)\(t.map { "." + $0.id } ?? "")"
+            if !([u.base, u.eyeCol] + pts).allSatisfy(finite) { bad("\(name) has non-finite uniforms"); continue }
+            let body = t?.base ?? f.base, eye = SIMD3(u.eyeCol.x, u.eyeCol.y, u.eyeCol.z)
+            if SIMD3(u.base.x, u.base.y, u.base.z) != body { bad("\(name) renders base \(u.base), want \(body)") }
+            let lum = { (c: SIMD3<Float>) in c.x*0.299 + c.y*0.587 + c.z*0.114 }
+            if abs(lum(eye) - lum(body)) < 0.3 { bad("\(name) eyes don't stand out from the body") }
+        }
+    }
+    if ok { print("PASS Peek's six finishes, 19 colours: ids, shader indices, uniforms, eye contrast") }
+}
+
 if failed > 0 { print("\(failed) character case(s) failed"); exit(1) }
 print("\nAll character cases passed")
