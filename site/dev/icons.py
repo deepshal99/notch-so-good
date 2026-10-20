@@ -1,9 +1,9 @@
 # Composes the site's icons from a render of Peek (dev/fav.html, via assets.mjs):
-# favicon.ico (16/32/48), favicon-away.png (with the "needs you" dot), icon-192/512 and apple-touch-icon.
+# favicon.ico (16/32/48), icon-192/512 and apple-touch-icon.
 # usage: python3 site/dev/icons.py <peek render.png>
 import struct, sys, io
 from pathlib import Path
-from PIL import Image, ImageDraw, ImageFilter
+from PIL import Image, ImageFilter
 
 SITE = Path(__file__).resolve().parent.parent
 src = Image.open(sys.argv[1]).convert('RGBA')
@@ -34,8 +34,4 @@ square(192).save(SITE / 'icon-192.png', optimize=True)
 square(512).save(SITE / 'icon-512.png', optimize=True)
 # iOS fills transparency with black, so the home-screen icon gets a white tile with room around Peek
 square(180, fill=0.78, bg=(255, 255, 255, 255)).convert('RGB').save(SITE / 'apple-touch-icon.png', optimize=True)
-# while you're in another tab: the same Peek with an orange "needs you" dot
-away = square(64)
-d = ImageDraw.Draw(away); d.ellipse((40, 0, 63, 23), fill=(255, 165, 77, 255), outline=(255, 255, 255, 255), width=3)
-away.save(SITE / 'favicon-away.png', optimize=True)
 print('icons written')

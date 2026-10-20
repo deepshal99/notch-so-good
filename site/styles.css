@@ -405,7 +405,11 @@ h2 { font-size: clamp(28px, 3.1vw, 42px); letter-spacing: -0.035em; }
 .scene { position: absolute; inset: 0 -28px; perspective: 1100px; perspective-origin: 50% 40%; transform-style: preserve-3d; }
 .ring { position: absolute; left: 50%; top: var(--cy, 120px); width: 0; height: 0; transform-style: preserve-3d; }
 .ring .track { position: absolute; left: calc(var(--r) * -1); top: calc(var(--r) * -1); width: calc(var(--r) * 2); height: calc(var(--r) * 2); border-radius: 50%;
-  border: 1.5px solid rgba(11,11,12,0.1); transform: rotateX(90deg); pointer-events: none; }
+  transform: rotateX(90deg); pointer-events: none;
+  /* a track, not a thread: a soft, faint band with a light along it */
+  background:
+    radial-gradient(closest-side, transparent calc(100% - 9px), rgba(255,255,255,0.8) calc(100% - 6px), transparent calc(100% - 3px)),
+    radial-gradient(closest-side, transparent calc(100% - 22px), rgba(11,11,12,0.035) calc(100% - 8px), rgba(11,11,12,0.06) calc(100% - 1.5px), transparent 100%); }
 .orb { position: absolute; left: -33px; top: -33px; width: 66px; height: 66px; padding: 0; border-radius: 16px; transform-style: preserve-3d; backface-visibility: hidden;
   filter: drop-shadow(0 14px 14px rgba(0,0,0,0.2)); }
 .orb img { width: 100%; height: 100%; display: block; }
@@ -786,3 +790,9 @@ body.dressing #peek { scale: 2.4; }
 .snd-foot { appearance: none; border: 0; background: none; padding: 0; font: inherit; color: inherit; cursor: pointer; display: none; }
 .snd-foot:hover { color: var(--ink); }
 @media (max-width: 720px) { .snd-foot { display: inline; } }
+
+/* the orbit: the track on a layer of its own behind the icons and Peek */
+.scene.back { pointer-events: none; z-index: 0; }
+#scene { z-index: 1; }
+/* agent icons with some depth: a soft layered shadow (it follows each icon's own shape), and they recede round the back */
+.orb { --back: 0; filter: drop-shadow(0 16px 18px rgba(0,0,0,0.16)) drop-shadow(0 3px 5px rgba(0,0,0,0.12)) brightness(calc(1 - var(--back) * 0.06)); opacity: calc(1 - var(--back) * 0.18); }

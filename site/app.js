@@ -95,7 +95,7 @@ function show(name, data = {}) {
 }
 
 // The hero notch's own moments get soft sounds, while it's on screen and the tab is in front:
-// Peek climbing out when Claude needs you, tucking back in, wilting when usage runs out, and reviving.
+// Peek climbing out when an agent needs you, tucking back in, wilting when usage runs out, and reviving.
 const OUT = ['need', 'warn'];
 function heroSound(was, to, scene) {
   if (stagePhase !== 'up' || document.hidden || scrollY > vh * 0.6) return;
@@ -144,9 +144,10 @@ function shownScene() {
   if (atEnd()) return { name: 'notch', data: {} };
   if (dressing()) return { name: 'pill', data: { text: `Peek · <em>${FINISH_NAMES[window.nsgLook || finish]}</em>`, c: C.work, live: false, w: 320 } };
   if (!heroVisible()) {
-    // past the hero the notch keeps quiet and Peek tucks in; it still says when Claude is waiting
+    // past the hero the notch keeps quiet and Peek tucks in; it still says which agent is waiting
+    const who = main.name === 'approve' && ASKS[main.data.i % ASKS.length].agent === 'Codex' ? 'Codex' : 'Claude';
     return main.name === 'approve' || main.name === 'question'
-      ? { name: 'pill', data: { text: 'Claude needs you', c: C.need, peek: 'warn', w: 300 } }
+      ? { name: 'pill', data: { text: `${who} needs you`, c: C.need, peek: 'warn', w: 300 } }
       : { name: 'notch', data: {} };
   }
   return main;
@@ -262,16 +263,14 @@ $$('[data-copy]').forEach(b => b.addEventListener('click', async () => {
 
 // ------------------------------------------------------------------ switch tabs, we'll call you back
 const baseTitle = document.title;
-const fav = $('#favicon');
-const favDefault = fav.href;
 let awayAt = 0, awayTimer = 0;
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
     awayAt = Date.now();
-    awayTimer = setTimeout(() => { document.title = '● Claude needs you'; fav.href = '/favicon-away.png'; }, 1200);
+    awayTimer = setTimeout(() => { document.title = '● Your agent needs you'; }, 1200);
   } else {
     clearTimeout(awayTimer);
-    document.title = baseTitle; fav.href = favDefault;
+    document.title = baseTitle;
     if (awayAt && Date.now() - awayAt > 2500 && main.name !== 'out') {
       override = null;
       go('done', { welcome: true }); sfx.chime();
@@ -740,12 +739,12 @@ const approve = { isl: null, view: null, U: 40, visible: false };
 // eases to a stop, so the icon stays put: it grows a touch, its name shows, and Peek turns to look.
 const orbit = { view: null, visible: false };
 {
-  const t = tile('agents'), el = $('#orbit'), ring = $('#ring'), orbs = $$('.orb', ring), name = $('#orbName'), cv = $('#peek5');
+  const t = tile('agents'), el = $('#orbit'), ring = $('#ring'), rings = [ring, $('#ringBack')], orbs = $$('.orb', ring), name = $('#orbName'), cv = $('#peek5');
   const v = orbit.view = new PeekView(cv, { finish, unitsW: 4.4, unitsH: 4.6, notchY: 0.12, state: 'work' });
   const g = hangPeek(cv, v, el, { size: 0.16, min: 44, max: 58, at: 0.34 });
   let R = 120;
   // a wide, tilted orbit that fills the visual and runs past the tile's edges, centred a little below Peek
-  orbit.fit = () => { g.fit(); R = el.clientWidth * (vw > 720 ? 0.6 : 0.4); ring.style.setProperty('--cy', (el.clientHeight * 0.38) + 'px'); ring.style.setProperty('--r', R + 'px'); };
+  orbit.fit = () => { g.fit(); R = el.clientWidth * (vw > 720 ? 0.6 : 0.4); for (const r of rings) { r.style.setProperty('--cy', (el.clientHeight * 0.38) + 'px'); r.style.setProperty('--r', R + 'px'); } };
   orbit.fit(); addEventListener('resize', orbit.fit);
   const vis = visible(t);
   peeks.push({ view: v, live: () => vis.on, rect: g.rect });
@@ -771,10 +770,13 @@ const orbit = { view: null, visible: false };
     tilt += ((0.42 - ty * 0.05) - tilt) * ease(4);
     const slant = SLANT + tx * 0.02;
     orbs.forEach((o, i) => { grow[i] += ((o === hover ? 1.1 : 1) - grow[i]) * ease(14); });
-    ring.style.transform = `rotateZ(${slant.toFixed(4)}rad) rotateX(${(-tilt).toFixed(4)}rad) rotateY(${spin.toFixed(4)}rad)`;
+    const turn = `rotateZ(${slant.toFixed(4)}rad) rotateX(${(-tilt).toFixed(4)}rad) rotateY(${spin.toFixed(4)}rad)`;
+    for (const r of rings) r.style.transform = turn;
     orbs.forEach((o, i) => {
       const a = phi[i];
       o.style.transform = `rotateY(${a.toFixed(4)}rad) translateZ(${R}px) rotateY(${(-a - spin).toFixed(4)}rad) rotateX(${tilt.toFixed(4)}rad) rotateZ(${(-slant).toFixed(4)}rad) scale(${grow[i].toFixed(4)})`;
+      // round the back of the ring an icon recedes a little: depth, not a flat sticker
+      o.style.setProperty('--back', ((1 - Math.cos(a + spin)) / 2).toFixed(3));
     });
     if (hover) {
       const r = hover.getBoundingClientRect(), c = cv.getBoundingClientRect();
