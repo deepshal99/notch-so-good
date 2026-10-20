@@ -369,7 +369,7 @@ h2 { font-size: clamp(28px, 3.1vw, 42px); letter-spacing: -0.035em; }
 .panel > p:not(.fine) { font-size: 16.5px; }
 .brand { font-size: 14.5px; }
 .bar { font-size: 13.5px; }
-.orbname, .mline { font-size: 13.5px; }
+.orbname { font-size: 13.5px; }
 .dial span { font-size: 19px !important; }
 .hero { padding-top: clamp(260px, 36vh, 320px); }
 
@@ -547,7 +547,7 @@ h2 { font-size: clamp(28px, 3.1vw, 42px); letter-spacing: -0.035em; }
 
 /* no widows or orphans: headings balance their lines, body copy avoids a lone last word */
 h1, h2, h3, h4, .tile h3 { text-wrap: balance; }
-p, .lede, .msg, .tile p, .fine, figcaption, .mline, .orbname { text-wrap: pretty; }
+p, .lede, .msg, .tile p, .fine, figcaption, .orbname { text-wrap: pretty; }
 
 /* ============================================================ v10 */
 .lede { max-width: 600px !important; }
@@ -681,24 +681,20 @@ body.dressing #peek { scale: 2.4; }
 
 .fdial span { margin-right: -6px; }
 
-/* limits: a thin ring that drains, one number, and a status chip that tracks it */
-.vis.limit { gap: 18px; }
-.meter { position: relative; width: 158px; height: 158px; }
-.meter svg { position: absolute; inset: 0; transform: rotate(-90deg); overflow: visible; }
-.meter circle { fill: none; stroke-width: 6; stroke-linecap: round; }
-.meter .trk { stroke: #EAEAE7; }
-.meter .arc { stroke: var(--mc, #1FBF6A); stroke-dasharray: calc(var(--p) * 1) 100; transition: stroke 0.5s ease-out, opacity 0.2s ease-out; }
-.meter.empty .arc { opacity: 0; }
-.mread { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-.mread b { display: flex; align-items: flex-start; font-size: 44px; font-weight: 650; letter-spacing: -0.045em; line-height: 1; color: var(--ink); font-variant-numeric: tabular-nums; }
-.mread b i { font-style: normal; font-size: 18px; font-weight: 600; letter-spacing: 0; color: var(--ink-3); margin: 5px 0 0 3px; }
-.mread .mcap { margin-top: 7px; font-size: 12.5px; color: var(--ink-3); }
-.mline { margin: 0; height: 32px; padding: 0 13px 0 11px; border-radius: 999px; background: #fff; box-shadow: 0 0 0 1px var(--hair), 0 4px 12px -8px rgba(11,11,12,0.25);
-  display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--ink-2); white-space: nowrap; font-variant-numeric: tabular-nums; }
-.mline .mdot { width: 7px; height: 7px; border-radius: 50%; background: var(--mc, #1FBF6A); transition: background 0.5s ease-out; }
-.mline .mtext { transition: opacity 0.15s ease-out, translate var(--brisk-t) var(--brisk); }
-.mline .mtext.out { opacity: 0; translate: 0 -3px; }
-.mline .mtext.in { opacity: 0; translate: 0 3px; transition: none; }
+/* limits: the 5-hour window and the weekly limit, each a row of ten steps that empty one by one.
+   Notch colours: plenty is done-green, the heads-up is needs-you orange, nearly out is error red. */
+.lw { width: 100%; max-width: 330px; background: #fff; border-radius: 22px; padding: 6px 18px; box-shadow: 0 0 0 1px var(--hair), 0 14px 30px -22px rgba(0,0,0,0.25); }
+.lw .w { display: grid; grid-template-columns: 118px 1fr 46px; align-items: center; gap: 14px; padding: 14px 0; }
+.lw .w + .w { border-top: 1px solid var(--hair); }
+.lw .n { font-size: 14px; font-weight: 600; letter-spacing: -0.01em; color: var(--ink); }
+.lw .n small { display: block; margin-top: 2px; font-size: 12px; font-weight: 500; letter-spacing: 0; color: var(--ink-3); white-space: nowrap; font-variant-numeric: tabular-nums; transition: opacity 0.15s ease-out; }
+.lw .n small.swap { opacity: 0; }
+.lw .w.low .n small { color: var(--vc); }
+.lw .steps { display: flex; gap: 3px; }
+.lw .steps i { flex: 1; height: 22px; border-radius: 4px; background: #EDEDEA; transition: background-color 0.35s ease-out, scale var(--snappy-t) var(--snappy); }
+.lw .steps i.on { background: var(--c, #5BE49B); }
+.lw .v { text-align: right; font-size: 15px; font-weight: 650; letter-spacing: -0.02em; color: var(--vc, var(--ink)); font-variant-numeric: tabular-nums; transition: color 0.35s ease-out; }
+@media (max-width: 720px) { .lw { max-width: none; } .lw .w { grid-template-columns: 110px 1fr 44px; gap: 12px; } }
 
 /* links inside sentences are underlined, not just coloured */
 .foot .left a { text-decoration: underline; text-decoration-color: rgba(11,11,12,0.25); text-underline-offset: 3px; }

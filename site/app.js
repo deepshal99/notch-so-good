@@ -758,30 +758,31 @@ const orbit = { view: null, visible: false };
   loop(t, async still => { if (still) return; await sleep(4200); if (!hover) v.puppet.setState(['work', 'think', 'work', 'done'][Math.floor(now() / 4.2) % 4], now()); });
 }
 
-// 6. limits: one ring that drains on its own, and a status chip that always says what's true right now
+// 6. limits: the 5-hour window drains step by step on its own, the weekly limit a little with it.
+// Each turns orange at the heads-up (under 20%) and red when nearly out, in the notch's colours.
 {
-  const t = tile('limits'), m = $('#meter'), num = $('#mNum'), text = $('#mLine .mtext'), line = $('#mLine');
-  const mix = (a, b, k) => a.map((x, i) => Math.round(x + (b[i] - x) * k));
-  const G = [31, 191, 106], A = [240, 160, 0], Rd = [255, 90, 79];
-  const colour = p => { const c = p >= 45 ? G : p >= 25 ? mix(A, G, (p - 25) / 20) : p >= 10 ? mix(Rd, A, (p - 10) / 15) : Rd; return `rgb(${c})`; };
+  const t = tile('limits'), rows = [$('#w5'), $('#wk')];
+  const tone = p => p >= 20 ? ['#5BE49B', 'var(--ink)'] : p >= 5 ? ['#FFA54D', '#E8892A'] : ['#FF6B61', '#E5483D'];
   // the window resets in 4h 58m when full; the clock runs down as the usage does
   const resets = p => { const min = Math.round(12 + (298 - 12) * p / 100), h = Math.floor(min / 60); return h ? `${h}h ${String(min % 60).padStart(2, '0')}m` : `${min}m`; };
-  let label = '', back = false, swapT = 0, lastP = 100;
-  const status = p => back ? ['back', 'Usage is back'] : p <= 0.5 ? ['out', 'Out · back in 12m'] : p < 5 ? ['95', '95% used · wrap up'] : p < 20 ? ['80', 'Heads-up · 80% used'] : ['ok', `Resets in ${resets(p)}`];
-  const paint = p => {
-    m.style.setProperty('--p', p.toFixed(2));
-    const c = colour(p); m.style.setProperty('--mc', c); line.style.setProperty('--mc', c);
-    num.textContent = Math.round(p);
-    m.classList.toggle('empty', p < 0.6);
-    const [k, s] = status(p);
-    if (k !== label) {
-      // a new kind of message crossfades in; the clock in the same message just ticks
-      label = k; clearTimeout(swapT); text.classList.remove('in'); text.classList.add('out');
-      swapT = setTimeout(() => { text.textContent = status(lastP)[1]; text.classList.remove('out'); text.classList.add('in'); swapT = setTimeout(() => text.classList.remove('in'), 30); }, 140);
-    } else if (!text.classList.contains('out')) text.textContent = s;
-    lastP = p;
+  let back = false;
+  // short notes, so they fit under the name; the colour says when it's a heads-up
+  const sub = p => back ? 'usage is back' : p <= 0.5 ? 'back in 12m' : `resets in ${resets(p)}`;
+  const show = (row, p, note) => {
+    const [c, vc] = tone(p), steps = $$('.steps i', row), on = Math.ceil(p / 10 - 0.001);
+    steps.forEach((s, i) => { s.classList.toggle('on', i < on); s.style.setProperty('--c', c); });
+    row.style.setProperty('--vc', vc); row.classList.toggle('low', p < 20 && !back);
+    $('.v', row).textContent = Math.round(p) + '%';
+    if (note != null) {
+      const sm = $('small', row);
+      // a new kind of note crossfades in; the clock in the same note just ticks
+      if (sm.dataset.k !== note.split(' ')[0]) { sm.dataset.k = note.split(' ')[0]; sm.classList.add('swap'); setTimeout(() => { sm.textContent = sub(lastP); sm.classList.remove('swap'); }, 150); }
+      else if (!sm.classList.contains('swap')) sm.textContent = note;
+    }
   };
-  const tween = async (a, b, ms) => { const t0 = performance.now(); for (;;) { const k = Math.min(1, (performance.now() - t0) / ms); const e = b > a ? 1 - (1 - k) ** 3 : k; paint(a + (b - a) * e); if (k >= 1) break; await sleep(16); } };
+  let lastP = 100;
+  const paint = p => { lastP = p; show(rows[0], p, sub(p)); show(rows[1], 56 + p * 0.4); };
+  const tween = (a, b, ms) => new Promise(res => { const t0 = performance.now(); const f = n => { const k = Math.min(1, (n - t0) / ms); paint(a + (b - a) * k); k < 1 ? requestAnimationFrame(f) : res(); }; requestAnimationFrame(f); });
   paint(100);
   loop(t, async still => {
     if (still) { paint(62); return; }

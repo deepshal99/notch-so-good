@@ -1,0 +1,74 @@
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="../styles.css"><style>
+/* options for the limits tile, side by side: ?p=<percent left> */
+body{background:#fff;margin:0;padding:24px}
+.tile{opacity:1!important;transform:none!important;filter:none!important;translate:none!important;scale:none!important}
+.row{display:flex;gap:18px;align-items:stretch}
+.row + .row{margin-top:18px}
+.tile{width:372px;flex:none;display:flex;flex-direction:column}
+.tile .vis{flex:1;display:flex;flex-direction:column;justify-content:center;min-height:250px;margin-bottom:22px}
+.tag{font:600 12px var(--sans);color:#9A9AA0;margin:0 0 10px 4px}
+ .lm1,.lm2,.lm3{width:100%;box-sizing:border-box}
+:root{--ok:#5BE49B;--low:#FFA54D;--out:#FF6B61}
+
+/* 1 · Notch meter: an island card, a big number, a row of bars that empty one by one */
+.lm1{background:#000;color:#fff;border-radius:26px;padding:18px 18px 16px;box-shadow:0 30px 60px -36px rgba(0,0,0,.55)}
+.lm1 .lt,.lm1 .lf{display:flex;justify-content:space-between;font-size:12.5px;color:rgba(255,255,255,.5)}
+.lm1 .big{display:flex;align-items:baseline;gap:4px;margin:10px 0 14px}
+.lm1 .big b{font-size:52px;font-weight:650;letter-spacing:-.045em;line-height:.9;font-variant-numeric:tabular-nums}
+.lm1 .big span{font-size:17px;font-weight:600;color:rgba(255,255,255,.55)}
+.lm1 .bars{display:flex;gap:3px;height:34px;margin-bottom:14px}
+.lm1 .bars i{flex:1;border-radius:3px;background:rgba(255,255,255,.1)}
+.lm1 .bars i.on{background:var(--c)}
+.lm1 .lf b{color:rgba(255,255,255,.92);font-weight:600}
+
+/* 2 · Ruler: monochrome lines, the heads-up mark in the notch's orange */
+.lm2{text-align:center}
+.lm2 .big{display:inline-flex;align-items:baseline;justify-content:center}
+.lm2 .big b{font-size:64px;font-weight:650;letter-spacing:-.05em;line-height:1;font-variant-numeric:tabular-nums;color:var(--ink)}
+.lm2 .big span{font-size:26px;font-weight:600;color:var(--ink-3);margin-left:2px}
+.lm2 .cap{margin:6px 0 22px;font-size:13.5px;color:var(--ink-3)}
+.lm2 .rl{position:relative;display:flex;justify-content:space-between;align-items:flex-end;height:44px;padding:0 2px}
+.lm2 .rl i{flex:none;width:2.5px;height:30px;border-radius:2px;background:#DCDCD8}
+.lm2 .rl i.on{background:var(--c)}
+.lm2 .rl i.mark{height:44px;background:var(--low)}
+.lm2 .marks{position:relative;height:18px;margin-top:6px;font-size:11.5px;font-weight:600;color:var(--ink-3)}
+.lm2 .marks span{position:absolute;transform:translateX(-50%);white-space:nowrap}
+.lm2 .when{margin-top:10px;font-size:13.5px;color:var(--ink-2)}
+.lm2 .when b{font-weight:600;color:var(--ink)}
+
+/* 3 · Two windows: the 5-hour and the weekly limit, each a row of steps */
+.lm3{background:#fff;border-radius:22px;padding:16px 18px 14px;box-shadow:0 0 0 1px var(--hair),0 14px 30px -22px rgba(0,0,0,.25)}
+.lm3 .w{display:grid;grid-template-columns:118px 1fr 46px;align-items:center;gap:14px;padding:12px 0}
+.lm3 .w + .w{border-top:1px solid var(--hair)}
+.lm3 .n{font-size:13.5px;font-weight:600;color:var(--ink)}
+.lm3 .n small{display:block;white-space:nowrap;font-size:11.5px;font-weight:500;color:var(--ink-3);margin-top:2px}
+.lm3 .steps{display:flex;gap:3px}
+.lm3 .steps i{flex:1;height:22px;border-radius:4px;background:#EDEDEA}
+.lm3 .steps i.on{background:var(--c)}
+.lm3 .v{text-align:right;font-size:15px;font-weight:650;letter-spacing:-.02em;font-variant-numeric:tabular-nums;color:var(--ink)}
+</style></head><body>
+<div id="rows"></div>
+<script>
+const q = new URLSearchParams(location.search);
+const levels = (q.get('p') || '62,14').split(',').map(Number);
+// notch colours: plenty → done green, running low → needs-you orange, nearly out → error red
+const col = p => p >= 20 ? 'var(--ok)' : p >= 5 ? 'var(--low)' : 'var(--out)';
+const ink = p => p >= 20 ? 'var(--ink)' : p >= 5 ? 'var(--low)' : 'var(--out)';
+const resets = p => { const m = Math.round(12 + (298 - 12) * p / 100), h = Math.floor(m / 60); return h ? `${h}h ${String(m % 60).padStart(2, '0')}m` : `${m}m`; };
+const bars = (n, p, c) => Array.from({ length: n }, (_, i) => `<i class="${i < Math.round(n * p / 100) ? 'on' : ''}" style="--c:${c}"></i>`).join('');
+const copy = `<h3>Never get cut off mid-task</h3><p>See how much usage you have left, and get a heads-up before you run out.</p>`;
+const o1 = p => `<div class="lm1"><div class="lt"><span>Claude Code</span><span>5-hour window</span></div>
+  <div class="big"><b>${p}</b><span>% left</span></div><div class="bars">${bars(24, p, col(p))}</div>
+  <div class="lf"><span>Resets in <b>${resets(p)}</b></span><span>${p >= 20 ? 'Weekly 81%' : '<b style="color:var(--low)">Heads-up sent</b>'}</span></div></div>`;
+const o2 = p => { const N = 50, mark = Math.round(N * 0.2);
+  const ls = Array.from({ length: N }, (_, i) => { const on = i < Math.round(N * p / 100); return `<i class="${i === mark ? 'mark' : on ? 'on' : ''}" style="--c:${p >= 20 ? 'var(--ink)' : col(p)}"></i>`; }).join('');
+  return `<div class="lm2"><div class="big"><b style="color:${ink(p)}">${p}</b><span>%</span></div><p class="cap">left in this 5-hour window</p>
+  <div class="rl">${ls}</div><div class="marks"><span style="left:${(mark + 0.5) / N * 100}%">Heads-up</span></div>
+  <p class="when">Resets in <b>${resets(p)}</b></p></div>`; };
+const o3 = p => { const wk = Math.min(100, Math.round(p * 0.4 + 56));
+  const row = (n, sub, v) => `<div class="w"><span class="n">${n}<small>${sub}</small></span><span class="steps">${bars(10, v, col(v))}</span><span class="v" style="color:${ink(v)}">${v}%</span></div>`;
+  return `<div class="lm3">${row('5-hour', `resets in ${resets(p)}`, p)}${row('Weekly', 'resets Mon', wk)}</div>`; };
+document.getElementById('rows').innerHTML = levels.map(p => `<div class="row">${[o1, o2, o3].map((o, k) =>
+  `<div><p class="tag">Option ${k + 1} · ${p}% left</p><article class="tile"><div class="vis">${o(p)}</div>${copy}</article></div>`).join('')}</div>`).join('');
+window.done = true;
+</script></body></html>
