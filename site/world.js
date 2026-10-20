@@ -1,7 +1,7 @@
 // The world outside the Mac follows Peek's look. Each look has its own image, and the
 // world crossfades to it when the look changes (hover previews included). A colour fills in while it loads.
-// on a phone only a thin edge of it shows, so it gets a small image
-const small = matchMedia('(max-width: 720px)').matches;
+// phones show no world (styles.css hides it), so they load none of it
+const phone = matchMedia('(max-width: 720px)');
 const THEMES = Object.fromEntries([
   ['neon', '#0E1626'],
   ['obsidian', '#141416'],
@@ -23,7 +23,7 @@ const THEMES = Object.fromEntries([
   ['gummy-lime', '#86C94A'],
   ['gummy-tangerine', '#F08A33'],
   ['gummy-grape', '#4A1780'],
-].map(([id, bg]) => [id, { img: `img/world/${id}${small ? '-s' : ''}.webp`, bg }]));
+].map(([id, bg]) => [id, { img: `img/world/${id}.webp`, bg }]));
 
 const world = document.getElementById('world');
 const [a, b] = world.querySelectorAll('i');
@@ -35,7 +35,7 @@ const load = src => cache[src] ??= loaded.then(() => new Promise(res => { const 
 
 async function show(id) {
   const t = THEMES[id]; want = id;
-  if (!t || id === shown) return;
+  if (!t || id === shown || phone.matches) return;
   document.documentElement.style.setProperty('--world-bg', t.bg);
   world.style.setProperty('--world-bg', t.bg);
   await load(t.img);
@@ -49,7 +49,9 @@ async function show(id) {
 // only the next two looks are fetched ahead (the tour goes in this order), not all nineteen
 const IDS = Object.keys(THEMES);
 const ahead = id => { const i = IDS.indexOf(id); [1, 2].forEach(k => load(THEMES[IDS[(i + k) % IDS.length]].img)); };
-document.addEventListener('nsg:look', e => { show(e.detail); loaded.then(() => setTimeout(() => ahead(e.detail), 1500)); });
+document.addEventListener('nsg:look', e => { show(e.detail); if (!phone.matches) loaded.then(() => setTimeout(() => ahead(e.detail), 1500)); });
+// a window widened past phone size picks the world up
+phone.addEventListener('change', () => { if (!phone.matches && want) show(want); });
 
 // the screen-shaped hole, open at the bottom like the MacBook. The world fades out where the bezel does
 // (the same 46% → 92% as the main page's frame), so the page below melts into white.

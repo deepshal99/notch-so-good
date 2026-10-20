@@ -781,8 +781,6 @@ body.dressing #peek { scale: 2.4; }
 .world i { position: absolute; inset: -3%; background: center / cover no-repeat; opacity: 0; scale: 1.06;
   transition: opacity 0.9s ease-out, scale 2.6s cubic-bezier(0.2, 0.7, 0.2, 1); }
 .world i.on { opacity: 1; scale: 1; }
-@media (max-width: 720px) {
-  /* phones: a thin edge of the world around the top of a rounded screen */
-  :root { --gap: 10px; --bz: 0px; }
-}
+/* phones: no MacBook and no world, just the page */
+@media (max-width: 720px) { :root { --gap: 0px; --bz: 0px; } .world { display: none; } }
 @media (prefers-reduced-motion: reduce) { .world, .world i { transition: opacity 0.3s linear; scale: 1; } }
