@@ -6,7 +6,7 @@
 import Lenis from './vendor/lenis.mjs?v=1792437316';
 import { PeekView } from './peek.js?v=1792437316';
 import { Island, T, C, mmss, shapeStatic, notchPath, PANEL, NOTCH, SESSIONS } from './island.js?v=1792437316';
-import { sound, sfx } from './sound.js?v=1792437316';
+import { sound, sfx, onUnlock } from './sound.js?v=1792437316';
 
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -175,7 +175,7 @@ const script = {
   allow() {
     const a = ASKS[ask % ASKS.length]; ask++;
     usage = Math.max(1, usage - 8);
-    peek.play('pullUp', now());
+    peek.hush = true; peek.play('pullUp', now());
     go('pill', { text: a.title === 'Edit file' ? 'Editing <em>redirect.ts</em>' : `Running <em>${a.code.split(' ').slice(0, 2).join(' ')}</em>`, c: a.agent === 'Codex' ? '#B79CFF' : C.work });
     after(2.2, () => { go('done'); after(12, () => { if (!typing) script.work('Adding a test for the redirect'); }); });
   },
@@ -285,7 +285,7 @@ const peeks = [];                                         // every Peek on the p
 let px = vw / 2, py = vh / 2, lastMove = -9, lastInput = now(), grab = null;
 const hit = (pk, x, y, slack = 1) => { if (!pk.live()) return false; const r = pk.rect(); return ((x - r.cx) / (r.rx * slack)) ** 2 + ((y - r.cy) / (r.ry * slack)) ** 2 < 1; };
 const peekAt = (x, y) => peeks.find(pk => hit(pk, x, y));
-function wake() { lastInput = now(); if (peek.dozing) peek.setDozing(false, now()); }
+function wake() { lastInput = now(); if (peek.dozing) { peek.setDozing(false, now()); if (stagePhase === 'up') sfx.wake(); } }
 let hoverPk = null;
 addEventListener('pointermove', e => {
   px = e.clientX; py = e.clientY; lastMove = now(); wake();
@@ -465,7 +465,7 @@ function panelGrow(dt) {
     p.setState('need', now()); p.nudge(0, 2.4);
     endTimer = setTimeout(() => {
       endIsl.set(T.pill({ text: 'Ready when you are', c: C.done, live: false }), { kind: 'pill', w: 360 });
-      p.setState('done', now()); p.play('twirl', now()); sfx.sparkle();
+      p.setState('done', now()); p.hush = true; p.play('twirl', now()); sfx.sparkle();
       endTimer = setTimeout(() => { endRest(); p.setState('work', now()); }, 3800);
     }, 380);
   } else if (!locked && want < 0.6 && endLocked) {
@@ -911,7 +911,7 @@ function frame(ms) {
   peek.tuckTarget = stagePhase === 'tucking' || stagePhase === 'gone' || (stagePhase === 'arriving' && t - stageAt < 0.22) ? 1 : 0;
   // never asleep while it's being dressed: the customiser is where it's on show
   if (document.body.classList.contains('dressing')) { lastInput = t; if (peek.dozing) peek.setDozing(false, t); }
-  if (!peek.dozing && t - lastInput > 28 && ['work', 'idle'].includes(peek.state) && !peek.trick) peek.setDozing(true, t);
+  if (!peek.dozing && t - lastInput > 28 && ['work', 'idle'].includes(peek.state) && !peek.trick) { peek.setDozing(true, t); if (stagePhase === 'up' && !document.hidden) sfx.doze(); }
   if ((secTick += dt) > 0.25 && current) {
     secTick = 0;
     const el = $('[data-timer]', current.el);
@@ -1005,6 +1005,20 @@ addEventListener('load', layoutParallax);
 }
 
 // for the screenshot tour: jump the usage to a value
+// Peek's tricks make their own soft sounds while that Peek is on screen (unless a click's sound already covers it)
+const voiced = (p, onScreen) => {
+  const play = p.play.bind(p);
+  p.play = (kind, t) => {
+    if (p.hush) p.hush = false;
+    else if (!p.trick && p.dozeFrom == null && onScreen() && !document.hidden) sfx.trick(kind);
+    return play(kind, t);
+  };
+};
+voiced(peek, () => stagePhase === 'up' && scrollY < vh * 1.2);
+voiced(view2.puppet, () => panelVisible);
+// the moment sound becomes possible (the first click or key), Peek says hi
+onUnlock(() => { if (stagePhase === 'up' && !document.hidden) { peek.greet(now()); peek.nudge(0.3, 1.0); sfx.hello(); } });
+
 window.nsgDebug = { usage: v => { usage = v; }, stage: () => ({ stagePhase, box: { ...isl.box }, tgt: { ...isl.tgt }, scene: current?.name }) };
 
 layout();

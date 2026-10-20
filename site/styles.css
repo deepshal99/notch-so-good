@@ -796,3 +796,12 @@ body.dressing #peek { scale: 2.4; }
 #scene { z-index: 1; }
 /* agent icons with some depth: a soft layered shadow (it follows each icon's own shape), and they recede round the back */
 .orb { --back: 0; filter: drop-shadow(0 16px 18px rgba(0,0,0,0.16)) drop-shadow(0 3px 5px rgba(0,0,0,0.12)) brightness(calc(1 - var(--back) * 0.06)); opacity: calc(1 - var(--back) * 0.18); }
+
+/* phones: the approval and answer cards float inside their tiles, rounded all round like the sessions card,
+   instead of butting against the tile's rounded top edge */
+@media (max-width: 720px) {
+  .tile.wide[data-tile=approve] .vis.hangs { margin-top: 0 !important; }
+  [data-tile=approve] .vis.hangs .mn { clip-path: inset(0 round 24px) !important; box-shadow: 0 30px 60px -36px rgba(0,0,0,0.55); }
+  [data-tile=answer] .vis.drop { margin: 0 0 24px !important; }
+  [data-tile=answer] .flo.notchy { border-radius: 24px; clip-path: inset(0 round 24px) !important; box-shadow: 0 30px 60px -36px rgba(0,0,0,0.55); }
+}
