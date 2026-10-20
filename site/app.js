@@ -711,7 +711,8 @@ const approve = { isl: null, view: null, U: 40, visible: false };
 
 // 5. the agents, on a real 3D ring around the Peek that hangs off the card. CSS 3D with
 // perspective, and the browser depth-sorts each icon against Peek, so they truly pass behind it.
-// Hover one and the ring springs round to bring it to the front, and Peek turns to look.
+// It turns slowly on its own. With the pointer over the card it slows to a crawl, and over an icon it
+// eases to a stop, so the icon stays put: it grows a touch, its name shows, and Peek turns to look.
 const orbit = { view: null, visible: false };
 {
   const t = tile('agents'), el = $('#orbit'), ring = $('#ring'), orbs = $$('.orb', ring), name = $('#orbName'), cv = $('#peek5');
@@ -724,11 +725,12 @@ const orbit = { view: null, visible: false };
   const vis = visible(t);
   peeks.push({ view: v, live: () => vis.on, rect: g.rect });
   const N = orbs.length, phi = orbs.map((_, i) => (2 * Math.PI * i) / N);
-  let spin = 0.6, spinV = 0.4, tilt = 0.42, tiltV = 0, tx = 0, ty = 0, hover = null;
+  let spin = 0.6, spinV = 0.32, tilt = 0.42, tx = 0, ty = 0, over = false, hover = null;
+  const grow = orbs.map(() => 1);
   const SLANT = -0.12;
   const label = o => { name.classList.toggle('off', !o); if (o) name.innerHTML = `${o.dataset.name} <span>· ${o.dataset.what}</span>`; };
-  el.addEventListener('pointermove', e => { const r = el.getBoundingClientRect(); tx = ((e.clientX - r.left) / r.width - 0.5) * 2; ty = ((e.clientY - r.top) / r.height - 0.5) * 2; });
-  el.addEventListener('pointerleave', () => { tx = 0; ty = 0; });
+  el.addEventListener('pointermove', e => { const r = el.getBoundingClientRect(); over = true; tx = ((e.clientX - r.left) / r.width - 0.5) * 2; ty = ((e.clientY - r.top) / r.height - 0.5) * 2; });
+  el.addEventListener('pointerleave', () => { over = false; tx = 0; ty = 0; });
   orbs.forEach(o => {
     o.addEventListener('pointerenter', () => { hover = o; label(o); v.puppet.greet(now()); v.puppet.nudge(0.25, 0.6); });
     o.addEventListener('pointerleave', () => { if (hover === o) { hover = null; label(null); } });
@@ -736,16 +738,18 @@ const orbit = { view: null, visible: false };
   });
   orbit.step = dt => {
     if (!vis.on) return;
-    const h = Math.min(dt, 0.03);
-    if (hover) { let d = -phi[orbs.indexOf(hover)] - spin; d -= Math.round(d / (2 * Math.PI)) * 2 * Math.PI; spinV += (322.3 * d - 26.9 * spinV) * h; }
-    else spinV += ((0.32 + tx * 0.5) - spinV) * Math.min(1, dt * 2);
+    const h = Math.min(dt, 0.05), ease = k => 1 - Math.exp(-k * h);
+    // the speed only ever eases down and back: a stop under an icon, a crawl over the card
+    spinV += ((hover ? 0 : over ? 0.1 : 0.32) - spinV) * ease(hover ? 6 : 2.5);
     spin += spinV * h;
-    tiltV += (322.3 * ((0.42 - ty * 0.16) - tilt) - 26.9 * tiltV) * h; tilt += tiltV * h;
-    const slant = SLANT + tx * 0.05;
+    // the pointer leans the ring a little, without any bounce
+    tilt += ((0.42 - ty * 0.05) - tilt) * ease(4);
+    const slant = SLANT + tx * 0.02;
+    orbs.forEach((o, i) => { grow[i] += ((o === hover ? 1.1 : 1) - grow[i]) * ease(14); });
     ring.style.transform = `rotateZ(${slant.toFixed(4)}rad) rotateX(${(-tilt).toFixed(4)}rad) rotateY(${spin.toFixed(4)}rad)`;
     orbs.forEach((o, i) => {
       const a = phi[i];
-      o.style.transform = `rotateY(${a.toFixed(4)}rad) translateZ(${R}px) rotateY(${(-a - spin).toFixed(4)}rad) rotateX(${tilt.toFixed(4)}rad) rotateZ(${(-slant).toFixed(4)}rad) scale(${o === hover ? 1.12 : 1})`;
+      o.style.transform = `rotateY(${a.toFixed(4)}rad) translateZ(${R}px) rotateY(${(-a - spin).toFixed(4)}rad) rotateX(${tilt.toFixed(4)}rad) rotateZ(${(-slant).toFixed(4)}rad) scale(${grow[i].toFixed(4)})`;
     });
     if (hover) {
       const r = hover.getBoundingClientRect(), c = cv.getBoundingClientRect();
