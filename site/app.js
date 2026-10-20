@@ -428,7 +428,9 @@ function panelGrow(dt) {
   panel.style.setProperty('--p', clamp(pShown, 0, 1.03).toFixed(4));
   document.body.classList.toggle('at-end', top < vh * 0.3);
   // locked to the top of the frame: the notch takes over
-  const locked = want > 0.985 && top < 4;
+  // …or as far up as it can go: on a phone the page can end a touch before the panel reaches the top
+  const atEnd = scrollY + innerHeight >= document.documentElement.scrollHeight - 2;
+  const locked = (want > 0.985 && top < 4) || (atEnd && top < vh * 0.2);
   if (locked && !endLocked) {
     endLocked = true; clearTimeout(endTimer);
     const p = view2.puppet;
@@ -712,7 +714,7 @@ const orbit = { view: null, visible: false };
   const g = hangPeek(cv, v, el, { size: 0.16, min: 44, max: 58, at: 0.34 });
   let R = 120;
   // a wide, tilted orbit that fills the visual and runs past the tile's edges, centred a little below Peek
-  orbit.fit = () => { g.fit(); R = el.clientWidth * 0.6; ring.style.setProperty('--cy', (el.clientHeight * 0.38) + 'px'); ring.style.setProperty('--r', R + 'px'); };
+  orbit.fit = () => { g.fit(); R = el.clientWidth * (vw > 720 ? 0.6 : 0.4); ring.style.setProperty('--cy', (el.clientHeight * 0.38) + 'px'); ring.style.setProperty('--r', R + 'px'); };
   orbit.fit(); addEventListener('resize', orbit.fit);
   const vis = visible(t);
   peeks.push({ view: v, live: () => vis.on, rect: g.rect });
@@ -932,7 +934,7 @@ addEventListener('load', layoutParallax);
       else if (dy < 0 && ct > vh * 0.38 && scrollY > 2) y = 0;                 // back into the first fold → the hero snaps back
       else if (dy < 0 && ct < -4 && ct > -vh * 0.55) y = scrollY + ct + ahead; // features → back to the customiser
     }
-    if (y === null && dy > 0 && pt > 3 && pt < vh * 0.8) y = scrollY + pt + ahead; // into the last section
+    if (y === null && dy > 0 && pt > 3 && pt < vh * 0.5) y = scrollY + pt + ahead; // the last section, once it’s over half in view
     if (y === null) return true;
     if (e.cancelable) e.preventDefault();
     go(y);
@@ -943,7 +945,15 @@ addEventListener('load', layoutParallax);
   // down → the second fold settles into view; up → back to the hero once you're well into it
   let idle = 0, lastY = scrollY, dir = 0;
   const settle = () => {
-    if (snapping || vw <= 720) return;
+    if (snapping) return;
+    if (vw <= 720) {
+      // phones only snap the last section: once it's mostly up, it settles flush with the top
+      const pt = panel.getBoundingClientRect().top;
+      if (dir > 0 && pt > 3 && pt < vh * 0.5) go(scrollY + pt);
+      return;
+    }
+    const pt = panel.getBoundingClientRect().top - BZ;
+    if (dir > 0 && pt > 3 && pt < vh * 0.5) return go(scrollY + pt);
     const ct = custom.getBoundingClientRect().top - BZ;
     if (ct <= 12 || ct >= vh - 4) return;                     // in place already, or still fully in the hero
     if (dir > 0 && ct < vh * 0.72) go(scrollY + ct);

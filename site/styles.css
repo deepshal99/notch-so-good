@@ -713,3 +713,59 @@ body.dressing #peek { scale: 2.4; }
 .fine .link { text-decoration-color: rgba(11,11,12,0.3); }
 
 @media (max-width: 720px) { .tdial button { margin-left: 0 !important; } .tdial { gap: 14px !important; } }
+
+/* ============================================================ phones: one column, visual first, nothing side by side */
+.nw { white-space: nowrap; }
+@media (max-width: 720px) {
+  /* hero */
+  .hero { padding: 230px 22px 40px; }
+  .lede { font-size: 16.5px; margin-top: 18px; }
+  .hero .fine { max-width: 300px; margin-left: auto; margin-right: auto; }
+  /* once the hero is gone, its notch is gone too: no sliver left at the top of the screen */
+  .stage #island { transition: translate 0.42s var(--out), opacity 0.3s ease-out; }
+  .stage.gone #island { opacity: 0; }
+
+  /* make it yours */
+  .custom { padding: 250px 20px 24px !important; gap: 24px; }
+
+  /* the bento: every tile is the visual, then the words */
+  .features { padding: 64px 16px 0; }
+  .features > h2 { font-size: 30px; }
+  .bento { gap: 14px; margin-top: 32px; }
+  .tile, .tile.wide { padding: 22px 20px 26px !important; border-radius: 26px; }
+  .tile h3 { font-size: 18px; }
+  .tile p { font-size: 15px; }
+
+  /* approvals stack: the open notch and Peek on top, the copy under them */
+  [data-tile=approve] { display: flex !important; flex-direction: column; gap: 18px; }
+  [data-tile=approve] .vis { order: -1; width: 100%; min-height: 0 !important; }
+  [data-tile=approve] .txt { align-self: stretch; }
+  [data-tile=approve] .try { margin-top: 14px; }
+
+  /* agents: the orbit stays inside the tile */
+  [data-tile=agents] .vis.orbit { min-height: 250px; }
+  .orb { width: 60px; height: 60px; left: -30px; top: -30px; border-radius: 15px; }
+  .orb.gem .tilebg { border-radius: 15px; }
+
+  /* states: Peek and its words centred together */
+  .tile.wide .vis.hangs.states { min-height: 230px; }
+
+  /* the end: content-height, no screen of empty grey */
+  .end { padding-top: 64px; }
+  /* about a screen tall: the notch at the top, the ask in the middle, the footer at the bottom */
+  .panel { min-height: calc(100lvh + 4px) !important; padding: 0 20px 0 !important; }
+  .pin { height: 170px; margin-bottom: 0; }
+  .panel h2 { margin-top: auto; font-size: 32px; }
+  .panel > p:not(.fine) { font-size: 16.5px; }
+  .panel > .fine { margin-bottom: auto; }
+  .fine .sep { display: none; }
+  .fine .link { display: block; margin: 6px auto 0; }
+  .foot { width: 100%; margin-top: 48px; padding: 22px 4px 32px; gap: 14px; }
+  .foot nav { gap: 20px; }
+}
+@media (max-width: 720px) {
+  [data-tile=agents] .vis.orbit { min-height: 220px !important; }
+  [data-tile=agents] .orbname { display: none; }
+  .tile.wide .vis.hangs.states { min-height: 200px !important; }
+}
+@media (max-width: 720px) { h1 { font-size: clamp(30px, 9.6vw, 40px); } }
