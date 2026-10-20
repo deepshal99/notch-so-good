@@ -773,3 +773,16 @@ body.dressing #peek { scale: 2.4; }
 /* phones: no MacBook and no world, just the page */
 @media (max-width: 720px) { :root { --gap: 0px; --bz: 0px; } .world { display: none; } }
 @media (prefers-reduced-motion: reduce) { .world, .world i { transition: opacity 0.3s linear; scale: 1; } }
+
+/* the sound toggle: a speaker in the nav, a word in the footer on phones */
+.snd { appearance: none; border: 0; background: none; padding: 0; width: 30px; height: 30px; margin-right: -8px; border-radius: 999px; display: grid; place-items: center; color: var(--ink-2); cursor: pointer;
+  transition: color 0.2s ease-out, background-color 0.2s ease-out, scale var(--press); }
+.snd svg { width: 18px; height: 18px; }
+.snd:hover { color: var(--ink); background: rgba(11,11,12,0.05); }
+.snd:active { scale: 0.92; }
+.snd .x, .snd.off .w { display: none; }
+.snd.off .x { display: inline; }
+.snd.off { color: var(--ink-3); }
+.snd-foot { appearance: none; border: 0; background: none; padding: 0; font: inherit; color: inherit; cursor: pointer; display: none; }
+.snd-foot:hover { color: var(--ink); }
+@media (max-width: 720px) { .snd-foot { display: inline; } }

@@ -1,0 +1,20 @@
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="../styles.css"><style>
+body{padding:40px;font:15px var(--sans)} h1{font-size:28px;margin:0 0 6px} p{color:var(--ink-3);margin:0 0 24px}
+.grid{display:grid;grid-template-columns:repeat(4,minmax(0,200px));gap:10px}
+button{appearance:none;border:0;border-radius:14px;background:var(--tile);padding:14px 16px;text-align:left;font:600 14px var(--sans);color:var(--ink);cursor:pointer;transition:scale .15s ease-out}
+button:active{scale:.96} button small{display:block;font-weight:500;color:var(--ink-3);margin-top:3px}
+</style></head><body>
+<h1>Peek’s sounds</h1><p>Click any to hear it. Each plays on the page only when the visitor does that thing.</p>
+<div class="grid" id="g"></div>
+<script type="module">
+import { sfx } from '../sound.js';
+const cues = [
+  ['tick', 'Hover a finish, colour or agent'], ['finish', 'Pick a finish (pitched by its place)'], ['colour', 'Pick a colour'], ['boing', 'Poke Peek'],
+  ['popOut', 'Peek pops out of the notch'], ['popIn', 'Peek tucks into the notch'], ['grow', 'Peek grows for the customiser'], ['allow', 'Allow'],
+  ['session', 'Allow for this session'], ['deny', 'Deny'], ['pick', 'Answer or reply'], ['copy', 'Copy the command'],
+  ['sparkle', '“Ready when you are”'], ['chime', 'Back from another tab'],
+];
+document.getElementById('g').innerHTML = cues.map(([k, d]) => `<button data-k="${k}">${k}<small>${d}</small></button>`).join('');
+let n = 0;
+document.getElementById('g').addEventListener('click', e => { const b = e.target.closest('button'); if (b) setTimeout(() => sfx[b.dataset.k](n++ % 6), 30); });
+</script></body></html>

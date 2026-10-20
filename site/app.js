@@ -6,6 +6,7 @@
 import Lenis from './vendor/lenis.mjs?v=1792437316';
 import { PeekView } from './peek.js?v=1792437316';
 import { Island, T, C, mmss, shapeStatic, notchPath, PANEL, NOTCH, SESSIONS } from './island.js?v=1792437316';
+import { sound, sfx } from './sound.js?v=1792437316';
 
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -42,6 +43,8 @@ const lenis = reduced ? null : new Lenis({ lerp: 0.085, wheelMultiplier: 0.9, an
 const stage = $('.stage'), canvas = $('#peek');
 const isl = new Island($('#island'), 1.2);
 const NOTCH_Y = 0.12, UNITS_W = 4.4, UNITS_H = 3.7;
+// Peek's grip tucks this far up behind the notch, so no hairline of page shows between them
+const TUCK = 2;
 const view = new PeekView(canvas, { finish, unitsW: UNITS_W, unitsH: UNITS_H, notchY: NOTCH_Y, state: 'idle' });
 const peek = view.puppet;
 if (!view.ok) { canvas.hidden = true; $('#peekFallback').hidden = false; }
@@ -189,9 +192,9 @@ function wire(el) {
     const b = e.target.closest('[data-act]');
     if (!b || override) return;
     const act = b.dataset.act;
-    if (act === 'allow' || act === 'session') script.allow();
-    else if (act === 'deny') script.deny();
-    else if (act === 'pick') script.pick(b.dataset.v);
+    if (act === 'allow' || act === 'session') { (act === 'allow' ? sfx.allow : sfx.session)(); script.allow(); }
+    else if (act === 'deny') { sfx.deny(); script.deny(); }
+    else if (act === 'pick') { sfx.pick(); script.pick(b.dataset.v); }
   });
   const form = $('[data-reply]', el);
   if (form) {
@@ -199,7 +202,7 @@ function wire(el) {
     input.addEventListener('input', () => { send.disabled = !input.value.trim(); });
     input.addEventListener('focus', () => { typing = true; });
     input.addEventListener('blur', () => { typing = false; });
-    form.addEventListener('submit', e => { e.preventDefault(); const v = input.value.trim(); if (v) script.reply(v); });
+    form.addEventListener('submit', e => { e.preventDefault(); const v = input.value.trim(); if (v) { sfx.pick(); script.reply(v); } });
   }
 }
 
@@ -222,8 +225,17 @@ function swapText(el, text) {
   setTimeout(() => { el.textContent = text; el.classList.remove('out'); el.classList.add('in'); requestAnimationFrame(() => requestAnimationFrame(() => el.classList.remove('in'))); }, 120);
 }
 
+// the sound toggle (nav, and the footer on phones): on by default, remembered
+{
+  const btns = $$('[data-snd]');
+  const show = () => btns.forEach(b => { b.setAttribute('aria-pressed', String(sound.on)); b.classList.toggle('off', !sound.on); const l = $('.lbl', b); if (l) l.textContent = sound.on ? 'Sound on' : 'Sound off'; });
+  btns.forEach(b => b.addEventListener('click', () => { sound.set(!sound.on); show(); }));
+  show();
+}
+
 // copy → the notch confirms it
 $$('[data-copy]').forEach(b => b.addEventListener('click', async () => {
+  sfx.copy();
   try { await navigator.clipboard.writeText(b.dataset.copy); } catch { /* still show it */ }
   b.classList.add('copied');
   const lbl = $('.lbl', b);
@@ -250,7 +262,7 @@ document.addEventListener('visibilitychange', () => {
     document.title = baseTitle; fav.href = favDefault;
     if (awayAt && Date.now() - awayAt > 2500 && main.name !== 'out') {
       override = null;
-      go('done', { welcome: true });
+      go('done', { welcome: true }); sfx.chime();
       after(8, () => script.work('Adding a test for the redirect'));
     }
     awayAt = 0;
@@ -285,7 +297,7 @@ addEventListener('pointerdown', e => {
 });
 addEventListener('pointerup', () => {
   if (!grab) return;
-  if (grab.moved < 6) nextFinish(grab.pk.view.puppet);
+  if (grab.moved < 6) { sfx.boing(); nextFinish(grab.pk.view.puppet); }
   grab = null;
 });
 let lastScroll = scrollY, swingSign = 1;
@@ -325,8 +337,8 @@ peeks.push({ view, live: () => !stage.classList.contains('gone'), rect: () => {
       td.innerHTML = l.none ? `<p class="none">${l.none}</p>`
         : l.tones.map((t, i) => `<button role="radio" data-f="${t[0]}" style="--i:${i};--g:${grad(t[2], t[3])}" aria-label="${t[1]}"><i class="dot"></i><span class="tname">${t[1]}</span></button>`).join('');
       $$('button', td).forEach(b => {
-        b.addEventListener('pointerenter', e => { if (e.pointerType === 'mouse') preview(b.dataset.f); });
-        b.addEventListener('click', () => { touched = true; pick(b.dataset.f); });
+        b.addEventListener('pointerenter', e => { if (e.pointerType === 'mouse') { sfx.tick(); preview(b.dataset.f); } });
+        b.addEventListener('click', () => { touched = true; sfx.colour(l.tones.findIndex(t => t[0] === b.dataset.f)); pick(b.dataset.f); });
       });
       sync(window.nsgLook || finish);
       requestAnimationFrame(() => td.classList.remove('swap'));
@@ -362,8 +374,8 @@ peeks.push({ view, live: () => !stage.classList.contains('gone'), rect: () => {
   const lastTone = {};
   const pickFinish = l => pick(lastTone[l.id] || l.tones[0][0]);
   fs.forEach((s, i) => {
-    s.addEventListener('pointerenter', e => { if (e.pointerType === 'mouse') preview(lastTone[LOOKS[i].id] || LOOKS[i].tones[0][0]); });
-    s.addEventListener('click', () => { touched = true; pickFinish(LOOKS[i]); });
+    s.addEventListener('pointerenter', e => { if (e.pointerType === 'mouse') { sfx.tick(); preview(lastTone[LOOKS[i].id] || LOOKS[i].tones[0][0]); } });
+    s.addEventListener('click', () => { touched = true; sfx.finish(i); pickFinish(LOOKS[i]); });
   });
   looks.addEventListener('pointerleave', endPreview);
   fd.addEventListener('pointerleave', endPreview); td.addEventListener('pointerleave', endPreview);
@@ -377,7 +389,9 @@ peeks.push({ view, live: () => !stage.classList.contains('gone'), rect: () => {
     if (e.key === 'ArrowRight') f = l.tones[(ti + 1) % l.tones.length][0];
     if (e.key === 'ArrowLeft') f = l.tones[(ti + l.tones.length - 1) % l.tones.length][0];
     if (!f) return;
-    e.preventDefault(); touched = true; pick(f);
+    e.preventDefault(); touched = true;
+    const nl = lookOf(f); if (nl !== l) sfx.finish(LOOKS.indexOf(nl)); else sfx.colour(nl.tones.findIndex(t => t[0] === f));
+    pick(f);
   });
   window.nsgRail = { sync: () => apply(finish) };
   // the ring is centred on Peek's body as it hangs, enlarged, under the notch
@@ -440,7 +454,7 @@ function panelGrow(dt) {
     p.setState('need', now()); p.nudge(0, 2.4);
     endTimer = setTimeout(() => {
       endIsl.set(T.pill({ text: 'Ready when you are', c: C.done, live: false }), { kind: 'pill', w: 360 });
-      p.setState('done', now()); p.play('twirl', now());
+      p.setState('done', now()); p.play('twirl', now()); sfx.sparkle();
       endTimer = setTimeout(() => { endRest(); p.setState('work', now()); }, 3800);
     }, 380);
   } else if (!locked && want < 0.6 && endLocked) {
@@ -511,13 +525,13 @@ const head = (c, label, right = '') => `<div class="ttl" style="min-height:0"><i
   const toSent = v => { phase = 'sent'; flo.show(sent(v)); setTimeout(() => { if (phase === 'sent') toAsk(); }, 3200); };
   const sendable = f => { const i = $('input', f), s = $('.send', f); i.addEventListener('input', () => { s.disabled = !i.value.trim(); }); return i; };
   function wireAsk(el) {
-    $$('.opt', el).forEach(o => o.addEventListener('click', () => { o.classList.add('picked'); setTimeout(() => toDone(o.dataset.v), 380); }));
+    $$('.opt', el).forEach(o => o.addEventListener('click', () => { sfx.pick(); o.classList.add('picked'); setTimeout(() => toDone(o.dataset.v), 380); }));
     const f = $('[data-other]', el), i = sendable(f);
     f.addEventListener('submit', e => { e.preventDefault(); if (i.value.trim()) toDone(i.value.trim()); });
   }
   function wireDone(el) {
     const f = $('[data-reply]', el), i = sendable(f);
-    f.addEventListener('submit', e => { e.preventDefault(); if (i.value.trim()) toSent(i.value.trim()); });
+    f.addEventListener('submit', e => { e.preventDefault(); if (i.value.trim()) { sfx.pick(); toSent(i.value.trim()); } });
   }
   toAsk();
   const stageBox = $('.vis', t);
@@ -691,6 +705,7 @@ const approve = { isl: null, view: null, U: 40, visible: false };
       if (!b || busy) return;
       busy = true;
       const act = b.dataset.act;
+      (act === 'deny' ? sfx.deny : act === 'session' ? sfx.session : sfx.allow)();
       b.classList.add('press'); await sleep(140); b.classList.remove('press');
       $$('.b', el).forEach(x => x.classList.remove('go'));
       b.classList.add(act === 'deny' ? 'nod' : 'okd');
@@ -730,9 +745,9 @@ const orbit = { view: null, visible: false };
   el.addEventListener('pointermove', e => { const r = el.getBoundingClientRect(); over = true; tx = ((e.clientX - r.left) / r.width - 0.5) * 2; ty = ((e.clientY - r.top) / r.height - 0.5) * 2; });
   el.addEventListener('pointerleave', () => { over = false; tx = 0; ty = 0; });
   orbs.forEach(o => {
-    o.addEventListener('pointerenter', () => { hover = o; label(o); v.puppet.greet(now()); v.puppet.nudge(0.25, 0.6); });
+    o.addEventListener('pointerenter', () => { sfx.tick(); hover = o; label(o); v.puppet.greet(now()); v.puppet.nudge(0.25, 0.6); });
     o.addEventListener('pointerleave', () => { if (hover === o) { hover = null; label(null); } });
-    o.addEventListener('click', () => v.puppet.play('wave', now()));
+    o.addEventListener('click', () => { sfx.popOut(); v.puppet.play('wave', now()); });
   });
   orbit.step = dt => {
     if (!vis.on) return;
@@ -852,13 +867,15 @@ function frame(ms) {
   // the hero notch's exit and return, one step at a time
   const want = stageWanted();
   if (!want && (stagePhase === 'up' || stagePhase === 'arriving')) { stagePhase = 'folding'; stageAt = t; shownKey = ''; render(); }
-  if (want && (stagePhase === 'folding' || stagePhase === 'tucking' || stagePhase === 'gone')) { stagePhase = 'arriving'; stageAt = t; shownKey = ''; render(); }
-  if (stagePhase === 'folding' && t - stageAt > 0.32) { stagePhase = 'tucking'; stageAt = t; }
+  if (want && (stagePhase === 'folding' || stagePhase === 'tucking' || stagePhase === 'gone')) { if (stagePhase !== 'folding') sfx.popOut(); stagePhase = 'arriving'; stageAt = t; shownKey = ''; render(); }
+  if (stagePhase === 'folding' && t - stageAt > 0.32) { stagePhase = 'tucking'; stageAt = t; sfx.popIn(); }
   if (stagePhase === 'tucking' && t - stageAt > 0.42) { stagePhase = 'gone'; stageAt = t; shownKey = ''; render(); }
   if (stagePhase === 'arriving' && t - stageAt > 0.5) { stagePhase = 'up'; shownKey = ''; render(); }
   const gone = stagePhase === 'gone';
   stage.classList.toggle('gone', gone);
-  document.body.classList.toggle('dressing', dressing() && (stagePhase === 'up' || (stagePhase === 'arriving' && t - stageAt > 0.25)));
+  const dress = dressing() && (stagePhase === 'up' || (stagePhase === 'arriving' && t - stageAt > 0.25));
+  if (dress && !document.body.classList.contains('dressing')) sfx.grow();   // Peek grows for the customiser
+  document.body.classList.toggle('dressing', dress);
   // while you dress it up, Peek lets itself down a little so its arms show; it pulls back up when you leave
   peek.drop += ((document.body.classList.contains('dressing') ? 0.38 : 0) - peek.drop) * Math.min(1, dt * 5);
 
@@ -868,16 +885,18 @@ function frame(ms) {
   if (approve.visible) {
     const dv2 = approve.isl.step(dt, reduced);
     approve.view.puppet.bounceV += clamp(dv2 / approve.U, -30, 30) * 0.3;
-    approve.view.canvas.style.transform = `translate(-50%, ${(approve.isl.box.h - 0.12 * approve.U).toFixed(2)}px)`;
+    approve.view.canvas.style.transform = `translate(-50%, ${(approve.isl.box.h - 0.12 * approve.U - TUCK).toFixed(2)}px)`;
   }
   orbit.step?.(dt);
   // position with `translate` (applied after `scale`), so Peek grows around its grip, not its corner
   // when the notch rises into the frame, tucked Peek rises with it
   // as the notch tucks into the frame, Peek is drawn up after it and out of sight
   stageLift += ((gone ? -2.2 * U : 0) - stageLift) * Math.min(1, dt * 7);
-  canvas.style.translate = `-50% ${(isl.box.h - NOTCH_Y * U + stageLift).toFixed(2)}px`;
+  canvas.style.translate = `-50% ${(isl.box.h - NOTCH_Y * U - TUCK + stageLift).toFixed(2)}px`;
 
   peek.tuckTarget = stagePhase === 'tucking' || stagePhase === 'gone' || (stagePhase === 'arriving' && t - stageAt < 0.22) ? 1 : 0;
+  // never asleep while it's being dressed: the customiser is where it's on show
+  if (document.body.classList.contains('dressing')) { lastInput = t; if (peek.dozing) peek.setDozing(false, t); }
   if (!peek.dozing && t - lastInput > 28 && ['work', 'idle'].includes(peek.state) && !peek.trick) peek.setDozing(true, t);
   if ((secTick += dt) > 0.25 && current) {
     secTick = 0;
@@ -888,7 +907,7 @@ function frame(ms) {
   parallax();
   panelGrow(dt);
   endIsl.step(dt, reduced);
-  canvas2.style.top = (endIsl.box.h - 0.12 * U2) + 'px';
+  canvas2.style.top = (endIsl.box.h - 0.12 * U2 - TUCK) + 'px';
   for (const pk of peeks) {
     if (!pk.live() || !pk.view.ok) continue;
     gazeFor(pk.view, pk.rect(), t);
