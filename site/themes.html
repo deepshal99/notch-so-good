@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Notch So Good — themes (test)</title>
+  <meta name="robots" content="noindex">
+  <meta name="description" content="See what your coding agents are doing from your Mac’s notch, and approve, answer or reply without opening the terminal. Free for Claude Code and Codex.">
+  <meta name="theme-color" content="#FFFFFF">
+    <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Notch So Good">
+  <meta property="og:url" content="https://notch-so-good.vercel.app/">
+  <meta property="og:title" content="Notch So Good — Your coding agents, right in your Mac’s notch">
+  <meta property="og:description" content="See what’s running, what’s finished and what needs you, right in your Mac’s notch. Approve and answer Claude without opening the terminal. Free.">
+  <meta property="og:image" content="https://notch-so-good.vercel.app/og.png?v=2">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Peek, a small glossy character, holding onto a glowing Mac notch on black. Notch So Good.">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Notch So Good — Your coding agents, right in your Mac’s notch">
+  <meta name="twitter:description" content="See what your coding agents are doing from your Mac’s notch. Approve and answer without opening the terminal. Free.">
+  <meta name="twitter:image" content="https://notch-so-good.vercel.app/og.png?v=2">
+  <meta name="color-scheme" content="light">
+  <meta name="apple-mobile-web-app-title" content="Notch So Good">
+  <meta name="twitter:image:alt" content="Peek, a small glossy character, holding onto a glowing Mac notch on black. Notch So Good.">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "Notch So Good",
+    "description": "See what your coding agents are doing from your Mac’s notch, and approve, answer or reply without opening the terminal. Works with Claude Code and Codex.",
+    "url": "https://notch-so-good.vercel.app/",
+    "image": "https://notch-so-good.vercel.app/og.png?v=2",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "macOS 14 or later",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+    "license": "https://opensource.org/licenses/MIT",
+    "downloadUrl": "https://github.com/deepshal99/notch-so-good/releases/latest",
+    "codeRepository": "https://github.com/deepshal99/notch-so-good",
+    "author": { "@type": "Person", "name": "Deepak Maurya", "url": "https://github.com/deepshal99" }
+  }
+  </script>
+  <link rel="icon" id="favicon" href="/favicon.ico" sizes="any">
+  <link rel="icon" href="/icon-192.png" type="image/png" sizes="192x192">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="manifest" href="/site.webmanifest">
+  <link rel="modulepreload" href="app.js?v=1792437316">
+  <link rel="modulepreload" href="peek.js?v=1792437316">
+  <link rel="modulepreload" href="island.js?v=1792437316">
+  <link rel="modulepreload" href="vendor/lenis.mjs?v=1792437316">
+  <link rel="preload" href="fonts/inter-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="vendor/lenis.css">
+  <link rel="stylesheet" href="styles.css?v=1792437316">
+  <link rel="stylesheet" href="themes.css?v=1792437316">
+</head>
+<body class="themed">
+  <!-- the world outside the Mac: it changes with Peek’s look -->
+  <div class="world" id="world" aria-hidden="true"><i></i><i></i></div>
+  <!-- the page is the Mac's screen: a thin bezel around the window that melts into the page below -->
+  <div class="bezel-top" aria-hidden="true"></div><div class="bezel-side l" aria-hidden="true"></div><div class="bezel-side r" aria-hidden="true"></div>
+  <div class="bezel" aria-hidden="true"><i class="tl"></i><i class="tr"></i></div>
+  <div class="veil"></div>
+
+  <!-- The notch, hanging from the bezel like the real one. -->
+  <div class="stage" aria-live="polite">
+    <div id="island"></div>
+    <canvas id="peek" aria-label="Peek, hanging from the notch. Click to change its finish."></canvas>
+    <img class="peek-fallback" id="peekFallback" src="peek.png" alt="" loading="lazy" hidden>
+  </div>
+
+  <!-- the menu bar -->
+  <header class="bar">
+    <a class="brand" href="./"><svg class="mark" viewBox="0 0 32 32" aria-hidden="true"><rect x="3" y="5" width="26" height="23" rx="9"/><rect x="10.5" y="11.5" width="3.4" height="9" rx="1.7" fill="#fff"/><rect x="18.1" y="11.5" width="3.4" height="9" rx="1.7" fill="#fff"/></svg>Notch So Good</a>
+    <nav>
+      <a href="#features">Features</a>
+      <a href="https://github.com/deepshal99/notch-so-good">GitHub</a>
+      <a class="btn dark sm" href="https://github.com/deepshal99/notch-so-good/releases/latest">Download</a>
+    </nav>
+  </header>
+
+  <main>
+    <!-- ───────────────────────── 1. hero -->
+    <section class="hero">
+      <h1 class="reveal" id="heroTitle">Your coding agents,<br>right in your <span class="nw">Mac’s notch.</span></h1>
+      <p class="lede reveal" id="heroLede">See what’s running, what’s finished and what needs you. Approve commands and answer Claude without opening the&nbsp;terminal.</p>
+      <div class="ctas reveal">
+        <a class="btn dark" href="https://github.com/deepshal99/notch-so-good/releases/latest">
+          <svg width="15" height="18" viewBox="0 0 814 1000" aria-hidden="true"><path fill="currentColor" d="M788 341c-6 4-108 62-108 190 0 149 131 202 135 203-1 3-21 72-69 142-43 62-88 124-156 124s-86-40-164-40c-77 0-104 41-167 41s-106-57-156-127C45 791 0 666 0 548 0 358 124 257 246 257c65 0 119 43 160 43 39 0 100-45 174-45 28 0 129 3 196 86zM559 159c31-37 53-88 53-139 0-7-1-14-2-20-50 2-110 34-146 76-28 32-55 83-55 135 0 8 1 16 2 18 3 1 8 1 13 1 45 0 102-30 135-71z"/></svg>
+          Download for macOS
+        </a>
+        <button class="btn light" data-copy="brew install --cask deepshal99/tap/notch-so-good" title="brew install --cask deepshal99/tap/notch-so-good">
+          <span class="ico-swap"><svg class="copy" width="15" height="15" viewBox="0 0 16 16" aria-hidden="true"><rect x="5" y="5" width="8.5" height="8.5" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M3 10.5V4a1.5 1.5 0 0 1 1.5-1.5H10.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg><svg class="tick" width="15" height="15" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.4l3 3 6-6.6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+          <span class="lbl" data-done="Copied">Copy Homebrew command</span>
+        </button>
+      </div>
+      <p class="fine reveal">Free and open source · macOS 14 or later · Claude Code, Codex and Gemini&nbsp;CLI</p>
+    </section>
+
+    <!-- ───────────────────────── 2. make it yours: the hero notch and Peek stay, Peek grows, a ring of looks around it -->
+    <section class="custom" id="custom" aria-label="Make Peek yours">
+      <div class="looks" id="looks">
+        <div class="fdial" id="fdial" role="radiogroup" aria-label="Finish"></div>
+        <div class="tdial" id="tdial" role="radiogroup" aria-label="Colour"></div>
+      </div>
+      <div class="custom-copy">
+        <h2>Make Peek&nbsp;yours.</h2>
+        <p class="custom-sub">Pick a finish and a colour you’ll love seeing all&nbsp;day.</p>
+        <p class="custom-keys"><kbd>↑</kbd><kbd>↓</kbd> finish <i></i> <kbd>←</kbd><kbd>→</kbd> colour</p>
+      </div>
+    </section>
+
+    <!-- ───────────────────────── 2. features -->
+    <section class="features" id="features">
+      <h2>Handle your agents <br>without switching windows.</h2>
+
+      <div class="bento">
+        <!-- 1. approvals: the notch stays open; you answer it -->
+        <article class="tile wide" data-tile="approve">
+          <div class="txt">
+            <h3>Approve commands in one&nbsp;click</h3>
+            <p>See exactly what Claude wants to run or change, then allow or deny it. Nothing runs until you say&nbsp;so.</p>
+            <p class="try">Go on, press&nbsp;one.</p>
+          </div>
+          <div class="vis hangs"><div class="mn"></div><canvas id="peek4" aria-hidden="true"></canvas></div>
+        </article>
+
+        <!-- 2. the agents, on a 3D ring around Peek -->
+        <article class="tile" data-tile="agents">
+          <div class="vis hangs orbit" id="orbit">
+            <div class="scene" id="scene">
+              <div class="ring" id="ring">
+                <i class="track"></i>
+                <button class="orb" data-name="Claude Code" data-what="approve, answer and reply"><img src="img/claude-code.webp" width="72" height="72" loading="lazy" decoding="async" alt="Claude Code"></button>
+                <button class="orb" data-name="Codex" data-what="approve and answer"><img src="img/codex.webp" width="72" height="72" loading="lazy" decoding="async" alt="Codex"></button>
+                <button class="orb gem" data-name="Gemini CLI" data-what="live sessions, in beta"><span class="tilebg"><img src="img/gemini.webp" width="72" height="72" loading="lazy" decoding="async" alt="Gemini CLI"></span></button>
+              </div>
+              <canvas id="peek5" aria-hidden="true"></canvas>
+            </div>
+            <p class="orbname off" id="orbName"></p>
+          </div>
+          <h3>Works with the agents you&nbsp;use</h3>
+          <p>Claude Code and Codex, plus Gemini CLI in beta. In whatever terminal or editor you run&nbsp;them.</p>
+        </article>
+
+        <!-- 3. answer + reply -->
+        <article class="tile" data-tile="answer">
+          <div class="vis hangs drop"><div class="flo notchy" id="answer"></div></div>
+          <h3>Answer without breaking&nbsp;stride</h3>
+          <p>Pick an answer when Claude asks. Send your next message when it’s done, and it keeps&nbsp;going.</p>
+        </article>
+
+        <!-- 4. sessions: a live list that reorders itself -->
+        <article class="tile wide" data-tile="sessions">
+          <div class="txt">
+            <h3>See every session at&nbsp;once</h3>
+            <p>What each agent is doing, which one needs you, and how far along it is. Click one to jump straight to its&nbsp;terminal.</p>
+          </div>
+          <div class="vis"><div class="panel-dark" id="sessPanel"><div class="pd-head"><span class="pd-title">3 sessions · Claude Code and Codex</span><span class="runway pd-run"><i class="ring" style="--p:62"></i><b class="n">62%</b></span></div><div class="rowset" id="sessions"></div><div class="pd-foot"><div><span>5-hour window</span><span><b>62% left</b> · resets in 2h 13m</span></div><i class="meter"><i style="width:62%"></i></i></div></div></div>
+        </article>
+
+        <!-- 5. states: one Peek, a dial of words -->
+        <article class="tile wide" data-tile="states">
+          <div class="txt">
+            <h3>Know at a&nbsp;glance</h3>
+            <p>One look at the notch tells you if your agent is working, waiting on you or&nbsp;done.</p>
+          </div>
+          <div class="vis hangs states">
+            <div class="morph"><canvas id="peek3" aria-hidden="true"></canvas></div>
+            <div class="dial" id="dial" aria-live="polite">
+              <span data-state="work">Working</span><span data-state="think">Thinking</span><span data-state="need">Needs you</span><span data-state="done">Done</span><span data-state="error">Out of usage</span>
+            </div>
+          </div>
+        </article>
+
+        <!-- 6. limits -->
+        <article class="tile" data-tile="limits">
+          <div class="vis limit">
+            <div class="meter" id="meter" style="--p: 100">
+              <svg viewBox="0 0 120 120" aria-hidden="true"><circle class="trk" cx="60" cy="60" r="54"/><circle class="arc" cx="60" cy="60" r="54" pathLength="100"/></svg>
+              <div class="mread"><b><span id="mNum">100</span><i>%</i></b><span class="mcap">left this window</span></div>
+            </div>
+            <p class="mline" id="mLine"><i class="mdot"></i><span class="mtext">Resets in 4h 58m</span></p>
+          </div>
+          <h3>Never get cut off&nbsp;mid-task</h3>
+          <p>See how much usage you have left, and get a heads-up before you run&nbsp;out.</p>
+        </article>
+      </div>
+    </section>
+
+    <!-- ───────────────────────── 3. download + footer -->
+    <section class="end">
+      <div class="panel" id="panel">
+        <div class="pin"><div id="panelNotch"></div><canvas id="peek2" aria-hidden="true"></canvas></div>
+        <h2>Get your focus&nbsp;back.</h2>
+        <p>Stop checking the terminal. Your notch tells you when Claude needs&nbsp;you.</p>
+        <div class="ctas">
+          <a class="btn dark" href="https://github.com/deepshal99/notch-so-good/releases/latest">
+            <svg width="15" height="18" viewBox="0 0 814 1000" aria-hidden="true"><path fill="currentColor" d="M788 341c-6 4-108 62-108 190 0 149 131 202 135 203-1 3-21 72-69 142-43 62-88 124-156 124s-86-40-164-40c-77 0-104 41-167 41s-106-57-156-127C45 791 0 666 0 548 0 358 124 257 246 257c65 0 119 43 160 43 39 0 100-45 174-45 28 0 129 3 196 86zM559 159c31-37 53-88 53-139 0-7-1-14-2-20-50 2-110 34-146 76-28 32-55 83-55 135 0 8 1 16 2 18 3 1 8 1 13 1 45 0 102-30 135-71z"/></svg>
+            Download for macOS
+          </a>
+          <button class="btn light" data-copy="brew install --cask deepshal99/tap/notch-so-good" title="brew install --cask deepshal99/tap/notch-so-good">
+            <span class="ico-swap"><svg class="copy" width="15" height="15" viewBox="0 0 16 16" aria-hidden="true"><rect x="5" y="5" width="8.5" height="8.5" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M3 10.5V4a1.5 1.5 0 0 1 1.5-1.5H10.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg><svg class="tick" width="15" height="15" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.4l3 3 6-6.6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+            <span class="lbl" data-done="Copied">Copy Homebrew command</span>
+          </button>
+        </div>
+        <p class="fine">Free and open source · macOS 14 or later<span class="sep"> · </span><button class="link" data-copy="npx notch-so-good">or install with npx</button></p>
+        <footer class="foot">
+        <span class="left"><svg class="mark" viewBox="0 0 32 32" aria-hidden="true"><rect x="3" y="5" width="26" height="23" rx="9"/><rect x="10.5" y="11.5" width="3.4" height="9" rx="1.7" fill="#fff"/><rect x="18.1" y="11.5" width="3.4" height="9" rx="1.7" fill="#fff"/></svg><span>Made by <a href="https://github.com/deepshal99">deepshal99</a>. MIT licensed.</span></span>
+        <nav><a href="https://github.com/deepshal99/notch-so-good">GitHub</a><a href="https://github.com/deepshal99/notch-so-good/releases">Releases</a><a href="https://github.com/deepshal99/notch-so-good/issues">Feedback</a></nav>
+      </footer>
+      </div>
+
+    </section>
+  </main>
+
+  <script type="module" src="themes.js?v=1792437316"></script>
+  <script type="module" src="app.js?v=1792437316"></script>
+</body>
+</html>

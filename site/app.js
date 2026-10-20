@@ -16,7 +16,7 @@ const now = () => performance.now() / 1000;
 
 // Three finishes, cycled by clicking Peek. Neon first: its edge glows in the colour of what's happening.
 // Peek's looks, as the app offers them: five finishes, most in a few colours (CharacterFinish.tones).
-const LOOKS = [
+const ALL_LOOKS = [
   { id: 'neon', name: 'Neon', none: 'Glows blue while your agent works, and orange when it needs you.', tones: [['neon', 'Neon', '#0d0d12', '#6FB6FF']] },
   { id: 'obsidian', name: 'Obsidian', tones: [['obsidian', 'Black', '#060607'], ['obsidian-midnight', 'Midnight', '#0b1d4a'], ['obsidian-plum', 'Plum', '#33103a'], ['obsidian-forest', 'Forest', '#0a2c1f']] },
   { id: 'porcelain', name: 'Porcelain', tones: [['porcelain', 'White', '#ECEAE5'], ['porcelain-sage', 'Sage', '#B9CDB9'], ['porcelain-blush', 'Blush', '#F2CFCA'], ['porcelain-sky', 'Sky', '#C3D5EC']] },
@@ -24,11 +24,16 @@ const LOOKS = [
   { id: 'balloon', name: 'Balloon', tones: [['balloon', 'Hot pink', '#FF2985'], ['balloon-sky', 'Sky', '#4294FF'], ['balloon-lemon', 'Lemon', '#FFC733'], ['balloon-lilac', 'Lilac', '#9961FF']] },
   { id: 'gummy', name: 'Gummy', tones: [['gummy', 'Cherry', '#EB0D24'], ['gummy-lime', 'Lime', '#61D10F'], ['gummy-tangerine', 'Tangerine', '#FF6B05'], ['gummy-grape', 'Grape', '#6B1AB3']] },
 ];
+// a page can offer only some of them: <body data-looks="gold,gold-rose,…">
+const ONLY = document.body.dataset.looks?.split(',');
+const LOOKS = ONLY ? ALL_LOOKS.map(l => ({ ...l, tones: l.tones.filter(t => ONLY.includes(t[0])) })).filter(l => l.tones.length) : ALL_LOOKS;
 const FINISHES = LOOKS.flatMap(l => l.tones.map(t => t[0]));
 const lookOf = id => LOOKS.find(l => l.tones.some(t => t[0] === id)) || LOOKS[0];
 const FINISH_NAMES = Object.fromEntries(LOOKS.flatMap(l => l.tones.map(t => [t[0], l.tones.length > 1 && t[1] !== l.name ? `${l.name} · ${t[1]}` : l.name])));
 let finish = localStorage.getItem('nsg-finish-v3');
-if (!FINISHES.includes(finish)) finish = 'neon';
+if (!FINISHES.includes(finish)) finish = FINISHES[0];
+// whoever wants to follow the look (a themed page, say) listens for this
+const announce = f => document.dispatchEvent(new CustomEvent('nsg:look', { detail: f }));
 
 // smooth, inertial scrolling
 const lenis = reduced ? null : new Lenis({ lerp: 0.085, wheelMultiplier: 0.9, anchors: { offset: -40 } });
@@ -338,7 +343,7 @@ peeks.push({ view, live: () => !stage.classList.contains('gone'), rect: () => {
     $$('button', td).forEach((b, i) => { b.classList.toggle('on', i === ti); b.setAttribute('aria-checked', String(i === ti)); b.style.opacity = i === ti ? 1 : Math.max(0.2, 0.75 - Math.abs(i - ti) * 0.18); });
   };
   const apply = f => {
-    window.nsgLook = f;
+    window.nsgLook = f; announce(f);
     peeks.forEach(pk => { pk.view.finish = f; });
     const l = lookOf(f);
     if (l.id !== shownLook) buildTones(l); else sync(f);
@@ -351,9 +356,9 @@ peeks.push({ view, live: () => !stage.classList.contains('gone'), rect: () => {
     if (previewing === f) return;
     previewing = f;
     peeks.forEach(pk => { pk.view.finish = f; });
-    window.nsgLook = f; shownKey = ''; render();
+    window.nsgLook = f; announce(f); shownKey = ''; render();
   };
-  const endPreview = () => { if (!previewing) return; previewing = null; peeks.forEach(pk => { pk.view.finish = finish; }); window.nsgLook = finish; shownKey = ''; render(); };
+  const endPreview = () => { if (!previewing) return; previewing = null; peeks.forEach(pk => { pk.view.finish = finish; }); window.nsgLook = finish; announce(finish); shownKey = ''; render(); };
   const pick = f => { previewing = null; finish = f; localStorage.setItem('nsg-finish-v3', f); apply(f); };
   // a finish keeps the colour you last had on it
   const lastTone = {};
