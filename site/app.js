@@ -90,8 +90,20 @@ function show(name, data = {}) {
   current = { name, data, el, S, at: now() };
   if (S.kind === 'card') $('.b.w', el)?.classList.add('go');
   paintUsage();
-  if (peek.state !== S.peek || name === 'done') peek.setState(S.peek, now());
+  if (peek.state !== S.peek || name === 'done') { heroSound(peek.state, S.peek, name); peek.setState(S.peek, now()); }
   wire(el);
+}
+
+// The hero notch's own moments get soft sounds, while it's on screen and the tab is in front:
+// Peek climbing out when Claude needs you, tucking back in, wilting when usage runs out, and reviving.
+const OUT = ['need', 'warn'];
+function heroSound(was, to, scene) {
+  if (stagePhase !== 'up' || document.hidden || scrollY > vh * 0.6) return;
+  if (to === 'error') sfx.wilt();
+  else if (was === 'error') sfx.revive();
+  else if (OUT.includes(to) && !OUT.includes(was)) sfx.climb();
+  else if (OUT.includes(was) && !OUT.includes(to)) to === 'done' ? sfx.done() : sfx.settle();
+  else if (to === 'done' && scene === 'done') sfx.done();
 }
 
 // ------------------------------------------------------------------ usage: drains fast while agents work, runs out, comes back
@@ -338,7 +350,7 @@ peeks.push({ view, live: () => !stage.classList.contains('gone'), rect: () => {
         : l.tones.map((t, i) => `<button role="radio" data-f="${t[0]}" style="--i:${i};--g:${grad(t[2], t[3])}" aria-label="${t[1]}"><i class="dot"></i><span class="tname">${t[1]}</span></button>`).join('');
       $$('button', td).forEach(b => {
         b.addEventListener('pointerenter', e => { if (e.pointerType === 'mouse') { sfx.tick(); preview(b.dataset.f); } });
-        b.addEventListener('click', () => { touched = true; sfx.colour(l.tones.findIndex(t => t[0] === b.dataset.f)); pick(b.dataset.f); });
+        b.addEventListener('click', () => { touched = true; sfx.material(l.id, l.tones.findIndex(t => t[0] === b.dataset.f), true); pick(b.dataset.f); });
       });
       sync(window.nsgLook || finish);
       requestAnimationFrame(() => td.classList.remove('swap'));
@@ -375,7 +387,7 @@ peeks.push({ view, live: () => !stage.classList.contains('gone'), rect: () => {
   const pickFinish = l => pick(lastTone[l.id] || l.tones[0][0]);
   fs.forEach((s, i) => {
     s.addEventListener('pointerenter', e => { if (e.pointerType === 'mouse') { sfx.tick(); preview(lastTone[LOOKS[i].id] || LOOKS[i].tones[0][0]); } });
-    s.addEventListener('click', () => { touched = true; sfx.finish(i); pickFinish(LOOKS[i]); });
+    s.addEventListener('click', () => { touched = true; sfx.material(LOOKS[i].id, i); pickFinish(LOOKS[i]); });
   });
   looks.addEventListener('pointerleave', endPreview);
   fd.addEventListener('pointerleave', endPreview); td.addEventListener('pointerleave', endPreview);
@@ -390,7 +402,7 @@ peeks.push({ view, live: () => !stage.classList.contains('gone'), rect: () => {
     if (e.key === 'ArrowLeft') f = l.tones[(ti + l.tones.length - 1) % l.tones.length][0];
     if (!f) return;
     e.preventDefault(); touched = true;
-    const nl = lookOf(f); if (nl !== l) sfx.finish(LOOKS.indexOf(nl)); else sfx.colour(nl.tones.findIndex(t => t[0] === f));
+    const nl = lookOf(f); if (nl !== l) sfx.material(nl.id, LOOKS.indexOf(nl)); else sfx.material(nl.id, nl.tones.findIndex(t => t[0] === f), true);
     pick(f);
   });
   window.nsgRail = { sync: () => apply(finish) };

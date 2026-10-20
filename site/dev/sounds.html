@@ -13,8 +13,11 @@ const cues = [
   ['popOut', 'Peek pops out of the notch'], ['popIn', 'Peek tucks into the notch'], ['grow', 'Peek grows for the customiser'], ['allow', 'Allow'],
   ['session', 'Allow for this session'], ['deny', 'Deny'], ['pick', 'Answer or reply'], ['copy', 'Copy the command'],
   ['sparkle', '“Ready when you are”'], ['chime', 'Back from another tab'],
+  ['climb', 'Hero: Peek climbs out (soft)'], ['settle', 'Hero: Peek tucks back in (soft)'], ['wilt', 'Hero: out of usage (soft)'], ['revive', 'Hero: usage is back (soft)'], ['done', 'Hero: a task is done (soft)'],
 ];
+const LOOKS = ['neon', 'obsidian', 'porcelain', 'gold', 'balloon', 'gummy'];
+for (const l of LOOKS) cues.push([`material:${l}`, `Customiser: ${l} (finish)`], [`material:${l}:light`, `Customiser: ${l} colour`]);
 document.getElementById('g').innerHTML = cues.map(([k, d]) => `<button data-k="${k}">${k}<small>${d}</small></button>`).join('');
 let n = 0;
-document.getElementById('g').addEventListener('click', e => { const b = e.target.closest('button'); if (b) setTimeout(() => sfx[b.dataset.k](n++ % 6), 30); });
+document.getElementById('g').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; const [k, l, light] = b.dataset.k.split(':'); setTimeout(() => (l ? sfx.material(l, n++ % 4, !!light) : sfx[k](n++ % 6)), 30); });
 </script></body></html>
