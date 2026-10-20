@@ -238,18 +238,16 @@ $$('[data-copy]').forEach(b => b.addEventListener('click', async () => {
 
 // ------------------------------------------------------------------ switch tabs, we'll call you back
 const baseTitle = document.title;
-const icon = away => 'data:image/svg+xml,' + encodeURIComponent(
-  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect x="3" y="5" width="26" height="23" rx="9" fill="#000"/><rect x="10.5" y="11.5" width="3.4" height="9" rx="1.7" fill="#fff"/><rect x="18.1" y="11.5" width="3.4" height="9" rx="1.7" fill="#fff"/>${away ? '<circle cx="26" cy="7" r="5.5" fill="#FFA54D" stroke="#fff" stroke-width="1.5"/>' : ''}</svg>`);
 const fav = $('#favicon');
 const favDefault = fav.href;
 let awayAt = 0, awayTimer = 0;
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
     awayAt = Date.now();
-    awayTimer = setTimeout(() => { document.title = '● Claude needs you'; fav.href = icon(true); }, 1200);
+    awayTimer = setTimeout(() => { document.title = '● Claude needs you'; fav.href = '/favicon-away.png'; }, 1200);
   } else {
     clearTimeout(awayTimer);
-    document.title = baseTitle; const favDefault = fav.href;
+    document.title = baseTitle; fav.href = favDefault;
     if (awayAt && Date.now() - awayAt > 2500 && main.name !== 'out') {
       override = null;
       go('done', { welcome: true });

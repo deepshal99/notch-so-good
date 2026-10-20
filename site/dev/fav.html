@@ -1,0 +1,15 @@
+<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:transparent}canvas{display:block}</style></head><body>
+<canvas id="c"></canvas>
+<script type="module">
+// Peek alone on transparent, for icons. ?f=<finish>&s=<state>&u=<px per unit>
+import { PeekView } from '../peek.js';
+const q = new URLSearchParams(location.search), U = +(q.get('u') || 240);
+const c = document.getElementById('c');
+const v = new PeekView(c, { finish: q.get('f') || 'gummy', unitsW: 3.4, unitsH: 3.4, notchY: 0.12, state: q.get('s') || 'work' });
+v.resize(3.4 * U, 3.4 * U, 1);
+const t0 = performance.now() / 1000; v.puppet.since = t0 - 3.25; v.puppet.drop = -0.08;
+// looking straight out, so the face sits centred
+v.gazeTarget = [0, 0]; v.gazeMix = 1; v.lockGaze = true;
+const tick = () => { v.draw(t0); if (!v.shown) return requestAnimationFrame(tick); window.done = true; };
+tick();
+</script></body></html>

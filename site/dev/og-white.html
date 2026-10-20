@@ -1,0 +1,57 @@
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="../styles.css"><style>
+/* share images on white with the real Peek. ?l=hang|split|card  &f=<finish>  &s=<state>  &u=<size> */
+html,body{margin:0;width:1200px;height:630px;overflow:hidden;background:#fff}
+body{position:relative}
+.notch{position:absolute;background:#000}
+canvas{position:absolute;transform:translateX(-50%)}
+h1{position:absolute;margin:0;font-weight:700;letter-spacing:-0.045em;line-height:1.02;color:#0B0B0C}
+.brandline{display:flex;align-items:center;gap:11px;font:600 22px var(--sans);letter-spacing:-0.02em;color:#0B0B0C;position:absolute}
+.brandline svg{width:26px;height:26px}
+.sub{position:absolute;margin:0;font:500 24px/1.35 var(--sans);letter-spacing:-0.015em;color:#6B6B70}
+#card{position:absolute;top:0;left:50%;transform:translateX(-50%)}
+</style></head><body>
+<script type="module">
+import { PeekView } from '../peek.js';
+import { Island, T, notchPath } from '../island.js';
+const q = new URLSearchParams(location.search), L = q.get('l') || 'hang', f = q.get('f') || 'gummy', st = q.get('s') || 'work';
+const MARK = `<svg viewBox="0 0 32 32"><rect x="3" y="5" width="26" height="23" rx="9" fill="#0B0B0C"/><rect x="10.5" y="11.5" width="3.4" height="9" rx="1.7" fill="#fff"/><rect x="18.1" y="11.5" width="3.4" height="9" rx="1.7" fill="#fff"/></svg>Notch So Good`;
+const add = (html) => { const d = document.createElement('div'); d.innerHTML = html; const el = d.firstElementChild; document.body.append(el); return el; };
+// a resting notch, shaped like the app's: small concave fillets at the top, a round bottom
+const notch = (cx, w, h) => { const n = add('<div class="notch"></div>'); Object.assign(n.style, { left: cx - w / 2 + 'px', top: 0, width: w + 'px', height: h + 'px' }); n.style.clipPath = notchPath(w, h, 0.17 * h, h / 2); return h; };
+// Peek hanging from y, centred on cx, U px per unit
+const peek = (cx, y, U, drop = -0.08) => {
+  const c = add('<canvas></canvas>');
+  const v = new PeekView(c, { finish: f, unitsW: 4.4, unitsH: 3.6, notchY: 0.12, state: st });
+  v.resize(4.4 * U, 3.6 * U, 2); c.style.left = cx + 'px'; c.style.top = (y - 0.12 * U) + 'px';
+  const t0 = performance.now() / 1000; v.puppet.since = t0 - +(q.get('t') || 3.25); v.puppet.drop = drop;
+  return () => { v.draw(t0); return !!v.shown; };
+};
+const text = (cls, html, css) => { const e = add(`<${cls === 'h1' ? 'h1' : 'p'} class="${cls === 'h1' ? '' : cls}">${html}</${cls === 'h1' ? 'h1' : 'p'}>`); Object.assign(e.style, css); return e; };
+let draw;
+if (L === 'hang') {
+  // the notch at the top, Peek hanging from it, the line under it
+  const h = notch(600, 300, 64);
+  draw = peek(600, h, +(q.get('u') || 116));
+  text('h1', 'Your coding agents,<br>right in your Mac’s notch.', { left: 0, right: 0, top: '352px', textAlign: 'center', fontSize: '58px' });
+  const m = add(`<div class="brandline">${MARK}</div>`); Object.assign(m.style, { left: 0, right: 0, bottom: '42px', justifyContent: 'center' });
+} else if (L === 'split') {
+  // words on the left, the notch and a big Peek on the right
+  const h = notch(868, 330, 70);
+  draw = peek(868, h, +(q.get('u') || 150));
+  const m = add(`<div class="brandline">${MARK}</div>`); Object.assign(m.style, { left: '84px', top: '76px' });
+  text('h1', 'Your coding agents,<br>right in your<br>Mac’s notch.', { left: '84px', top: '196px', fontSize: '64px' });
+  text('sub', 'Free for Claude Code and Codex.', { left: '86px', top: '430px' });
+} else {
+  // the product: a real approval card in the notch, Peek hanging off it
+  const el = add('<div id="card"></div>');
+  const isl = new Island(el, 0.98);
+  isl.set(T.approve({ agent: 'Claude Code', title: 'Run command', task: 'Fix the login redirect', proj: 'api', code: 'npm test -- auth' }), { kind: 'card' });
+  isl.snap();
+  draw = peek(600, isl.box.h, +(q.get('u') || 92));
+  text('h1', 'Your coding agents, right in your Mac’s notch.', { left: 0, right: 0, top: (isl.box.h + 236) + 'px', textAlign: 'center', fontSize: '44px' });
+  const m = add(`<div class="brandline">${MARK}</div>`); Object.assign(m.style, { left: 0, right: 0, bottom: '40px', justifyContent: 'center' });
+}
+// render until the shader has compiled, then hold the pose
+const tick = () => { if (!draw()) return requestAnimationFrame(tick); window.done = true; };
+document.fonts.ready.then(tick);
+</script></body></html>
