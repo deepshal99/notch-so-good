@@ -6,7 +6,7 @@
 import Lenis from './vendor/lenis.mjs?v=1792437316';
 import { PeekView } from './peek.js?v=1792437316';
 import { Island, T, C, mmss, shapeStatic, notchPath, PANEL, NOTCH, SESSIONS } from './island.js?v=1792437316';
-import { sound, sfx, onUnlock } from './sound.js?v=1792437316';
+import { sound, sfx, onUnlock, onAudio, audioReady } from './sound.js?v=1792437316';
 
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -1016,6 +1016,16 @@ const voiced = (p, onScreen) => {
 };
 voiced(peek, () => stagePhase === 'up' && scrollY < vh * 1.2);
 voiced(view2.puppet, () => panelVisible);
+// Until the first click, tap or key the page can't make a sound (browsers' rule): a small pill says so,
+// once the hero has settled, and leaves the moment it happens. Never shown if sound is off.
+{
+  const hint = $('#soundHint');
+  if (hint && sound.on && !audioReady()) {
+    $('span', hint).textContent = matchMedia('(hover: none)').matches ? 'Tap for sound' : 'Click for sound';
+    const t = setTimeout(() => { if (!audioReady() && sound.on) { hint.hidden = false; requestAnimationFrame(() => requestAnimationFrame(() => hint.classList.add('in'))); } }, 2000);
+    onAudio(() => { clearTimeout(t); hint.classList.remove('in'); hint.classList.add('gone'); setTimeout(() => hint.remove(), 450); });
+  } else hint?.remove();
+}
 // the moment sound becomes possible (the first click or key), Peek says hi
 onUnlock(() => { if (stagePhase === 'up' && !document.hidden) { peek.greet(now()); peek.nudge(0.3, 1.0); sfx.hello(); } });
 

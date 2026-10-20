@@ -5,8 +5,10 @@
 const KEY = 'nsg-sound';
 let ctx = null, bus = null, level = 1;   // level: the page's own moments play quieter than the visitor's
 let voiced = 0;                          // when a voice last started, so the first-click hello never doubles up
-const unlocked = [];
-export const onUnlock = fn => unlocked.push(fn);
+const unlocked = [], ready = [];
+export const onUnlock = fn => unlocked.push(fn);   // after the first gesture, if it made no sound of its own
+export const onAudio = fn => ready.push(fn);       // the moment audio becomes possible
+export const audioReady = () => !!ctx;
 export const sound = {
   on: localStorage.getItem(KEY) !== 'off',
   set(on) { this.on = on; localStorage.setItem(KEY, on ? 'on' : 'off'); if (on) { unlock(); this.tap(); } },
@@ -29,6 +31,7 @@ function unlock() {
   lp.connect(room); room.connect(fb); fb.connect(room); room.connect(wet); wet.connect(master);
   // iOS starts a new context suspended: resume it within the same gesture
   if (ctx.state !== 'running') ctx.resume();
+  ready.forEach(fn => fn());
   // the moment sound is possible, say hello, unless this very click already made a sound
   const at = performance.now();
   const hi = () => { if (voiced < at) unlocked.forEach(fn => fn()); };
