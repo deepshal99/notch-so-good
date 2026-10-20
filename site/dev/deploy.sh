@@ -1,5 +1,5 @@
 #!/bin/bash
-# Deploy the landing page to Vercel (deepshal99s-projects/notch-so-good → notch-so-good.vercel.app).
+# Deploy the landing page to Vercel (deepshal99s-projects/notch-so-good → notchsogood.com).
 # Deploys a clean copy from outside the git repo: deploying from inside it attaches the latest
 # commit, and Vercel blocks the deploy when that commit's author isn't a team member.
 set -euo pipefail

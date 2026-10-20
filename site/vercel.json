@@ -48,5 +48,18 @@
         }
       ]
     }
+  ],
+  "redirects": [
+    {
+      "source": "/:path*",
+      "has": [
+        {
+          "type": "host",
+          "value": "notch-so-good.vercel.app"
+        }
+      ],
+      "destination": "https://notchsogood.com/:path*",
+      "permanent": true
+    }
   ]
 }

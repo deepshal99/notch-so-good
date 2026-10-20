@@ -2,6 +2,8 @@
 
 **The world's smallest coworker lives in your Mac's notch.**
 
+**[notchsogood.com](https://notchsogood.com)**
+
 Meet **Peek**. Peek hangs off your MacBook's notch and watches Claude Code and Codex so you don't have to. The more a session needs you, the further Peek climbs out.
 
 ```

@@ -5,7 +5,7 @@ cask "notch-so-good" do
   url "https://github.com/deepshal99/notch-so-good/releases/download/v#{version}/NotchSoGood-#{version}.zip"
   name "Notch So Good"
   desc "Tiny 3D coworker in your notch that watches Claude Code and Codex CLI sessions"
-  homepage "https://github.com/deepshal99/notch-so-good"
+  homepage "https://notchsogood.com"
 
   livecheck do
     url :url
