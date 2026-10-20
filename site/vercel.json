@@ -51,14 +51,25 @@
   ],
   "redirects": [
     {
-      "source": "/:path*",
+      "source": "/",
       "has": [
         {
           "type": "host",
           "value": "notch-so-good.vercel.app"
         }
       ],
-      "destination": "https://notchsogood.com/:path*",
+      "destination": "https://notchsogood.com/",
+      "permanent": true
+    },
+    {
+      "source": "/:path+",
+      "has": [
+        {
+          "type": "host",
+          "value": "notch-so-good.vercel.app"
+        }
+      ],
+      "destination": "https://notchsogood.com/:path+",
       "permanent": true
     }
   ]
