@@ -8,6 +8,6 @@ OUT=$(mktemp -d)
 rsync -a --exclude dev --exclude .env.local ./ "$OUT/"
 # every deploy gets fresh asset URLs, so no browser runs yesterday's scripts against today's page
 V=$(date +%s)
-sed -i '' -E "s#(styles\.css|app\.js|peek\.js|island\.js|lenis\.mjs)\?v=[0-9]+#\1?v=$V#g" "$OUT/index.html"
+sed -i '' -E "s#(styles\.css|app\.js|peek\.js|island\.js|lenis\.mjs|world\.js)\?v=[0-9]+#\1?v=$V#g" "$OUT/index.html"
 sed -i '' -E "s#(peek\.js|island\.js|lenis\.mjs)\?v=[0-9]+#\1?v=$V#g" "$OUT/app.js"
 cd "$OUT" && npx --yes vercel@latest deploy --prod --yes

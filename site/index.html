@@ -48,13 +48,15 @@
   <link rel="modulepreload" href="peek.js?v=1792437316">
   <link rel="modulepreload" href="island.js?v=1792437316">
   <link rel="modulepreload" href="vendor/lenis.mjs?v=1792437316">
+  <link rel="modulepreload" href="world.js?v=1792437316">
   <link rel="preload" href="fonts/inter-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="vendor/lenis.css">
   <link rel="stylesheet" href="styles.css?v=1792437316">
 </head>
 <body>
+  <!-- the world outside the Mac: it takes on Peek’s look (world.js) -->
+  <div class="world" id="world" aria-hidden="true"><i></i><i></i></div>
   <!-- the page is the Mac's screen: a thin bezel around the window that melts into the page below -->
-  <div class="bezel-top" aria-hidden="true"></div><div class="bezel-side l" aria-hidden="true"></div><div class="bezel-side r" aria-hidden="true"></div>
   <div class="bezel" aria-hidden="true"><i class="tl"></i><i class="tr"></i></div>
   <div class="veil"></div>
 
@@ -210,6 +212,7 @@
     </section>
   </main>
 
+  <script type="module" src="world.js?v=1792437316"></script>
   <script type="module" src="app.js?v=1792437316"></script>
 </body>
 </html>
