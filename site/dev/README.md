@@ -10,7 +10,7 @@ commit, scripts and styles minified) and serves `dist/`.
 
 | Push to | Goes live at | Notes |
 | --- | --- | --- |
-| `staging` | https://staging.notchsogood.com | For testing. Not indexed by search engines. |
+| `staging` | https://staging.notchsogood.com | For testing. Behind Vercel login (only the team can open it), never indexed. |
 | `main` | https://notchsogood.com | Production. `release.sh` pushes `main` too, so a release ships the site on it. |
 | anything else | nowhere | Vercel skips the build (shown as Canceled). |
 
