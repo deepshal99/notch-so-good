@@ -7,8 +7,10 @@ let ctx = null, bus = null, level = 1;   // level: the page's own moments play q
 let voiced = 0;                          // when a voice last started, so the first-click hello never doubles up
 const unlocked = [], ready = [];
 export const onUnlock = fn => unlocked.push(fn);   // after the first gesture, if it made no sound of its own
-export const onAudio = fn => ready.push(fn);       // the moment audio becomes possible
-export const audioReady = () => !!ctx;
+export const onAudio = fn => ready.push(fn);       // the moment audio is actually running (the browser allowed it)
+export const audioReady = () => !!ctx && ctx.state === 'running';
+let announced = false;
+const announce = () => { if (announced || !ctx || ctx.state !== 'running') return; announced = true; ready.forEach(fn => fn()); };
 export const sound = {
   on: localStorage.getItem(KEY) !== 'off',
   set(on) { this.on = on; localStorage.setItem(KEY, on ? 'on' : 'off'); if (on) { unlock(); this.tap(); } },
@@ -31,13 +33,16 @@ function unlock() {
   lp.connect(room); room.connect(fb); fb.connect(room); room.connect(wet); wet.connect(master);
   // iOS starts a new context suspended: resume it within the same gesture
   if (ctx.state !== 'running') ctx.resume();
-  ready.forEach(fn => fn());
+  // a context made on a gesture that doesn't count (a scroll's touchstart) stays suspended until one that does
+  ctx.addEventListener('statechange', announce); announce();
   // the moment sound is possible, say hello, unless this very click already made a sound
   const at = performance.now();
   const hi = () => { if (voiced < at) unlocked.forEach(fn => fn()); };
   setTimeout(() => { if (ctx.state === 'running') hi(); else ctx.addEventListener('statechange', () => { if (ctx.state === 'running') hi(); }, { once: true }); }, 90);
 }
-for (const ev of ['pointerdown', 'pointerup', 'click', 'keydown', 'touchstart', 'touchend']) addEventListener(ev, () => { if (sound.on) unlock(); }, { passive: true, capture: true });
+// every gesture that can count: Safari and Firefox also allow sound from a wheel or trackpad scroll (Chrome refuses
+// those quietly, so trying costs nothing), and iOS only counts the end of a touch
+for (const ev of ['pointerdown', 'pointerup', 'click', 'keydown', 'touchstart', 'touchend', 'wheel']) addEventListener(ev, () => { if (sound.on) unlock(); }, { passive: true, capture: true });
 
 // one voice: a pitch that glides (that's what makes it springy) under a quick attack and an exponential fall
 function voice({ f, to = f, glide = 0.06, type = 'sine', a = 0.004, d = 0.16, g = 0.25, at = 0, vib = 0, rate = 0 }) {

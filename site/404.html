@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Not here · Notch So Good</title>
+  <meta name="robots" content="noindex">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <style>
+    @font-face { font-family: Inter; font-weight: 600; font-display: swap; src: url(/fonts/inter-latin-600-normal.woff2) format("woff2"); }
+    :root { --ink: #0B0B0C; --ink-3: #6B6B70; --sans: -apple-system, BlinkMacSystemFont, "SF Pro Display", Inter, system-ui, sans-serif; }
+    html, body { margin: 0; height: 100%; background: #fff; color: var(--ink); font-family: var(--sans); -webkit-font-smoothing: antialiased; }
+    main { min-height: 100%; display: flex; flex-direction: column; align-items: center; text-align: center; padding: 0 24px; box-sizing: border-box; }
+    /* the notch at the top of the screen, and Peek hanging off it, looking around */
+    .notch { width: 220px; height: 44px; background: #000; border-radius: 0 0 22px 22px; flex: none; }
+    .peek { width: 150px; height: auto; margin-top: -6px; flex: none; transform-origin: 50% 0; animation: look 4.2s ease-in-out infinite; }
+    @keyframes look { 0%, 100% { rotate: 0deg; } 30% { rotate: -5deg; } 65% { rotate: 4deg; } }
+    h1 { margin: 44px 0 0; font-size: clamp(34px, 6vw, 52px); font-weight: 700; letter-spacing: -0.04em; line-height: 1.05; }
+    p { margin: 14px 0 0; font-size: 17px; line-height: 1.5; color: var(--ink-3); }
+    a { margin-top: 30px; display: inline-flex; align-items: center; height: 46px; padding: 0 22px; border-radius: 999px; background: var(--ink); color: #fff;
+      font-size: 15.5px; font-weight: 600; text-decoration: none; transition: scale 0.15s ease-out; }
+    a:hover { scale: 1.02; } a:active { scale: 0.97; }
+    @media (prefers-reduced-motion: reduce) { .peek { animation: none; } }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="notch" aria-hidden="true"></div>
+    <img class="peek" src="/img/peek-404.webp" width="360" height="332" alt="">
+    <h1>Nothing here.</h1>
+    <p>Peek looked everywhere. This page doesn’t exist.</p>
+    <a href="/">Back to Notch So Good</a>
+  </main>
+</body>
+</html>

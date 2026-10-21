@@ -820,3 +820,8 @@ body.dressing #peek { scale: 2.4; }
 .sound-hint:hover { color: var(--ink); }
 @media (max-width: 720px) { .sound-hint { right: 12px; bottom: calc(10px + env(safe-area-inset-bottom)); } }
 @media (prefers-reduced-motion: reduce) { .sound-hint .w1, .sound-hint .w2 { animation: none; opacity: 1; } }
+
+/* phones, until the first swipe: the page moves itself, so that swipe can unlock sound (see app.js) */
+html.own-swipe, html.own-swipe body { touch-action: none; overscroll-behavior: none; }
+/* phones: the end panel grows to exactly the screen's width (the +2px overlap is for the desktop frame) */
+@media (max-width: 720px) { .panel { --full: 100%; } }

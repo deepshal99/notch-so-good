@@ -1028,6 +1028,48 @@ voiced(view2.puppet, () => panelVisible);
     new IntersectionObserver(([e]) => hint.classList.toggle('past', e.boundingClientRect.top < innerHeight * 0.9), { threshold: [0, 0.01, 0.5, 1] }).observe($('#features'));
   } else hint?.remove();
 }
+// Phones: a swipe the browser scrolls never counts as a user gesture, so sound would wait for a tap. But a swipe the
+// page moves itself does count when the finger lifts. So the very first swipe is moved by the page (following the
+// finger, then flinging like a normal scroll), and it unlocks sound; every swipe after it is the browser's own again.
+{
+  const touch = matchMedia('(pointer: coarse)').matches;
+  if (touch && sound.on && !audioReady() && !reduced) {
+    const root = document.documentElement;
+    root.classList.add('own-swipe');
+    let y0 = 0, s0 = 0, lastY = 0, lastT = 0, v = 0, on = false, raf = 0;
+    const stop = () => { cancelAnimationFrame(raf); raf = 0; };
+    const fling = () => {
+      // the browser's own deceleration, near enough: velocity in px/ms, losing ~0.3% a millisecond
+      let t0 = performance.now();
+      const step = n => {
+        const dt = Math.min(n - t0, 32); t0 = n;
+        v *= Math.pow(0.9965, dt);
+        if (Math.abs(v) < 0.02) return stop();
+        scrollBy(0, v * dt); raf = requestAnimationFrame(step);
+      };
+      raf = requestAnimationFrame(step);
+    };
+    const release = () => {
+      root.classList.remove('own-swipe');
+      removeEventListener('touchstart', down, true); removeEventListener('touchmove', drag, true); removeEventListener('touchend', up, true); removeEventListener('touchcancel', up, true);
+    };
+    const down = e => { stop(); const t = e.touches[0]; y0 = lastY = t.clientY; s0 = scrollY; lastT = performance.now(); v = 0; on = true; };
+    const drag = e => {
+      if (!on) return;
+      const y = e.touches[0].clientY, n = performance.now(), dt = n - lastT;
+      scrollTo(0, s0 + (y0 - y));
+      if (dt > 0) v = 0.75 * v + 0.25 * ((lastY - y) / dt);
+      lastY = y; lastT = n;
+    };
+    const up = () => { if (!on) return; on = false; release(); if (Math.abs(v) > 0.05) fling(); };
+    addEventListener('touchstart', down, { capture: true, passive: true });
+    addEventListener('touchmove', drag, { capture: true, passive: true });
+    addEventListener('touchend', up, { capture: true, passive: true });
+    addEventListener('touchcancel', up, { capture: true, passive: true });
+    // a later swipe (or anything that unlocks sound first) hands scrolling straight back to the browser
+    onAudio(() => { if (!on) release(); });
+  }
+}
 // the moment sound becomes possible (the first click or key), Peek says hi
 onUnlock(() => { if (stagePhase === 'up' && !document.hidden) { peek.greet(now()); peek.nudge(0.3, 1.0); sfx.hello(); } });
 
