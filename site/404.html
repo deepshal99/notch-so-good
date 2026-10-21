@@ -54,8 +54,8 @@
         </g>
         <!-- 0: a squarish island, open in the middle. Its long flat bottom is the notch Peek hangs from (and hides his clipped top) -->
         <path class="pc zero" style="--d:4" fill="#000" fill-rule="evenodd"
-          d="M416 32 H584 A56 56 0 0 1 640 88 V312 A56 56 0 0 1 584 368 H416 A56 56 0 0 1 360 312 V88 A56 56 0 0 1 416 32 Z
-             M462 112 H538 A22 22 0 0 1 560 134 V266 A22 22 0 0 1 538 288 H462 A22 22 0 0 1 440 266 V134 A22 22 0 0 1 462 112 Z"/>
+          d="M402 32 H598 A42 42 0 0 1 640 74 V326 A42 42 0 0 1 598 368 H402 A42 42 0 0 1 360 326 V74 A42 42 0 0 1 402 32 Z
+             M460 112 H540 A20 20 0 0 1 560 132 V268 A20 20 0 0 1 540 288 H460 A20 20 0 0 1 440 268 V132 A20 20 0 0 1 460 112 Z"/>
       </svg>
       <canvas id="peek404" aria-label="Peek. Click to change its finish."></canvas>
     </h1>
@@ -95,7 +95,7 @@ const peek = view.puppet;
 let U = 50;
 const place = () => {
   const s = svg.getBoundingClientRect().width / 1000;      // svg units → px
-  U = clamp(280 * s * 0.27, 30, 70);                        // narrow enough to stay under the 0's flat bottom
+  U = clamp(280 * s * 0.31, 32, 80);                        // as big as the 0's flat bottom (196 of its 280 units) can hide
   view.resize(4.4 * U, 3.9 * U, Math.min(devicePixelRatio || 1, 2) * 2);
   cv.style.top = (368 * s - NOTCH_Y * U - TUCK) + 'px';      // gripping the 0's bottom edge
 };
