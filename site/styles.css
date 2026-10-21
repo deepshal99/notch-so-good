@@ -825,3 +825,20 @@ body.dressing #peek { scale: 2.4; }
 html.own-swipe, html.own-swipe body { touch-action: none; overscroll-behavior: none; }
 /* phones: the end panel grows to exactly the screen's width (the +2px overlap is for the desktop frame) */
 @media (max-width: 720px) { .panel { --full: 100%; } }
+
+/* ============================================================ type: one scale for the whole page
+   display (the hero line) · section heading · section intro · card title · card body · small print.
+   Same role, same size, weight, leading and tracking, wherever it appears. */
+.custom h2, .features > h2, .panel h2 { font-size: clamp(32px, 3.1vw, 42px); line-height: 1.04; font-weight: 700; letter-spacing: -0.035em; }
+.lede, .custom-sub, .panel > p:not(.fine) { font-size: 17px; line-height: 1.5; letter-spacing: -0.012em; color: var(--ink-2); }
+.tile h3, .tile.wide h3 { font-size: 21px; line-height: 1.2; font-weight: 600; letter-spacing: -0.022em; }
+.tile p, .tile.wide p, .tile[data-tile=approve] .txt p { font-size: 15.5px; line-height: 1.55; letter-spacing: -0.01em; }
+.fine, .foot, .foot nav a, .sound-hint { font-size: 13px; line-height: 1.45; letter-spacing: -0.005em; }
+.brand { font-weight: 600; }
+.lw .v { font-weight: 600; }
+@media (max-width: 720px) {
+  .custom h2, .features > h2, .panel h2 { font-size: 30px; }
+  .lede, .custom-sub, .panel > p:not(.fine) { font-size: 16.5px; }
+  .tile h3, .tile.wide h3 { font-size: 19px; }
+  .tile p, .tile.wide p, .tile[data-tile=approve] .txt p { font-size: 15px; }
+}

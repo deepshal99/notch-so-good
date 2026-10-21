@@ -2,35 +2,165 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Not here · Notch So Good</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>404 · Notch So Good</title>
   <meta name="robots" content="noindex">
+  <meta name="theme-color" content="#FFFFFF">
   <link rel="icon" href="/favicon.ico" sizes="any">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="preload" href="/fonts/inter-latin-700-normal.woff2" as="font" type="font/woff2" crossorigin>
   <style>
+    @font-face { font-family: Inter; font-weight: 700; font-display: swap; src: url(/fonts/inter-latin-700-normal.woff2) format("woff2"); }
     @font-face { font-family: Inter; font-weight: 600; font-display: swap; src: url(/fonts/inter-latin-600-normal.woff2) format("woff2"); }
-    :root { --ink: #0B0B0C; --ink-3: #6B6B70; --sans: -apple-system, BlinkMacSystemFont, "SF Pro Display", Inter, system-ui, sans-serif; }
-    html, body { margin: 0; height: 100%; background: #fff; color: var(--ink); font-family: var(--sans); -webkit-font-smoothing: antialiased; }
-    main { min-height: 100%; display: flex; flex-direction: column; align-items: center; text-align: center; padding: 0 24px; box-sizing: border-box; }
-    /* the notch at the top of the screen, and Peek hanging off it, looking around */
-    .notch { width: 220px; height: 44px; background: #000; border-radius: 0 0 22px 22px; flex: none; }
-    .peek { width: 150px; height: auto; margin-top: -6px; flex: none; transform-origin: 50% 0; animation: look 4.2s ease-in-out infinite; }
-    @keyframes look { 0%, 100% { rotate: 0deg; } 30% { rotate: -5deg; } 65% { rotate: 4deg; } }
-    h1 { margin: 44px 0 0; font-size: clamp(34px, 6vw, 52px); font-weight: 700; letter-spacing: -0.04em; line-height: 1.05; }
-    p { margin: 14px 0 0; font-size: 17px; line-height: 1.5; color: var(--ink-3); }
-    a { margin-top: 30px; display: inline-flex; align-items: center; height: 46px; padding: 0 22px; border-radius: 999px; background: var(--ink); color: #fff;
-      font-size: 15.5px; font-weight: 600; text-decoration: none; transition: scale 0.15s ease-out; }
-    a:hover { scale: 1.02; } a:active { scale: 0.97; }
-    @media (prefers-reduced-motion: reduce) { .peek { animation: none; } }
+    /* the light: registered so its radius can animate when the lights come on */
+    @property --r { syntax: '<length>'; inherits: true; initial-value: 150px; }
+    :root { --sans: -apple-system, BlinkMacSystemFont, "SF Pro Display", Inter, system-ui, sans-serif; --lx: 50vw; --ly: 50vh; --r: 150px; }
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #fff; font-family: var(--sans); -webkit-font-smoothing: antialiased; }
+    body { touch-action: none; cursor: none; }
+    body.found { cursor: auto; }
+    /* the notch, grown to swallow the screen (its shape comes from island.js, sized every frame) */
+    .isl { position: fixed; left: 50%; top: 0; translate: -50% 0; background: #000; overflow: hidden; }
+    .num { position: absolute; inset: 0; display: grid; place-items: center; margin: 0; pointer-events: none;
+      font: 700 min(42vw, 62vh)/0.8 var(--sans); letter-spacing: -0.07em; color: transparent; user-select: none;
+      background: linear-gradient(180deg, #3a3a40 0%, #18181b 70%); -webkit-background-clip: text; background-clip: text;
+      transition: filter 1.2s ease-out; }
+    body.found .num { filter: brightness(4.2); }
+    canvas { position: absolute; top: 0; translate: -50% 0; opacity: 0; transition: opacity 0.6s ease-out; }
+    canvas.in { opacity: 1; }
+    /* the dark: black everywhere but where the light is */
+    .dark { position: absolute; inset: 0; background: #000; pointer-events: none;
+      -webkit-mask: radial-gradient(circle var(--r) at var(--lx) var(--ly), transparent 0, transparent 35%, #000 100%);
+      mask: radial-gradient(circle var(--r) at var(--lx) var(--ly), transparent 0, transparent 35%, #000 100%);
+      transition: --r 1.4s cubic-bezier(0.2, 0.7, 0.1, 1); }
+    body.found .dark { --r: 260vmax; }
+    /* a faint warm spill around the beam, so the light reads as light */
+    .beam { position: absolute; inset: 0; pointer-events: none; mix-blend-mode: screen;
+      background: radial-gradient(circle calc(var(--r) * 1.1) at var(--lx) var(--ly), rgba(255, 236, 200, 0.07), transparent 70%); transition: opacity 0.8s; }
+    body.found .beam { opacity: 0; }
+    /* Peek's eyes, glowing in the dark (on top of it), until the light finds him */
+    .eye { position: absolute; width: calc(var(--u, 60px) * 0.17); height: calc(var(--u, 60px) * 0.38); translate: -50% -50%; border-radius: 99px; background: #fff;
+      box-shadow: 0 0 10px 2px rgba(190, 220, 255, 0.55); opacity: 0; transition: opacity 0.5s; animation: blink 4.6s infinite; }
+    .eye.in { opacity: 1; }
+    body.lit .eye, body.found .eye { opacity: 0 !important; }
+    @keyframes blink { 0%, 46%, 50%, 100% { scale: 1 1; } 48% { scale: 1 0.1; } }
+    .home { position: absolute; left: 50%; bottom: 9vh; translate: -50% 16px; opacity: 0; pointer-events: none;
+      display: inline-flex; align-items: center; height: 48px; padding: 0 24px; border-radius: 999px; background: #fff; color: #0B0B0C;
+      font: 600 14.5px var(--sans); letter-spacing: -0.01em; text-decoration: none;
+      transition: opacity 0.4s ease-out 0.5s, translate 0.6s cubic-bezier(0.2, 0.9, 0.2, 1.2) 0.5s, scale 0.15s ease-out; }
+    body.found .home { opacity: 1; translate: -50% 0; pointer-events: auto; }
+    .home:hover { scale: 1.03; } .home:active { scale: 0.97; }
+    @media (prefers-reduced-motion: reduce) { .dark, .beam, .eye { display: none; } .home { opacity: 1; translate: -50% 0; pointer-events: auto; } body { cursor: auto; } }
   </style>
 </head>
 <body>
-  <main>
-    <div class="notch" aria-hidden="true"></div>
-    <img class="peek" src="/img/peek-404.webp" width="360" height="332" alt="">
-    <h1>Nothing here.</h1>
-    <p>Peek looked everywhere. This page doesn’t exist.</p>
-    <a href="/">Back to Notch So Good</a>
-  </main>
+  <div class="isl" id="isl">
+    <h1 class="num" aria-label="Page not found">404</h1>
+    <canvas id="peek" aria-hidden="true"></canvas>
+    <div class="beam" aria-hidden="true"></div>
+    <div class="dark" aria-hidden="true"></div>
+    <i class="eye" aria-hidden="true"></i><i class="eye" aria-hidden="true"></i>
+    <a class="home" href="/">Take me home</a>
+  </div>
+<script type="module">
+// The notch swallowed the page, and Peek is hiding somewhere in the dark. Your pointer (or finger) is a light.
+// Find him and the lights come on. Take me home folds the island back into the notch.
+import { PeekView } from '/peek.js';
+import { notchPath } from '/island.js';
+import { sfx } from '/sound.js';
+
+const $ = s => document.querySelector(s);
+const isl = $('#isl'), cv = $('#peek'), eyes = [...document.querySelectorAll('.eye')], root = document.documentElement;
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const now = () => performance.now() / 1000;
+let vw = innerWidth, vh = innerHeight;
+
+// the island: a notch that springs open to (almost) the whole screen, on the app's Island.spring
+const INSET = 10, NOTCH = { w: 200, h: 40 };
+const box = { w: NOTCH.w, h: NOTCH.h }, vel = { w: 0, h: 0 };
+let goal = { w: vw - 2 * INSET, h: vh - INSET };
+const paint = () => {
+  isl.style.width = box.w + 'px'; isl.style.height = box.h + 'px';
+  const t = Math.min(18, box.w / 4), b = Math.min(38, box.h / 2);
+  isl.style.clipPath = notchPath(box.w, box.h, t, b);
+};
+addEventListener('resize', () => { vw = innerWidth; vh = innerHeight; if (!leaving) goal = { w: vw - 2 * INSET, h: vh - INSET }; place(); });
+
+// Peek, hanging from the top edge somewhere off to one side, in your look from the main page
+const finish = localStorage.getItem('nsg-finish-v3') || 'neon';
+const view = new PeekView(cv, { finish, unitsW: 4.4, unitsH: 3.6, notchY: 0.12, state: 'idle' });
+const p = view.puppet;
+let U = 52, side = Math.random() < 0.5 ? -1 : 1, spot = 0.22 + Math.random() * 0.14;
+const place = () => {
+  U = Math.max(52, Math.min(92, Math.min(vw * 0.068, vh * 0.1)));
+  view.resize(4.4 * U, 3.6 * U, Math.min(devicePixelRatio || 1, 2));
+  isl.style.setProperty('--u', U + 'px');
+  // off to one side, but always fully on screen
+  const W = vw - 2 * INSET, x = W / 2 + side * spot * Math.min(vw, 1400);
+  cv.style.left = Math.max(1.3 * U, Math.min(W - 1.3 * U, x)) + 'px';
+  cv.style.top = (-0.12 * U) + 'px';
+};
+place();
+
+// the light: follows the pointer with a little lag; drifts by itself when nobody's moving it
+const light = { x: vw / 2, y: vh * 0.55 }, aim = { ...light };
+let lastMove = -10, found = false, leaving = false;
+addEventListener('pointermove', e => { aim.x = e.clientX; aim.y = e.clientY; lastMove = now(); }, { passive: true });
+addEventListener('pointerdown', e => { aim.x = e.clientX; aim.y = e.clientY; lastMove = now(); }, { passive: true });
+
+// where Peek's eyes are on screen, from its live pose (FACE_Y: eyes sit this far below the body's centre)
+const FACE_Y = +(new URLSearchParams(location.search).get('fy') || 0.17);
+const face = () => {
+  const r = cv.getBoundingClientRect(), P = p.lastPose || { pos: [0, -0.9, 0] };
+  return { x: r.left + r.width / 2 + P.pos[0] * U, y: r.top + (0.12 - P.pos[1] + FACE_Y) * U };
+};
+
+function find() {
+  found = true; document.body.classList.add('found');
+  p.setState('done', now()); p.greet(now()); p.nudge(0.6, 2);
+  setTimeout(() => p.play('wave', now()), 450);
+  sfx.sparkle();
+}
+$('.home').addEventListener('click', e => {
+  e.preventDefault(); leaving = true; sfx.popIn();
+  p.tuckTarget = 1; cv.classList.remove('in');
+  goal = { w: NOTCH.w, h: NOTCH.h };
+  setTimeout(() => { location.href = '/'; }, 650);
+});
+
+let t0 = now(), peekIn = false; const born = now();
+function frame() {
+  const t = now(), dt = Math.min(0.033, t - t0); t0 = t;
+  // the island's spring
+  for (const k of ['w', 'h']) { vel[k] += (273.4 * (goal[k] - box[k]) - 25.8 * vel[k]) * dt; box[k] += vel[k] * dt; }
+  paint();
+  if (!peekIn && box.h > vh * 0.6 && !leaving) { peekIn = true; place(); cv.classList.add('in'); eyes.forEach(e => e.classList.add('in')); }
+  // the light wanders in slow loops when it's left alone
+  if (!found && t - lastMove > 2.4) {
+    const w = t * 0.35;
+    aim.x = vw * (0.5 + 0.36 * Math.sin(w * 1.3)); aim.y = vh * (0.42 + 0.3 * Math.sin(w * 0.9 + 1.2));
+  }
+  light.x += (aim.x - light.x) * Math.min(1, dt * 9); light.y += (aim.y - light.y) * Math.min(1, dt * 9);
+  const ir = isl.getBoundingClientRect();
+  root.style.setProperty('--lx', (light.x - ir.left) + 'px'); root.style.setProperty('--ly', (light.y - ir.top) + 'px');
+  // Peek watches the light, and its eyes glow through the dark where it hangs
+  const f = face();
+  if (!leaving) {
+    view.gazeTarget = [Math.max(-1, Math.min(1, (light.x - f.x) / 320)) * 0.14, Math.max(-1, Math.min(1, (light.y - f.y) / 320)) * -0.1];
+    view.gazeMix = 1; view.lockGaze = true;
+  }
+  const gx = view.gazeTarget[0] * U * 2, gy = -view.gazeTarget[1] * U * 1.4;
+  eyes.forEach((e, i) => { e.style.left = (f.x - ir.left + (i ? 1 : -1) * 0.33 * U + gx) + 'px'; e.style.top = (f.y - ir.top + gy) + 'px'; });
+  // close enough: found
+  const d = Math.hypot(light.x - f.x, light.y - f.y);
+  document.body.classList.toggle('lit', d < 140);
+  if (!found && peekIn && d < 95 && t - lastMove < 2.4) find();
+  // nobody looking? after a while he gives himself away
+  if (!found && peekIn && t - born > 14) find();
+  view.draw(t);
+  requestAnimationFrame(frame);
+}
+if (reduced) { box.w = goal.w; box.h = goal.h; found = true; document.body.classList.add('found'); }
+requestAnimationFrame(frame);
+</script>
 </body>
 </html>
