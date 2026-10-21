@@ -52,10 +52,10 @@
           <path class="pc" style="--d:7" d="M704 268 L952 268"/>
           <path class="pc" style="--d:8" d="M892 334 L892 346"/>
         </g>
-        <!-- 0: an island, open in the middle -->
+        <!-- 0: a squarish island, open in the middle. Its long flat bottom is the notch Peek hangs from (and hides his clipped top) -->
         <path class="pc zero" style="--d:4" fill="#000" fill-rule="evenodd"
-          d="M478 32 H522 A118 118 0 0 1 640 150 V250 A118 118 0 0 1 522 368 H478 A118 118 0 0 1 360 250 V150 A118 118 0 0 1 478 32 Z
-             M462 118 H538 A30 30 0 0 1 568 148 V252 A30 30 0 0 1 538 282 H462 A30 30 0 0 1 432 252 V148 A30 30 0 0 1 462 118 Z"/>
+          d="M416 32 H584 A56 56 0 0 1 640 88 V312 A56 56 0 0 1 584 368 H416 A56 56 0 0 1 360 312 V88 A56 56 0 0 1 416 32 Z
+             M462 112 H538 A22 22 0 0 1 560 134 V266 A22 22 0 0 1 538 288 H462 A22 22 0 0 1 440 266 V134 A22 22 0 0 1 462 112 Z"/>
       </svg>
       <canvas id="peek404" aria-label="Peek. Click to change its finish."></canvas>
     </h1>
@@ -95,7 +95,7 @@ const peek = view.puppet;
 let U = 50;
 const place = () => {
   const s = svg.getBoundingClientRect().width / 1000;      // svg units → px
-  U = clamp(280 * s * 0.34, 34, 86);                        // Peek is about as wide as the 0's opening
+  U = clamp(280 * s * 0.27, 30, 70);                        // narrow enough to stay under the 0's flat bottom
   view.resize(4.4 * U, 3.9 * U, Math.min(devicePixelRatio || 1, 2) * 2);
   cv.style.top = (368 * s - NOTCH_Y * U - TUCK) + 'px';      // gripping the 0's bottom edge
 };
@@ -104,8 +104,8 @@ announce(finish);
 
 // his routine: mostly dead, with little moments of life
 const LIFE = [
-  ['need', null], ['think', null], ['idle', 'wave'], ['done', null], ['idle', 'peekaboo'],
-  ['think', null], ['idle', 'stretch'], ['need', null], ['idle', 'oneHand'], ['done', 'twirl'], ['idle', 'slip'],
+  ['need', null], ['think', null], ['idle', 'wave'], ['done', null], ['idle', 'stretch'],
+  ['think', null], ['need', null], ['done', 'twirl'], ['idle', 'wave'], ['done', null],
 ];
 let busy = false;
 (async () => {
