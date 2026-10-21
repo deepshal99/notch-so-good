@@ -18,6 +18,9 @@ The usual flow: work on a branch, `git push origin HEAD:staging`, check staging,
 `git push origin staging:main` (or merge a pull request from `staging` into `main`).
 `www.notchsogood.com` and the old `notch-so-good.vercel.app` redirect to `notchsogood.com`.
 
+If a push doesn't start a deployment within a minute (GitHub's notification to Vercel occasionally doesn't arrive),
+`bash site/dev/rebuild.sh staging` (or `main`) builds that branch right away.
+
 To check the exact build locally: `DRY=1 bash site/dev/deploy.sh`, then serve `site/dist/`.
 To roll back: Vercel → Deployments → a previous production deployment → Promote (or `vercel promote <url>`).
 
