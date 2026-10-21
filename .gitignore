@@ -66,3 +66,7 @@ __pycache__/
 .agent/
 .claude/skills/
 skills-lock.json
+
+# Landing page build output
+site/dist/
+site/node_modules/
