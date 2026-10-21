@@ -8,158 +8,157 @@
   <meta name="theme-color" content="#FFFFFF">
   <link rel="icon" href="/favicon.ico" sizes="any">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-  <link rel="preload" href="/fonts/inter-latin-700-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/fonts/inter-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/styles.css">
   <style>
-    @font-face { font-family: Inter; font-weight: 700; font-display: swap; src: url(/fonts/inter-latin-700-normal.woff2) format("woff2"); }
-    @font-face { font-family: Inter; font-weight: 600; font-display: swap; src: url(/fonts/inter-latin-600-normal.woff2) format("woff2"); }
-    /* the light: registered so its radius can animate when the lights come on */
-    @property --r { syntax: '<length>'; inherits: true; initial-value: 150px; }
-    :root { --sans: -apple-system, BlinkMacSystemFont, "SF Pro Display", Inter, system-ui, sans-serif; --lx: 50vw; --ly: 50vh; --r: 150px; }
-    html, body { margin: 0; height: 100%; overflow: hidden; background: #fff; font-family: var(--sans); -webkit-font-smoothing: antialiased; }
-    body { touch-action: none; cursor: none; }
-    body.found { cursor: auto; }
-    /* the notch, grown to swallow the screen (its shape comes from island.js, sized every frame) */
-    .isl { position: fixed; left: 50%; top: 0; translate: -50% 0; background: #000; overflow: hidden; }
-    .num { position: absolute; inset: 0; display: grid; place-items: center; margin: 0; pointer-events: none;
-      font: 700 min(42vw, 62vh)/0.8 var(--sans); letter-spacing: -0.07em; color: transparent; user-select: none;
-      background: linear-gradient(180deg, #3a3a40 0%, #18181b 70%); -webkit-background-clip: text; background-clip: text;
-      transition: filter 1.2s ease-out; }
-    body.found .num { filter: brightness(4.2); }
-    canvas { position: absolute; top: 0; translate: -50% 0; opacity: 0; transition: opacity 0.6s ease-out; }
-    canvas.in { opacity: 1; }
-    /* the dark: black everywhere but where the light is */
-    .dark { position: absolute; inset: 0; background: #000; pointer-events: none;
-      -webkit-mask: radial-gradient(circle var(--r) at var(--lx) var(--ly), transparent 0, transparent 35%, #000 100%);
-      mask: radial-gradient(circle var(--r) at var(--lx) var(--ly), transparent 0, transparent 35%, #000 100%);
-      transition: --r 1.4s cubic-bezier(0.2, 0.7, 0.1, 1); }
-    body.found .dark { --r: 260vmax; }
-    /* a faint warm spill around the beam, so the light reads as light */
-    .beam { position: absolute; inset: 0; pointer-events: none; mix-blend-mode: screen;
-      background: radial-gradient(circle calc(var(--r) * 1.1) at var(--lx) var(--ly), rgba(255, 236, 200, 0.07), transparent 70%); transition: opacity 0.8s; }
-    body.found .beam { opacity: 0; }
-    /* Peek's eyes, glowing in the dark (on top of it), until the light finds him */
-    .eye { position: absolute; width: calc(var(--u, 60px) * 0.17); height: calc(var(--u, 60px) * 0.38); translate: -50% -50%; border-radius: 99px; background: #fff;
-      box-shadow: 0 0 10px 2px rgba(190, 220, 255, 0.55); opacity: 0; transition: opacity 0.5s; animation: blink 4.6s infinite; }
-    .eye.in { opacity: 1; }
-    body.lit .eye, body.found .eye { opacity: 0 !important; }
-    @keyframes blink { 0%, 46%, 50%, 100% { scale: 1 1; } 48% { scale: 1 0.1; } }
-    .home { position: absolute; left: 50%; bottom: 9vh; translate: -50% 16px; opacity: 0; pointer-events: none;
-      display: inline-flex; align-items: center; height: 48px; padding: 0 24px; border-radius: 999px; background: #fff; color: #0B0B0C;
-      font: 600 14.5px var(--sans); letter-spacing: -0.01em; text-decoration: none;
-      transition: opacity 0.4s ease-out 0.5s, translate 0.6s cubic-bezier(0.2, 0.9, 0.2, 1.2) 0.5s, scale 0.15s ease-out; }
-    body.found .home { opacity: 1; translate: -50% 0; pointer-events: auto; }
-    .home:hover { scale: 1.03; } .home:active { scale: 0.97; }
-    @media (prefers-reduced-motion: reduce) { .dark, .beam, .eye { display: none; } .home { opacity: 1; translate: -50% 0; pointer-events: auto; } body { cursor: auto; } }
+    /* 404, spelled in islands: the landing page's frame and world, the digits drawn as black notch shapes */
+    html, body { height: 100%; }
+    body.e404 { overflow: hidden; }
+    .e404 main { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 6vh 24px 0; }
+    .digits { position: relative; width: min(66vw, 700px); margin: 0; }
+    .digits svg { display: block; width: 100%; height: auto; overflow: visible; position: relative; z-index: 2; pointer-events: none; }
+    /* each piece springs open like the island, one after another */
+    .digits .pc { transform-box: fill-box; transform-origin: 50% 50%; scale: 0; transition: scale var(--bouncy-t, 0.6s) var(--bouncy, ease-out); transition-delay: calc(var(--d) * 70ms + 200ms); }
+    .e404.ready .digits .pc { scale: 1; }
+    .e404.leaving .digits .pc { scale: 0; transition: scale 0.32s var(--out, ease-in); transition-delay: calc((8 - var(--d)) * 30ms); }
+    #peek404 { position: absolute; left: 50%; translate: -50% 0; z-index: 1; pointer-events: none; opacity: 0; transition: opacity 0.4s ease-out 0.75s; }
+    body.on-peek { cursor: pointer; }
+    .e404.ready #peek404 { opacity: 1; }
+    .e404 .lede { margin-top: clamp(110px, 19vh, 190px); opacity: 0; translate: 0 10px; transition: opacity 0.5s ease-out 0.9s, translate 0.7s var(--island) 0.9s; }
+    .e404 .home { margin-top: 22px; opacity: 0; translate: 0 10px; transition: opacity 0.5s ease-out 1s, translate 0.7s var(--island) 1s, scale 0.15s ease-out, background-color 0.2s; }
+    .e404.ready .lede, .e404.ready .home { opacity: 1; translate: 0 0; }
+    .e404.leaving .lede, .e404.leaving .home { opacity: 0; transition-delay: 0s; }
+    @media (max-width: 720px) { .digits { width: 86vw; } .e404 .lede { margin-top: 104px; } }
+    @media (prefers-reduced-motion: reduce) { .digits .pc, .e404 .lede, .e404 .home, #peek404 { transition: none; } }
   </style>
 </head>
-<body>
-  <div class="isl" id="isl">
-    <h1 class="num" aria-label="Page not found">404</h1>
-    <canvas id="peek" aria-hidden="true"></canvas>
-    <div class="beam" aria-hidden="true"></div>
-    <div class="dark" aria-hidden="true"></div>
-    <i class="eye" aria-hidden="true"></i><i class="eye" aria-hidden="true"></i>
-    <a class="home" href="/">Take me home</a>
-  </div>
+<body class="e404">
+  <div class="world" id="world" aria-hidden="true"><i></i><i></i></div>
+  <div class="bezel" aria-hidden="true"><i class="tl"></i><i class="tr"></i></div>
+  <div class="stage" aria-hidden="true"><div id="island"></div></div>
+
+  <main>
+    <h1 class="digits" aria-label="404, page not found">
+      <svg viewBox="0 0 1000 400" aria-hidden="true">
+        <g fill="none" stroke="#000" stroke-width="64" stroke-linecap="round">
+          <!-- 4 -->
+          <path class="pc" style="--d:0" d="M78 222 L158 142"/>
+          <path class="pc" style="--d:1" d="M232 64 L232 186"/>
+          <path class="pc" style="--d:2" d="M44 268 L292 268"/>
+          <path class="pc" style="--d:3" d="M232 334 L232 346"/>
+          <!-- 4 -->
+          <path class="pc" style="--d:5" d="M738 222 L818 142"/>
+          <path class="pc" style="--d:6" d="M892 64 L892 186"/>
+          <path class="pc" style="--d:7" d="M704 268 L952 268"/>
+          <path class="pc" style="--d:8" d="M892 334 L892 346"/>
+        </g>
+        <!-- 0: an island, open in the middle -->
+        <path class="pc zero" style="--d:4" fill="#000" fill-rule="evenodd"
+          d="M478 32 H522 A118 118 0 0 1 640 150 V250 A118 118 0 0 1 522 368 H478 A118 118 0 0 1 360 250 V150 A118 118 0 0 1 478 32 Z
+             M462 118 H538 A30 30 0 0 1 568 148 V252 A30 30 0 0 1 538 282 H462 A30 30 0 0 1 432 252 V148 A30 30 0 0 1 462 118 Z"/>
+      </svg>
+      <canvas id="peek404" aria-label="Peek. Click to change its finish."></canvas>
+    </h1>
+    <p class="lede">Nothing lives at this address.</p>
+    <a class="btn dark sm home" href="/">Take me home</a>
+  </main>
+
 <script type="module">
-// The notch swallowed the page, and Peek is hiding somewhere in the dark. Your pointer (or finger) is a light.
-// Find him and the lights come on. Take me home folds the island back into the notch.
-import { PeekView } from '/peek.js';
-import { notchPath } from '/island.js';
+// Peek fell off the notch and caught the 0. He mostly plays dead; now and then he comes round, looks about, tries a
+// trick, and flops again. Click him for a new finish (shared with the landing page); the world outside follows.
+import { PeekView, FINISHES } from '/peek.js';
+import { Island } from '/island.js';
 import { sfx } from '/sound.js';
+import '/world.js';
 
 const $ = s => document.querySelector(s);
-const isl = $('#isl'), cv = $('#peek'), eyes = [...document.querySelectorAll('.eye')], root = document.documentElement;
-const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const clamp = (x, a, b) => Math.min(Math.max(x, a), b);
 const now = () => performance.now() / 1000;
-let vw = innerWidth, vh = innerHeight;
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-// the island: a notch that springs open to (almost) the whole screen, on the app's Island.spring
-const INSET = 10, NOTCH = { w: 200, h: 40 };
-const box = { w: NOTCH.w, h: NOTCH.h }, vel = { w: 0, h: 0 };
-let goal = { w: vw - 2 * INSET, h: vh - INSET };
-const paint = () => {
-  isl.style.width = box.w + 'px'; isl.style.height = box.h + 'px';
-  const t = Math.min(18, box.w / 4), b = Math.min(38, box.h / 2);
-  isl.style.clipPath = notchPath(box.w, box.h, t, b);
-};
-addEventListener('resize', () => { vw = innerWidth; vh = innerHeight; if (!leaving) goal = { w: vw - 2 * INSET, h: vh - INSET }; place(); });
+const LOOKS = ['neon', 'obsidian', 'obsidian-midnight', 'obsidian-plum', 'obsidian-forest', 'porcelain', 'porcelain-sage', 'porcelain-blush', 'porcelain-sky',
+  'gold', 'gold-rose', 'gold-white', 'balloon', 'balloon-sky', 'balloon-lemon', 'balloon-lilac', 'gummy', 'gummy-lime', 'gummy-tangerine', 'gummy-grape'].filter(f => FINISHES[f]);
+let finish = localStorage.getItem('nsg-finish-v3');
+if (!LOOKS.includes(finish)) finish = 'neon';
+const announce = f => document.dispatchEvent(new CustomEvent('nsg:look', { detail: f }));
 
-// Peek, hanging from the top edge somewhere off to one side, in your look from the main page
-const finish = localStorage.getItem('nsg-finish-v3') || 'neon';
-const view = new PeekView(cv, { finish, unitsW: 4.4, unitsH: 3.6, notchY: 0.12, state: 'idle' });
-const p = view.puppet;
-let U = 52, side = Math.random() < 0.5 ? -1 : 1, spot = 0.22 + Math.random() * 0.14;
+// the real notch at the top of the screen, empty and at rest
+const isl = new Island($('#island'), 1.2);
+isl.setScale(clamp(innerWidth / 1200, 0.9, 1.16)); isl.set('', { kind: 'notch' }); isl.snap();
+
+// Peek, hanging from the bottom of the 0
+const svg = $('.digits svg'), cv = $('#peek404');
+const NOTCH_Y = 0.12, TUCK = 3;
+const view = new PeekView(cv, { finish, unitsW: 4.4, unitsH: 3.9, notchY: NOTCH_Y, state: 'error' });
+const peek = view.puppet;
+let U = 50;
 const place = () => {
-  U = Math.max(52, Math.min(92, Math.min(vw * 0.068, vh * 0.1)));
-  view.resize(4.4 * U, 3.6 * U, Math.min(devicePixelRatio || 1, 2));
-  isl.style.setProperty('--u', U + 'px');
-  // off to one side, but always fully on screen
-  const W = vw - 2 * INSET, x = W / 2 + side * spot * Math.min(vw, 1400);
-  cv.style.left = Math.max(1.3 * U, Math.min(W - 1.3 * U, x)) + 'px';
-  cv.style.top = (-0.12 * U) + 'px';
+  const s = svg.getBoundingClientRect().width / 1000;      // svg units → px
+  U = clamp(280 * s * 0.34, 34, 86);                        // Peek is about as wide as the 0's opening
+  view.resize(4.4 * U, 3.9 * U, Math.min(devicePixelRatio || 1, 2) * 2);
+  cv.style.top = (368 * s - NOTCH_Y * U - TUCK) + 'px';      // gripping the 0's bottom edge
 };
-place();
+place(); addEventListener('resize', place);
+announce(finish);
 
-// the light: follows the pointer with a little lag; drifts by itself when nobody's moving it
-const light = { x: vw / 2, y: vh * 0.55 }, aim = { ...light };
-let lastMove = -10, found = false, leaving = false;
-addEventListener('pointermove', e => { aim.x = e.clientX; aim.y = e.clientY; lastMove = now(); }, { passive: true });
-addEventListener('pointerdown', e => { aim.x = e.clientX; aim.y = e.clientY; lastMove = now(); }, { passive: true });
+// his routine: mostly dead, with little moments of life
+const LIFE = [
+  ['need', null], ['think', null], ['idle', 'wave'], ['done', null], ['idle', 'peekaboo'],
+  ['think', null], ['idle', 'stretch'], ['need', null], ['idle', 'oneHand'], ['done', 'twirl'], ['idle', 'slip'],
+];
+let busy = false;
+(async () => {
+  await sleep(2600);
+  for (let i = 0; ; i++) {
+    await sleep(2400 + Math.random() * 1800);
+    if (document.hidden || busy || leaving) continue;
+    const [state, trick] = LIFE[i % LIFE.length];
+    peek.setState(state, now());
+    if (trick) { await sleep(250); peek.play(trick, now()); sfx.trick(trick); }
+    await sleep(trick ? 3400 : 2200);
+    if (!busy && !leaving) { peek.setState('error', now()); sfx.wilt(); }
+  }
+})();
 
-// where Peek's eyes are on screen, from its live pose (FACE_Y: eyes sit this far below the body's centre)
-const FACE_Y = +(new URLSearchParams(location.search).get('fy') || 0.17);
-const face = () => {
-  const r = cv.getBoundingClientRect(), P = p.lastPose || { pos: [0, -0.9, 0] };
-  return { x: r.left + r.width / 2 + P.pos[0] * U, y: r.top + (0.12 - P.pos[1] + FACE_Y) * U };
+// click Peek: next finish, a bounce, a moment of joy, then back to playing dead
+const onPeek = (x, y) => {
+  const r = cv.getBoundingClientRect(), P = peek.lastPose || { pos: [0, -0.9, 0] };
+  const cx = r.left + r.width / 2 + P.pos[0] * U, cy = r.top + NOTCH_Y * U - P.pos[1] * U;
+  return ((x - cx) / (1.15 * U)) ** 2 + ((y - cy) / (1.05 * U)) ** 2 <= 1;
 };
-
-function find() {
-  found = true; document.body.classList.add('found');
-  p.setState('done', now()); p.greet(now()); p.nudge(0.6, 2);
-  setTimeout(() => p.play('wave', now()), 450);
-  sfx.sparkle();
-}
-$('.home').addEventListener('click', e => {
-  e.preventDefault(); leaving = true; sfx.popIn();
-  p.tuckTarget = 1; cv.classList.remove('in');
-  goal = { w: NOTCH.w, h: NOTCH.h };
-  setTimeout(() => { location.href = '/'; }, 650);
+let perk = 0;
+// the canvas lets clicks through (it's bigger than Peek); hits are tested against his body
+addEventListener('pointermove', e => document.body.classList.toggle('on-peek', onPeek(e.clientX, e.clientY)), { passive: true });
+addEventListener('click', e => {
+  if (e.target.closest('a, button') || !onPeek(e.clientX, e.clientY)) return;
+  finish = LOOKS[(LOOKS.indexOf(finish) + 1) % LOOKS.length];
+  localStorage.setItem('nsg-finish-v3', finish);
+  view.finish = finish; announce(finish);
+  sfx.boing(); sfx.material(finish.split('-')[0], LOOKS.indexOf(finish));
+  busy = true; clearTimeout(perk);
+  peek.setState('done', now()); peek.greet(now()); peek.nudge(0.5 * (Math.random() < 0.5 ? -1 : 1), 1.4);
+  perk = setTimeout(() => { busy = false; if (!leaving) { peek.setState('error', now()); sfx.wilt(); } }, 2000);
 });
 
-let t0 = now(), peekIn = false; const born = now();
-function frame() {
-  const t = now(), dt = Math.min(0.033, t - t0); t0 = t;
-  // the island's spring
-  for (const k of ['w', 'h']) { vel[k] += (273.4 * (goal[k] - box[k]) - 25.8 * vel[k]) * dt; box[k] += vel[k] * dt; }
-  paint();
-  if (!peekIn && box.h > vh * 0.6 && !leaving) { peekIn = true; place(); cv.classList.add('in'); eyes.forEach(e => e.classList.add('in')); }
-  // the light wanders in slow loops when it's left alone
-  if (!found && t - lastMove > 2.4) {
-    const w = t * 0.35;
-    aim.x = vw * (0.5 + 0.36 * Math.sin(w * 1.3)); aim.y = vh * (0.42 + 0.3 * Math.sin(w * 0.9 + 1.2));
-  }
-  light.x += (aim.x - light.x) * Math.min(1, dt * 9); light.y += (aim.y - light.y) * Math.min(1, dt * 9);
-  const ir = isl.getBoundingClientRect();
-  root.style.setProperty('--lx', (light.x - ir.left) + 'px'); root.style.setProperty('--ly', (light.y - ir.top) + 'px');
-  // Peek watches the light, and its eyes glow through the dark where it hangs
-  const f = face();
-  if (!leaving) {
-    view.gazeTarget = [Math.max(-1, Math.min(1, (light.x - f.x) / 320)) * 0.14, Math.max(-1, Math.min(1, (light.y - f.y) / 320)) * -0.1];
-    view.gazeMix = 1; view.lockGaze = true;
-  }
-  const gx = view.gazeTarget[0] * U * 2, gy = -view.gazeTarget[1] * U * 1.4;
-  eyes.forEach((e, i) => { e.style.left = (f.x - ir.left + (i ? 1 : -1) * 0.33 * U + gx) + 'px'; e.style.top = (f.y - ir.top + gy) + 'px'; });
-  // close enough: found
-  const d = Math.hypot(light.x - f.x, light.y - f.y);
-  document.body.classList.toggle('lit', d < 140);
-  if (!found && peekIn && d < 95 && t - lastMove < 2.4) find();
-  // nobody looking? after a while he gives himself away
-  if (!found && peekIn && t - born > 14) find();
-  view.draw(t);
-  requestAnimationFrame(frame);
-}
-if (reduced) { box.w = goal.w; box.h = goal.h; found = true; document.body.classList.add('found'); }
+// he watches the pointer
+addEventListener('pointermove', e => {
+  const r = cv.getBoundingClientRect();
+  view.gazeTarget = [clamp((e.clientX - r.left - r.width / 2) / 400, -1, 1) * 0.14, clamp((e.clientY - r.top - r.height * 0.3) / 400, -1, 1) * -0.1];
+  view.gazeMix = 1;
+}, { passive: true });
+
+// home: Peek pulls himself up, the digits fold away, and off we go
+let leaving = false;
+$('.home').addEventListener('click', e => {
+  e.preventDefault(); if (leaving) return; leaving = true;
+  sfx.allow(); peek.setState('done', now()); peek.play('pullUp', now());
+  document.body.classList.add('leaving');
+  setTimeout(() => { location.href = '/'; }, reduced ? 0 : 650);
+});
+
+requestAnimationFrame(() => requestAnimationFrame(() => document.body.classList.add('ready')));
+const frame = () => { view.draw(now()); requestAnimationFrame(frame); };
 requestAnimationFrame(frame);
 </script>
 </body>
