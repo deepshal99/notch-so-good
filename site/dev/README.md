@@ -22,6 +22,9 @@ A push usually deploys within a minute, but GitHub's notification to Vercel is s
 If you don't want to wait, `bash site/dev/rebuild.sh staging` (or `main`) builds that branch right away.
 
 To check the exact build locally: `DRY=1 bash site/dev/deploy.sh`, then serve `site/dist/`.
+After a deploy that changes what's on the page, `bash site/dev/indexnow.sh` asks Bing and the other IndexNow
+search engines to recrawl it right away.
+
 To roll back: Vercel → Deployments → a previous production deployment → Promote (or `vercel promote <url>`).
 
 Serve the site locally from `site/`:

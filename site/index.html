@@ -26,18 +26,55 @@
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
-    "@type": "SoftwareApplication",
-    "name": "Notch So Good",
-    "description": "See what your coding agents are doing from your Mac’s notch, and approve, answer or reply without opening the terminal. Works with Claude Code and Codex.",
-    "url": "https://notchsogood.com/",
-    "image": "https://notchsogood.com/og.png?v=3",
-    "applicationCategory": "DeveloperApplication",
-    "operatingSystem": "macOS 14 or later",
-    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
-    "license": "https://opensource.org/licenses/MIT",
-    "downloadUrl": "https://github.com/deepshal99/notch-so-good/releases/latest",
-    "codeRepository": "https://github.com/deepshal99/notch-so-good",
-    "author": { "@type": "Person", "name": "Deepak Maurya", "url": "https://github.com/deepshal99" }
+    "@graph": [
+      {
+        "@type": "WebSite",
+        "@id": "https://notchsogood.com/#website",
+        "name": "Notch So Good",
+        "alternateName": [
+          "NotchSoGood",
+          "Notch So Good for Mac"
+        ],
+        "url": "https://notchsogood.com/",
+        "inLanguage": "en"
+      },
+      {
+        "@type": "SoftwareApplication",
+        "name": "Notch So Good",
+        "description": "See what your coding agents are doing from your Mac’s notch, and approve, answer or reply without opening the terminal. Works with Claude Code and Codex.",
+        "url": "https://notchsogood.com/",
+        "image": "https://notchsogood.com/og.png?v=3",
+        "applicationCategory": "DeveloperApplication",
+        "operatingSystem": "macOS 14 or later",
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "USD"
+        },
+        "license": "https://opensource.org/licenses/MIT",
+        "downloadUrl": "https://github.com/deepshal99/notch-so-good/releases/latest",
+        "codeRepository": "https://github.com/deepshal99/notch-so-good",
+        "author": {
+          "@type": "Person",
+          "name": "Deepak Maurya",
+          "url": "https://github.com/deepshal99"
+        },
+        "@id": "https://notchsogood.com/#app",
+        "softwareVersion": "4.10.0",
+        "screenshot": "https://notchsogood.com/og.png?v=3",
+        "featureList": [
+          "Approve or deny Claude Code and Codex commands from the Mac notch",
+          "Answer an agent's questions and reply to Claude Code without opening the terminal",
+          "See every running session, which one needs you and how far along it is",
+          "5-hour and weekly usage limits at a glance, with a heads-up before you run out",
+          "Works with Claude Code, Codex and Gemini CLI",
+          "Peek, a live 3D character, in six finishes and many colours"
+        ],
+        "publisher": {
+          "@id": "https://notchsogood.com/#website"
+        }
+      }
+    ]
   }
   </script>
   <link rel="icon" id="favicon" href="/favicon.ico" sizes="any">
@@ -82,7 +119,7 @@
   <main>
     <!-- ───────────────────────── 1. hero -->
     <section class="hero">
-      <h1 class="reveal" id="heroTitle">Your coding agents,<br>right in your <span class="nw">Mac’s notch.</span></h1>
+      <h1 class="reveal" id="heroTitle">Your coding agents, <br>right in your <span class="nw">Mac’s notch.</span></h1>
       <p class="lede reveal" id="heroLede">See what’s running, what’s finished and what needs you. Approve commands and answer your agents without opening the&nbsp;terminal.</p>
       <div class="ctas reveal">
         <a class="btn dark" href="https://github.com/deepshal99/notch-so-good/releases/latest">
