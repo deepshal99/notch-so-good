@@ -721,7 +721,7 @@ const approve = { isl: null, view: null, U: 40, visible: false };
       $$('.b', el).forEach(x => x.classList.remove('go'));
       b.classList.add(act === 'deny' ? 'nod' : 'okd');
       b.innerHTML = `<span class="lbl">${b.textContent}</span>`;
-      swapText($('.lbl', b), act === 'deny' ? 'Denied' : act === 'session' ? '✓ For this session' : '✓ Allowed');
+      swapText($('.lbl', b), act === 'deny' ? 'Denied' : act === 'session' ? '✓ Session' : '✓ Allowed');
       // Peek reacts: a happy pull-up for a yes, a think for a no
       if (act === 'deny') v.puppet.setState('think', now());
       else { v.puppet.setState('done', now()); v.puppet.play('pullUp', now()); }

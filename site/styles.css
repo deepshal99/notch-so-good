@@ -842,3 +842,6 @@ html.own-swipe, html.own-swipe body { touch-action: none; overscroll-behavior: n
   .tile h3, .tile.wide h3 { font-size: 19px; }
   .tile p, .tile.wide p, .tile[data-tile=approve] .txt p { font-size: 15px; }
 }
+/* notch buttons: a label always sits on one line, clear of the edges, however narrow the card */
+.b { min-width: 0; padding: 0 calc(10px * var(--s)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.b .lbl { display: block; overflow: hidden; text-overflow: ellipsis; }
