@@ -14,7 +14,13 @@
     /* a giant Peek pops out of the top of the screen, looks at you, and drops dead. That's the page. */
     html, body { height: 100%; margin: 0; background: #fff; overflow: hidden; }
     body.on-peek { cursor: pointer; }
-    #giant { position: fixed; left: 50%; top: 0; translate: -50% 0; pointer-events: none; }
+    #giant { position: fixed; left: 50%; top: 0; translate: -50% 0; pointer-events: none; z-index: 1; }
+    /* the number, barely there behind him */
+    .ghost { position: fixed; left: 0; right: 0; top: 54%; translate: 0 -50%; margin: 0; text-align: center; pointer-events: none; user-select: none;
+      font: 700 clamp(200px, 36vw, 560px)/0.8 var(--sans); letter-spacing: -0.07em; color: rgba(11, 11, 12, 0.045);
+      opacity: 0; scale: 0.96; transition: opacity 1.2s ease-out 0.3s, scale 1.6s var(--out) 0.3s; }
+    body.ready .ghost { opacity: 1; scale: 1; }
+    @media (max-width: 720px) { .ghost { font-size: 44vw; top: 50%; } }
     .note { position: fixed; left: 28px; bottom: 24px; margin: 0; font: 500 13px/1.45 var(--sans); letter-spacing: -0.005em; color: var(--ink-3);
       opacity: 0; transition: opacity 0.6s ease-out; }
     .note a { color: var(--ink); text-decoration: underline; text-decoration-color: rgba(11,11,12,0.25); text-underline-offset: 3px; }
@@ -24,6 +30,7 @@
   </style>
 </head>
 <body>
+  <h1 class="ghost" aria-label="404, page not found">404</h1>
   <canvas id="giant" aria-label="Peek. Click to change its finish."></canvas>
   <p class="note">404. Nothing lives here. <a href="/">Take me home</a></p>
 
@@ -43,13 +50,13 @@ if (!LOOKS.includes(finish)) finish = 'neon';
 
 // the top of the screen is the notch: Peek hangs from it, and anything above it is out of sight
 const cv = document.getElementById('giant');
-const NOTCH_Y = 0.12, RISE = 0.7;    // RISE: how far above the screen his grip is, in Peek units
+const NOTCH_Y = 0.12, RISE = 0.5;    // RISE: how far above the screen his grip is, in Peek units
 const view = new PeekView(cv, { finish, unitsW: 4.4, unitsH: 3.4, notchY: NOTCH_Y, state: 'need' });
 const p = view.puppet;
 let U = 200;
 const place = () => {
   // giant: the top of his head is past the top of the screen, so only his face hangs into view
-  U = clamp(Math.min(innerWidth * (innerWidth < 720 ? 0.52 : 0.27), innerHeight * 0.42), 130, 420);
+  U = clamp(Math.min(innerWidth * (innerWidth < 720 ? 0.34 : 0.135), innerHeight * 0.23), 96, 230);
   view.resize(4.4 * U, 3.4 * U, Math.min(devicePixelRatio || 1, 1.5));
   cv.style.top = (-(NOTCH_Y + RISE) * U) + 'px';
 };
@@ -100,6 +107,7 @@ addEventListener('click', e => {
 
 // on a narrow screen he'd swing off the side, so the camera follows him a little
 let follow = 0;
+requestAnimationFrame(() => requestAnimationFrame(() => document.body.classList.add('ready')));
 const frame = () => {
   const P = p.lastPose;
   const want = P && innerWidth < 720 ? -(P.pos[0] * 0.85 + (p.state === 'error' ? 0.4 : 0)) * U : 0;   // dead, he hangs off one arm, leaning right
