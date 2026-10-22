@@ -80,7 +80,7 @@ const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const LOOKS = ['neon', 'obsidian', 'obsidian-midnight', 'obsidian-plum', 'obsidian-forest', 'porcelain', 'porcelain-sage', 'porcelain-blush', 'porcelain-sky',
   'gold', 'gold-rose', 'gold-white', 'balloon', 'balloon-sky', 'balloon-lemon', 'balloon-lilac', 'gummy', 'gummy-lime', 'gummy-tangerine', 'gummy-grape'].filter(f => FINISHES[f]);
 let finish = localStorage.getItem('nsg-finish-v3');
-if (!LOOKS.includes(finish)) finish = 'neon';
+if (!LOOKS.includes(finish)) finish = Math.random() < 0.5 ? 'balloon' : 'gummy';
 const announce = f => document.dispatchEvent(new CustomEvent('nsg:look', { detail: f }));
 
 // the real notch at the top of the screen, empty and at rest

@@ -32,7 +32,8 @@ const FINISHES = LOOKS.flatMap(l => l.tones.map(t => t[0]));
 const lookOf = id => LOOKS.find(l => l.tones.some(t => t[0] === id)) || LOOKS[0];
 const FINISH_NAMES = Object.fromEntries(LOOKS.flatMap(l => l.tones.map(t => [t[0], l.tones.length > 1 && t[1] !== l.name ? `${l.name} · ${t[1]}` : l.name])));
 let finish = localStorage.getItem('nsg-finish-v3');
-if (!FINISHES.includes(finish)) finish = FINISHES[0];
+// first visit: Peek starts in one of his two most fun looks; after that, whatever you picked last
+if (!FINISHES.includes(finish)) { const first = ['balloon', 'gummy'].filter(f => FINISHES.includes(f)); finish = first.length ? first[Math.floor(Math.random() * first.length)] : FINISHES[0]; }
 // whoever wants to follow the look (a themed page, say) listens for this
 const announce = f => document.dispatchEvent(new CustomEvent('nsg:look', { detail: f }));
 
