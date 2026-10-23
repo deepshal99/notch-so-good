@@ -25,14 +25,51 @@ These were cut before the new finishes, sounds and site. Worth recording two fre
 
 ## X (Twitter)
 
-### Launch post (pin it)
+### Launch post (pin it): pick one
 
+**1. Introducing Peek**
 ```
-i kept alt-tabbing to check if claude code was waiting on me
+Introducing Peek, a tiny assistant that lives in your MacBook's notch.
 
-so i put a tiny guy in my macbook's notch. he climbs out when an agent needs you, you approve the command right there, and he dies a little when you run out of usage
+He keeps an eye on all your Claude Code and Codex sessions across projects. Approve permissions, answer questions and reply, right from the notch.
 
-works with codex too. free and open source
+Free and open source.
+notchsogood.com
+```
+
+**2. Why I built it**
+```
+Juggling Claude Code sessions across projects, and switching back for every permission, was getting to be too much.
+
+So I built Notch So Good. All your sessions, permissions and replies, right in your MacBook's notch.
+
+Meet Peek. notchsogood.com
+```
+
+**3. The new Notch So Good**
+```
+Notch So Good is all new, and it comes with Peek.
+
+He lives in your notch and keeps track of your coding agents: every session at a glance, approve or deny commands, answer questions, reply when they're done.
+
+Claude Code and Codex. Free.
+notchsogood.com
+```
+
+**4. Meet Peek**
+```
+Meet Peek.
+
+Your Claude Code and Codex sessions, right in your MacBook's notch. See what each one is doing, approve commands, answer questions and reply, without switching windows.
+
+Free and open source. notchsogood.com
+```
+
+**5. Problem first**
+```
+Running a few agents at once means a lot of checking back.
+
+Notch So Good puts them all in your notch, with Peek keeping watch. He tells you which session needs you, and you handle it right there: permissions, questions, replies.
 
 notchsogood.com
 ```
@@ -41,39 +78,42 @@ Attach: the fresh notch recording (or `v4-16x9-neon.mp4`).
 ### Replies under it (post them as a thread, one by one)
 
 ```
-when claude wants to run something, the notch opens into a card. allow, deny, or allow for the whole session. you never leave the tab you're in
+When an agent wants to run something, the notch opens into a card. Allow, deny, or allow it for the whole session.
 ```
 ```
-it also shows your 5 hour and weekly limits, so no more getting cut off halfway through a refactor
+Every session in one list: what each one is doing, which one needs you, how far along it is. Click one to jump to its terminal.
 ```
 ```
-his name is peek. he's not a gif, he's drawn live in a metal shader. 6 finishes, a bunch of colours. the gummy one took me an embarrassing amount of time
+Your 5-hour and weekly limits are always there, with a heads-up before you run out.
+```
+```
+Peek is drawn live in a Metal shader, in 6 finishes and a lot of colours. Pick yours on the site.
 ```
 ```
 brew install --cask deepshal99/tap/notch-so-good
 
-or just download it from the site. mac only, macos 14+. tell me what breaks
+Or download it from notchsogood.com. Mac only, macOS 14 or later. Let me know what you think.
 ```
 
 ### Follow-up posts (one every couple of days)
 
 ```
-made the landing page make sounds. click once, then pick a finish. gold is a little bell, porcelain is a teacup tap, gummy goes bloop
+The site has sound. Click once, then pick a finish: gold is a little bell, porcelain a teacup tap, gummy goes bloop.
 
 notchsogood.com
 ```
 ```
-the 404 page is peek hanging off the 0, playing dead. click him and he changes outfit
+Even the 404 has Peek. He's hanging off the 0, playing dead. Click him and he changes outfit.
 
 notchsogood.com/literally-anything
 ```
 ```
-spent more time on a jelly shader than on any actual feature this month. no regrets
+I spent more time on Peek's jelly finish than on any feature this month. No regrets.
 ```
 (attach `peek-showcase.mp4` or a gummy close-up)
 
 ```
-people asked if it works with codex. yes. and gemini cli, in beta
+A few people asked: yes, it works with Codex. Gemini CLI too, in beta.
 ```
 
 **Tips:** post the launch between 8 and 10am US Eastern on a weekday. Quote-tweet yourself when the PH launch
