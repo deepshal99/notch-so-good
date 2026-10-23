@@ -30,7 +30,7 @@ These were cut before the new finishes, sounds and site. Worth recording two fre
 ```
 Notch So Good is all new, and it comes with Peek.
 
-Peek lives in your notch and tracks all your coding agents. Every session at a glance. Approve commands, answer questions, reply. All from the notch.
+Peek lives in your notch and tracks all your coding agents. Every session at a glance. Approve commands, answer questions, reply.
 
 Supports Claude Code, Codex and Gemini CLI. 100% free, open source.
 
@@ -255,7 +255,7 @@ Use the video's own sound, or a quiet trending one. Don't over-caption the video
 ### Stories (5 frames)
 1. The fresh notch recording. Text: `this is what my mac does now`
 2. A finish close-up. Poll sticker: `gummy or gold?`
-3. The site's "Make Peek yours" section. Text: `you can pick his outfit`
+3. The site's "Make Peek yours" section. Text: `pick the outfit`
 4. The 404 clip. Text: `even the 404 has a bit`
 5. Link sticker to notchsogood.com. Text: `free. mac only.`
 
@@ -276,7 +276,7 @@ If you use AI coding agents like Claude Code or Codex, you know the loop. You gi
 
 Notch So Good puts that in the MacBook's notch. When an agent needs a decision, the notch opens and you approve it right there. You can answer its questions, reply when it's done, and see how much usage you have left.
 
-It's free and open source. The part I'm proudest of is Peek, the little character in the notch. He's drawn live in a shader, and the landing page has sounds for every finish he comes in.
+It's free and open source. The part I'm proudest of is Peek, the little character in the notch. It's drawn live in a shader, and the landing page has a sound for every finish.
 
 notchsogood.com
 ```
