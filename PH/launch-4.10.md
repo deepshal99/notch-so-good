@@ -25,52 +25,19 @@ These were cut before the new finishes, sounds and site. Worth recording two fre
 
 ## X (Twitter)
 
-### Launch post (pin it): pick one
+### Launch post (pin it)
 
-**1. Introducing Peek**
-```
-Introducing Peek, a tiny assistant that lives in your MacBook's notch.
-
-He keeps an eye on all your Claude Code and Codex sessions across projects. Approve permissions, answer questions and reply, right from the notch.
-
-Free and open source.
-notchsogood.com
-```
-
-**2. Why I built it**
-```
-Juggling Claude Code sessions across projects, and switching back for every permission, was getting to be too much.
-
-So I built Notch So Good. All your sessions, permissions and replies, right in your MacBook's notch.
-
-Meet Peek. notchsogood.com
-```
-
-**3. The new Notch So Good**
 ```
 Notch So Good is all new, and it comes with Peek.
 
-He lives in your notch and keeps track of your coding agents: every session at a glance, approve or deny commands, answer questions, reply when they're done.
+Peek lives in your notch and tracks all your coding agents. Every session at a glance. Approve commands, answer questions, reply. All from the notch.
 
-Claude Code and Codex. Free.
-notchsogood.com
+Supports Claude Code, Codex and Gemini CLI. 100% free, open source.
+
+Link in the comments.
 ```
-
-**4. Meet Peek**
+First comment, right after posting:
 ```
-Meet Peek.
-
-Your Claude Code and Codex sessions, right in your MacBook's notch. See what each one is doing, approve commands, answer questions and reply, without switching windows.
-
-Free and open source. notchsogood.com
-```
-
-**5. Problem first**
-```
-Running a few agents at once means a lot of checking back.
-
-Notch So Good puts them all in your notch, with Peek keeping watch. He tells you which session needs you, and you handle it right there: permissions, questions, replies.
-
 notchsogood.com
 ```
 Attach: the fresh notch recording (or `v4-16x9-neon.mp4`).
@@ -87,7 +54,7 @@ Every session in one list: what each one is doing, which one needs you, how far 
 Your 5-hour and weekly limits are always there, with a heads-up before you run out.
 ```
 ```
-Peek is drawn live in a Metal shader, in 6 finishes and a lot of colours. Pick yours on the site.
+Peek is drawn live in a Metal shader, in 6 finishes and 20 looks. Pick yours on the site.
 ```
 ```
 brew install --cask deepshal99/tap/notch-so-good
@@ -95,20 +62,39 @@ brew install --cask deepshal99/tap/notch-so-good
 Or download it from notchsogood.com. Mac only, macOS 14 or later. Let me know what you think.
 ```
 
+### The website post (its own day, with a screen recording of the site, sound on)
+
+Pick one:
+```
+Notch So Good has a new landing page, and it's not a static one.
+
+The notch on it runs a live session. You can approve commands, pick Peek's finish and colour, and every finish has its own sound. Even the 404 has a bit.
+
+Turn your sound on. Link in the comments.
+```
+```
+Built the landing page to feel like the app itself.
+
+A real notch that opens, asks and waits for you. 20 looks for Peek, each with its own sound. A 404 you'll want to find.
+
+Sound on. Link in the comments.
+```
+First comment: `notchsogood.com`
+
 ### Follow-up posts (one every couple of days)
 
 ```
-The site has sound. Click once, then pick a finish: gold is a little bell, porcelain a teacup tap, gummy goes bloop.
+Click once on the site, then pick a finish: gold is a little bell, porcelain a teacup tap, gummy goes bloop.
 
 notchsogood.com
 ```
 ```
-Even the 404 has Peek. He's hanging off the 0, playing dead. Click him and he changes outfit.
+Even the 404 has Peek, hanging off the 0 and playing dead. Click to change the outfit.
 
 notchsogood.com/literally-anything
 ```
 ```
-I spent more time on Peek's jelly finish than on any feature this month. No regrets.
+Spent more time on Peek's jelly finish than on any feature this month. No regrets.
 ```
 (attach `peek-showcase.mp4` or a gummy close-up)
 
