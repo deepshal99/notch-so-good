@@ -899,3 +899,6 @@ html.own-swipe, html.own-swipe body { touch-action: none; overscroll-behavior: n
 /* very narrow phones (iPhone SE): the state words stay inside the card */
 @media (max-width: 360px) { .tile.wide .morph { width: 40%; margin-left: 24px; } .dial { left: 11% !important; } .dial span { font-size: 16px !important; } }
 @media (min-width: 361px) and (max-width: 440px) { .tile.wide .morph { width: 44%; margin-left: 12px; } .dial { left: 15% !important; } .dial span { font-size: 18px !important; } }
+
+/* touch screens: text fields at 16px, so iOS doesn't zoom the page in when you tap one */
+@media (pointer: coarse) { .rp input, .flo input, input { font-size: 16px !important; } }

@@ -111,7 +111,7 @@ function heroSound(was, to, scene) {
 
 // ------------------------------------------------------------------ usage: drains fast while agents work, runs out, comes back
 let usage = 30, warned = false;
-const DRAIN = 2.6;                                         // % per second of work
+const DRAIN = 3.6;                                         // % per second of work
 function paintUsage() {
   if (!current) return;
   const p = Math.max(0, Math.round(usage));
@@ -174,13 +174,14 @@ const script = {
   },
   // a Codex session joins: the notch shows everything running
   sessions() { go('sessions'); after(4.8, () => script.approve()); },
-  approve() { go('approve', { i: ask }); after(16, () => peek.play('wave', now())); },
+  // nobody has to click for the story to go on: Peek waves for attention, then the request is allowed by itself
+  approve() { go('approve', { i: ask }); after(4, () => peek.play('wave', now())); after(8, () => script.allow()); },
   allow() {
     const a = ASKS[ask % ASKS.length]; ask++;
     usage = Math.max(1, usage - 8);
     peek.hush = true; peek.play('pullUp', now());
     go('pill', { text: a.title === 'Edit file' ? 'Editing <em>redirect.ts</em>' : `Running <em>${a.code.split(' ').slice(0, 2).join(' ')}</em>`, c: a.agent === 'Codex' ? '#B79CFF' : C.work });
-    after(2.2, () => { go('done'); after(12, () => { if (!typing) script.work('Adding a test for the redirect'); }); });
+    after(2.2, () => { go('done'); after(7, () => { if (!typing) script.work('Adding a test for the redirect'); }); });
   },
   deny() {
     ask++;
@@ -193,7 +194,7 @@ const script = {
     after(2.8, () => script.work('On it'));
   },
   pick(v) { ask++; go('pill', { text: `Using ${v} <em>for sessions</em>` }); after(4.5, () => script.approve()); },
-  question() { go('question'); },
+  question() { go('question'); after(8, () => script.pick('Redis')); },
   heads() { go('pill', { text: 'Running low <em>· 15% of 5 hours left</em>', c: C.warn, peek: 'warn', live: false, w: 370 }); after(2.6, () => script.work('Wrapping up the redirect fix', 9)); },
   out() { usage = 0; go('out'); after(7, () => script.back()); },
   back() {
