@@ -166,7 +166,7 @@ struct SessionPillView: View {
             let primary = sessions.first
             let waiting = primary?.status == .needsInput || primary?.status == .needsPermission
             ElapsedText(since: primaryStartTime, compact: true,
-                        font: .system(size: hovered ? 11.5 : 10.5, weight: .semibold).monospacedDigit(),
+                        font: .system(size: hovered ? Island.smallSize : Island.captionSize, weight: .semibold).monospacedDigit(),
                         color: waiting ? CharacterState.need.color : .white.opacity(0.72))
                 .accessibilityLabel("Elapsed")
         }
@@ -207,8 +207,8 @@ struct SessionPillView: View {
                 Group {
                     switch row.kind {
                     case .single(let session): sessionRow(session)
-                    case .header(let name, let count): groupHeader(name, count: count)
-                    case .sub(let session): subSessionRow(session)
+                    case .header(let name, let sessions): groupHeader(name, sessions: sessions)
+                    case .sub(let session, let group): subSessionRow(session, group: group)
                     case .subagent(let sub): subagentRow(sub)
                     }
                 }
@@ -221,8 +221,8 @@ struct SessionPillView: View {
 
     private enum RowKind {
         case single(NotificationManager.SessionInfo)
-        case header(String, Int)
-        case sub(NotificationManager.SessionInfo)
+        case header(String, [NotificationManager.SessionInfo])
+        case sub(NotificationManager.SessionInfo, group: String)
         case subagent(NotificationManager.SubagentInfo)
     }
 
@@ -239,9 +239,9 @@ struct SessionPillView: View {
                 rows.append(Row(id: session.id, kind: .single(session)))
                 rows += session.subagents.map { Row(id: "sub-\($0.id)", kind: .subagent($0)) }
             } else {
-                rows.append(Row(id: "header-\(group.projectName)", kind: .header(group.projectName, group.sessions.count)))
+                rows.append(Row(id: "header-\(group.projectName)", kind: .header(group.projectName, group.sessions)))
                 for session in group.sessions {
-                    rows.append(Row(id: session.id, kind: .sub(session)))
+                    rows.append(Row(id: session.id, kind: .sub(session, group: group.projectName)))
                     rows += session.subagents.map { Row(id: "sub-\($0.id)", kind: .subagent($0)) }
                 }
             }
@@ -267,58 +267,42 @@ struct SessionPillView: View {
         .accessibilityHint("Opens this session in its terminal")
     }
 
-    /// Several sessions in one project: a quiet header, then a row each.
-    private func groupHeader(_ name: String, count: Int) -> some View {
-        HStack(spacing: 6) {
+    /// Several sessions in one repo: its name, how many, and how many need
+    /// you; then a row each, naming its workspace.
+    private func groupHeader(_ name: String, sessions: [NotificationManager.SessionInfo]) -> some View {
+        let waiting = sessions.filter { $0.status == .needsInput || $0.status == .needsPermission }.count
+        return HStack(spacing: 6) {
             Text(name)
-                .font(.system(size: 12, weight: .semibold))
+                .font(Island.meta.weight(.semibold))
                 .foregroundColor(Island.secondary)
                 .lineLimit(1)
-            Text("\(count) sessions")
+            Text("\(sessions.count) sessions")
                 .font(Island.caption)
                 .foregroundColor(Island.tertiary)
+            if waiting > 0 {
+                Text("· \(waiting) need\(waiting == 1 ? "s" : "") you")
+                    .font(Island.caption)
+                    .foregroundColor(CharacterState.need.color)
+            }
             Spacer(minLength: 0)
         }
         .padding(.horizontal, rowInset)
-        .padding(.bottom, 4)
+        .padding(.bottom, 2)
         .frame(height: PillLayout.groupHeader, alignment: .bottom)
+        .accessibilityElement(children: .combine)
     }
 
-    private func subSessionRow(_ session: NotificationManager.SessionInfo) -> some View {
+    private func subSessionRow(_ session: NotificationManager.SessionInfo, group: String) -> some View {
         Button { onTap(session.id) } label: {
-            HStack(spacing: 8) {
-                StatusDot(color: session.color, size: 6)
-                if let title = session.taskTitle {
-                    // The activity rides along only when it fits whole.
-                    ViewThatFits(in: .horizontal) {
-                        HStack(spacing: 8) {
-                            subTitle(title)
-                            SessionRowParts.activity(session).fixedSize()
-                        }
-                        subTitle(title)
-                    }
-                } else {
-                    SessionRowParts.activity(session, emphasised: true)
-                }
-                SessionRowParts.badges(for: session)
-                Spacer(minLength: 8)
-                SessionRowParts.trailing(session: session)
-            }
-            .padding(.leading, rowInset - 3)
-            .padding(.trailing, rowInset)
-            .frame(height: PillLayout.subSessionRow)
-            .contentShape(Rectangle())
+            IslandSessionRow(session: session, group: group)
+                .padding(.leading, rowInset - 3.5)
+                .padding(.trailing, rowInset)
+                .frame(height: PillLayout.subSessionRow)
+                .contentShape(Rectangle())
         }
         .buttonStyle(IslandRowStyle())
         .accessibilityLabel(SessionRowParts.accessibilityLabel(session))
         .accessibilityHint("Opens this session in its terminal")
-    }
-
-    private func subTitle(_ title: String) -> some View {
-        Text(title)
-            .font(.system(size: 12.5, weight: .medium))
-            .foregroundColor(Color.white.opacity(0.82))
-            .lineLimit(1)
     }
 
     /// A subagent, hung off its parent with a hairline.
@@ -336,7 +320,7 @@ struct SessionPillView: View {
                 .fill(sub.status.dotColor.opacity(sub.status == .completed ? 0.6 : 1))
                 .frame(width: 5, height: 5)
             Text(sub.description)
-                .font(.system(size: 11.5))
+                .font(Island.detail)
                 .foregroundColor(Island.secondary)
                 .lineLimit(1)
             Spacer(minLength: 8)
@@ -391,18 +375,21 @@ struct SessionPillView: View {
 // MARK: - Session grouping by project
 
 struct SessionGroup: Identifiable {
-    let id: String  // projectName
+    let id: String  // the repo, or the project when it isn't one
     let projectName: String
     let sessions: [NotificationManager.SessionInfo]
 
+    /// Sessions in one repository share a group, its worktrees (Conductor's
+    /// workspaces) included; outside a repo, the project folder decides.
     static func from(_ sessions: [NotificationManager.SessionInfo]) -> [SessionGroup] {
         var order: [String] = []
         var map: [String: [NotificationManager.SessionInfo]] = [:]
         for session in sessions {
-            if map[session.projectName] == nil {
-                order.append(session.projectName)
+            let key = session.repoName ?? session.projectName
+            if map[key] == nil {
+                order.append(key)
             }
-            map[session.projectName, default: []].append(session)
+            map[key, default: []].append(session)
         }
         return order.compactMap { name in
             guard let sessions = map[name] else { return nil }

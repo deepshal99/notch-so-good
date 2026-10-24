@@ -227,7 +227,7 @@ struct MenuBarContentView: View {
                 Text("resets").frame(minWidth: Self.resetColumn, alignment: .trailing)
                 Text("left").frame(minWidth: Self.percentColumn, alignment: .trailing)
             }
-            .font(.system(size: 11, weight: .medium))
+            .font(Island.caption)
             .foregroundColor(Island.tertiary)
 
             ForEach(windows) { window in
@@ -237,16 +237,16 @@ struct MenuBarContentView: View {
                     UsageRing(percentLeft: window.percentLeft, diameter: 13, lineWidth: 2.6,
                               tint: UsageTint.notch(window.percentLeft), track: Color.white.opacity(0.16))
                     Text(Self.name(window))
-                        .font(.system(size: 13, weight: .medium))
+                        .font(Island.body.weight(.medium))
                         .foregroundColor(Island.primary)
                         .lineLimit(1)
                     Spacer(minLength: 8)
                     Text(window.resetsAt.map { UsageLimitsStore.resetCountdown($0) } ?? "–")
-                        .font(.system(size: 12, weight: .medium).monospacedDigit())
+                        .font(Island.numeric)
                         .foregroundColor(warned ? CharacterState.need.color : Island.secondary)
                         .frame(minWidth: Self.resetColumn, alignment: .trailing)
                     Text("\(window.percentLeft)%")
-                        .font(.system(size: 13.5, weight: .semibold).monospacedDigit())
+                        .font(Island.heading.monospacedDigit())
                         .foregroundColor(low ? UsageTint.notch(window.percentLeft) : Island.primary)
                         .frame(minWidth: Self.percentColumn, alignment: .trailing)
                 }
@@ -260,7 +260,7 @@ struct MenuBarContentView: View {
                 HStack(spacing: 8) {
                     StatusDot(color: CharacterState.need.color, size: 6)
                     Text("\(Self.name(runout)) runs out \(Self.when(date, now: now)) at this pace")
-                        .font(.system(size: 11.5, weight: .medium))
+                        .font(Island.meta)
                         .foregroundColor(CharacterState.need.color)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -321,10 +321,10 @@ struct MenuBarContentView: View {
             StatusDot(color: CharacterState.done.color)
             VStack(alignment: .leading, spacing: 2) {
                 Text(ready ? "Update ready" : "Update available")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(Island.heading)
                     .foregroundColor(Island.primary)
                 Text(ready ? "Version \(version) is downloaded. If macOS asks, let it update apps (once)." : "Version \(version) is out.")
-                    .font(.system(size: 11.5))
+                    .font(Island.detail)
                     .foregroundColor(Island.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -351,10 +351,10 @@ struct MenuBarContentView: View {
             StatusDot(color: CharacterState.error.color)
             VStack(alignment: .leading, spacing: 2) {
                 Text("Couldn't connect to Claude Code")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(Island.heading)
                     .foregroundColor(Island.primary)
                 Text("Hooks didn't install, so sessions won't show up.")
-                    .font(.system(size: 11.5))
+                    .font(Island.detail)
                     .foregroundColor(Island.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -382,10 +382,10 @@ struct MenuBarContentView: View {
             StatusDot(color: CharacterState.need.color)
             VStack(alignment: .leading, spacing: 2) {
                 Text("Allow Accessibility")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(Island.heading)
                     .foregroundColor(Island.primary)
                 Text("So a click jumps to the exact terminal window.")
-                    .font(.system(size: 11.5))
+                    .font(Island.detail)
                     .foregroundColor(Island.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }

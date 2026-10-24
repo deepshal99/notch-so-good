@@ -79,7 +79,7 @@ struct SettingsView: View {
             NotchTile(state: .work, size: 40, radius: 11, framing: .badge, live: false)
             VStack(alignment: .leading, spacing: 2) {
                 Text("Notch So Good")
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(Island.title)
                     .foregroundColor(Panel.primary)
                 Text("Version \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "–")")
                     .font(Panel.subtitle)
@@ -106,7 +106,7 @@ struct SettingsView: View {
                         Image(systemName: item.icon)
                             .font(.system(size: 16, weight: .medium))
                         Text(item.title)
-                            .font(.system(size: 11.5, weight: .medium))
+                            .font(Island.meta)
                     }
                     .foregroundColor(selected ? Panel.primary : Panel.secondary)
                     .frame(maxWidth: .infinity)
@@ -290,7 +290,7 @@ private struct KeyCaps: View {
         HStack(spacing: 4) {
             ForEach(keys, id: \.self) { key in
                 Text(key)
-                    .font(.system(size: 11.5, weight: .medium))
+                    .font(Island.meta)
                     .foregroundColor(Panel.primary)
                     .padding(.horizontal, key.count > 1 ? 5 : 0)
                     .frame(minWidth: 22, minHeight: 22)
@@ -369,7 +369,7 @@ private struct CharacterPane: View {
                         HStack(spacing: 10) {
                             ForEach(tones) { tone in toneSwatch(tone) }
                             Text(settings.tone?.name ?? "")
-                                .font(.system(size: 11.5, weight: .medium))
+                                .font(Island.meta)
                                 .foregroundColor(Panel.secondary)
                                 .padding(.leading, 2)
                         }
@@ -414,7 +414,7 @@ private struct CharacterPane: View {
                             .padding(-3)
                     )
                 Text(kind.displayName)
-                    .font(.system(size: 12, weight: selected ? .semibold : .medium))
+                    .font(Island.meta.weight(selected ? .semibold : .medium))
                     .foregroundColor(selected ? Panel.primary : Panel.secondary)
             }
             .contentShape(Rectangle())
@@ -457,7 +457,7 @@ private struct CharacterPane: View {
                     .padding(3)
                     .overlay(Circle().strokeBorder(Color.white.opacity(selected ? 0.9 : 0), lineWidth: 1.5))
                 Text(name)
-                    .font(.system(size: 11, weight: selected ? .semibold : .medium))
+                    .font(Island.caption.weight(selected ? .semibold : .medium))
                     .foregroundColor(selected ? Panel.primary : Panel.secondary)
             }
             .contentShape(Rectangle())

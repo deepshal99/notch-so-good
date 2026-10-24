@@ -1,28 +1,39 @@
 import SwiftUI
 
-/// A session as the island shows it: its colour, what it's working on, where
+/// A session as the island shows it: its agent, what it's working on, where
 /// and what it's doing right now, and how long it's been going. One component
 /// for the notch's list and the menu bar panel, so the two can't drift apart.
 struct IslandSessionRow: View {
     let session: NotificationManager.SessionInfo
+    /// The repo it's listed under, when grouped: the header names the repo,
+    /// so the row names only its own workspace (and nothing on the main checkout).
+    var group: String? = nil
+
+    private var place: String? {
+        guard let group else { return session.projectName }
+        let leaf = session.projectName.components(separatedBy: " / ").last ?? session.projectName
+        return leaf == group ? nil : leaf
+    }
 
     var body: some View {
         HStack(spacing: 8) {
-            StatusDot(color: session.color)
+            // In the 14 pt column the status dot had, so the text stays put.
+            AgentMark(agent: session.agentSource, working: session.status == .running)
+                .frame(width: 14)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
-                    Text(session.taskTitle ?? session.projectName)
-                        .font(.system(size: 13, weight: .semibold))
+                    Text(session.taskTitle ?? place ?? session.projectName)
+                        .font(Island.heading)
                         .foregroundColor(Island.primary)
                         .lineLimit(1)
                         .truncationMode(session.taskTitle == nil ? .middle : .tail)
                     SessionRowParts.badges(for: session)
                 }
                 HStack(spacing: 0) {
-                    if session.taskTitle != nil {
+                    if session.taskTitle != nil, let place {
                         // The project keeps a readable share of the line; the
                         // activity truncates instead of squeezing it to nothing.
-                        Text(session.projectName)
+                        Text(place)
                             .lineLimit(1)
                             .truncationMode(.middle)
                             .frame(maxWidth: 130, alignment: .leading)
@@ -32,7 +43,7 @@ struct IslandSessionRow: View {
                     }
                     SessionRowParts.activity(session)
                 }
-                .font(.system(size: 11.5))
+                .font(Island.detail)
                 .foregroundColor(Island.tertiary)
             }
             Spacer(minLength: 8)
@@ -49,7 +60,7 @@ enum SessionRowParts {
         let line = (!waiting ? session.planLine : nil)
             ?? session.status.activityLine(toolName: session.activeToolName, toolDetail: session.activeToolDetail)
         return Text(line)
-            .font(.system(size: emphasised ? 12.5 : 11.5, weight: emphasised ? .medium : .regular))
+            .font(emphasised ? Island.body.weight(.medium) : Island.detail)
             .foregroundColor(waiting ? CharacterState.need.color : (emphasised ? Color.white.opacity(0.82) : Island.secondary))
             .lineLimit(1)
             .truncationMode(.tail)
@@ -57,9 +68,6 @@ enum SessionRowParts {
 
     @ViewBuilder
     static func badges(for session: NotificationManager.SessionInfo) -> some View {
-        if session.agentSource != .claude {
-            Chip(text: session.agentSource.displayName, mono: false, tint: session.agentSource.accentColor, height: 17)
-        }
         if let mode = session.permissionMode.badgeLabel {
             Chip(text: mode, mono: false, height: 17)
         }
@@ -70,7 +78,7 @@ enum SessionRowParts {
             let running = session.subagents.filter { $0.status == .running }.count
             if running > 0 {
                 HStack(spacing: 3) {
-                    Image(systemName: "person.2.fill").font(.system(size: 9, weight: .semibold))
+                    Image(systemName: "person.2.fill").font(Island.glyph)
                     Text("\(running)").font(Island.numeric)
                 }
                 .foregroundColor(Island.tertiary)
@@ -81,7 +89,7 @@ enum SessionRowParts {
             }
             if let progress = session.planProgress {
                 HStack(spacing: 3) {
-                    Image(systemName: "checklist").font(.system(size: 9, weight: .semibold)).foregroundStyle(Island.tertiary)
+                    Image(systemName: "checklist").font(Island.glyph).foregroundStyle(Island.tertiary)
                     Text("\(progress.done)/\(progress.total)").font(Island.numeric)
                 }
                 .foregroundColor(Island.tertiary)

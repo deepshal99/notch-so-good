@@ -82,6 +82,8 @@ class NotificationManager: ObservableObject {
         let id: String
         let startTime: Date
         var projectName: String   // sanitized cwd or short UUID fallback
+        /// The repository it works in, so a repo's worktrees group together.
+        var repoName: String?
         var status: SessionStatus
         var lastMessage: String?
         var sourceBundleId: String?  // bundle ID of the terminal/IDE that owns this session
@@ -94,9 +96,6 @@ class NotificationManager: ObservableObject {
         var permissionMode: PermissionMode = .standard
         /// What it's working on, from the user's prompts (see TaskTitle).
         var taskTitle: String?
-        /// Which of `Island.sessionColors` marks this session. Unique among
-        /// live sessions while a free colour exists.
-        var colorIndex = 0
         /// This turn's work, for the finished card: files written, and how the
         /// last test run went ("passed" / "failed").
         var turnEdited: Set<String> = []
@@ -121,15 +120,8 @@ class NotificationManager: ObservableObject {
             guard planLine != nil else { return nil }
             return (plan.filter { $0.status == "completed" }.count, plan.count)
         }
-
-        var color: Color { Island.sessionColors[colorIndex % Island.sessionColors.count] }
     }
 
-    /// The first colour no live session wears; past eight sessions, they repeat.
-    private func freeColorIndex() -> Int {
-        let used = Set(activeSessions.map(\.colorIndex))
-        return (0..<Island.sessionColors.count).first { !used.contains($0) } ?? activeSessions.count % Island.sessionColors.count
-    }
     @Published var activeSessions: [SessionInfo] = []
 
     /// Sessions ordered by how much they need the user. The collapsed pill shows
@@ -334,6 +326,10 @@ class NotificationManager: ObservableObject {
 
         if let idx = activeSessions.firstIndex(where: { $0.id == sid }) {
             if let resolvedCwd {
+                // Every hook event lands here: read the repo only when the folder changes.
+                if activeSessions[idx].cwd != resolvedCwd || activeSessions[idx].repoName == nil {
+                    activeSessions[idx].repoName = GitBranch.repoName(in: resolvedCwd)
+                }
                 activeSessions[idx].cwd = resolvedCwd
                 activeSessions[idx].projectName = sanitizedProjectName(resolvedCwd, sessionId: sid)
             }
@@ -366,7 +362,7 @@ class NotificationManager: ObservableObject {
             agentSource: AgentSource.detect(sourceApp: sourceApp, model: model)
         )
         if let permissionMode { session.permissionMode = permissionMode }
-        session.colorIndex = freeColorIndex()
+        session.repoName = GitBranch.repoName(in: resolvedCwd)
         activeSessions.append(session)
         Telemetry.shared.noteSession(agent: session.agentSource)
 

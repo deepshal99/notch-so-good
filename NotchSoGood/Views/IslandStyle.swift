@@ -42,28 +42,31 @@ enum Island {
 
     // MARK: Type
 
-    static let titleSize: CGFloat = 14
-    static let bodySize: CGFloat = 12.5
-    static let monoSize: CGFloat = 12
+    /// One scale for every surface: 11 · 12 · 13 · 15. Reading text sits at
+    /// 13; labels and second lines a step down at 12; the smallest marks
+    /// (hints, counts, chips) at 11; titles a clear step up at 15. Nothing
+    /// in between, so two texts either match or plainly differ.
+    static let captionSize: CGFloat = 11
+    static let smallSize: CGFloat = 12
+    static let bodySize: CGFloat = 13
+    static let titleSize: CGFloat = 15
+    /// Code reads larger than prose at the same size, so it takes the small step.
+    static let monoSize: CGFloat = smallSize
 
     static let title = Font.system(size: titleSize, weight: .semibold)
+    /// A row's or an option's name.
+    static let heading = Font.system(size: bodySize, weight: .semibold)
     static let body = Font.system(size: bodySize)
-    static let meta = Font.system(size: 12, weight: .medium)
-    static let caption = Font.system(size: 11, weight: .medium)
+    static let button = heading
+    static let meta = Font.system(size: smallSize, weight: .medium)
+    /// Second lines: where a session is, what an option means.
+    static let detail = Font.system(size: smallSize)
+    static let caption = Font.system(size: captionSize, weight: .medium)
     static let mono = Font.system(size: monoSize, design: .monospaced)
-    static let chip = Font.system(size: 11, weight: .medium, design: .monospaced)
-    static let button = Font.system(size: 12.5, weight: .semibold)
-    static let numeric = Font.system(size: 11.5, weight: .medium).monospacedDigit()
-
-    // MARK: Sessions
-
-    /// One colour per session, so several running at once stay tellable apart
-    /// at a glance. Soft on black, and none of them the orange that means
-    /// "needs you".
-    static let sessionColors: [Color] = [
-        Color(hex: "7DB8FF"), Color(hex: "5FD4C4"), Color(hex: "B79CFF"), Color(hex: "FF8FB8"),
-        Color(hex: "FFD166"), Color(hex: "A3E36F"), Color(hex: "E59CFF"), Color(hex: "D9C3A0"),
-    ]
+    static let chip = Font.system(size: captionSize, weight: .medium, design: .monospaced)
+    static let numeric = Font.system(size: smallSize, weight: .medium).monospacedDigit()
+    /// SF Symbols set beside small text.
+    static let glyph = Font.system(size: 10, weight: .semibold)
 
     // MARK: Motion
 
@@ -92,6 +95,101 @@ struct StatusDot: View {
     }
 }
 
+/// Which agent a session is, in the mark its own terminal shows: Claude
+/// Code's ✻, Codex's >_, Gemini's ✦. Drawn, not typed, so all three share one
+/// weight; one quiet tone, so Peek stays the only colour in the notch. While
+/// the agent works the mark moves: the spark turns, the cursor blinks, the
+/// sparkle breathes.
+struct AgentMark: View {
+    let agent: AgentSource
+    var working = false
+    var size: CGFloat = 12
+    var color: Color = Island.secondary
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        Group {
+            if working && !reduceMotion {
+                TimelineView(.animation(minimumInterval: agent == .codex ? 0.5 : 1/30)) { ctx in
+                    mark(t: ctx.date.timeIntervalSinceReferenceDate)
+                }
+            } else {
+                mark(t: nil)
+            }
+        }
+        .frame(width: size, height: size)
+        .accessibilityHidden(true)
+    }
+
+    private var stroke: StrokeStyle { StrokeStyle(lineWidth: max(1.4, size*0.14), lineCap: .round, lineJoin: .round) }
+
+    @ViewBuilder
+    private func mark(t: TimeInterval?) -> some View {
+        switch agent {
+        case .claude:
+            AgentSpark().stroke(color, style: stroke)
+                .rotationEffect(.degrees(t.map { $0 * 90 } ?? 0))
+        case .codex:
+            ZStack {
+                AgentPrompt(part: .chevron).stroke(color, style: stroke)
+                AgentPrompt(part: .cursor).stroke(color, style: stroke)
+                    .opacity(t.map { Int($0 / 0.5) % 2 == 0 ? 1 : 0.15 } ?? 1)
+            }
+        case .gemini:
+            AgentSparkle().fill(color)
+                .scaleEffect(t.map { 0.86 + 0.14 * cos($0 * 3) } ?? 1)
+        case .unknown:
+            Circle().fill(color).frame(width: size*0.4, height: size*0.4)
+        }
+    }
+}
+
+/// Claude Code's ✻: six spokes from an open centre.
+private struct AgentSpark: Shape {
+    func path(in rect: CGRect) -> Path {
+        let c = CGPoint(x: rect.midX, y: rect.midY), r = min(rect.width, rect.height)/2
+        var p = Path()
+        for i in 0..<6 {
+            let a = CGFloat(i) * .pi/3 - .pi/2
+            p.move(to: CGPoint(x: c.x + cos(a)*r*0.3, y: c.y + sin(a)*r*0.3))
+            p.addLine(to: CGPoint(x: c.x + cos(a)*r*0.88, y: c.y + sin(a)*r*0.88))
+        }
+        return p
+    }
+}
+
+/// Codex's >_, in two parts so the cursor can blink.
+private struct AgentPrompt: Shape {
+    enum Part { case chevron, cursor }
+    let part: Part
+
+    func path(in rect: CGRect) -> Path {
+        func pt(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: rect.minX + x*rect.width, y: rect.minY + y*rect.height) }
+        var p = Path()
+        switch part {
+        case .chevron:
+            p.move(to: pt(0.1, 0.24)); p.addLine(to: pt(0.4, 0.5)); p.addLine(to: pt(0.1, 0.76))
+        case .cursor:
+            p.move(to: pt(0.54, 0.78)); p.addLine(to: pt(0.92, 0.78))
+        }
+        return p
+    }
+}
+
+/// Gemini's ✦: four points, curving in between.
+private struct AgentSparkle: Shape {
+    func path(in rect: CGRect) -> Path {
+        let c = CGPoint(x: rect.midX, y: rect.midY), r = min(rect.width, rect.height)/2
+        let tips = [CGPoint(x: c.x, y: c.y - r), CGPoint(x: c.x + r, y: c.y), CGPoint(x: c.x, y: c.y + r), CGPoint(x: c.x - r, y: c.y)]
+        var p = Path()
+        p.move(to: tips[0])
+        for i in 1...4 { p.addQuadCurve(to: tips[i % 4], control: c) }
+        p.closeSubpath()
+        return p
+    }
+}
+
 /// A mono tag on a quiet fill: "Bash", a branch, an agent.
 struct Chip: View {
     let text: String
@@ -102,7 +200,7 @@ struct Chip: View {
     var body: some View {
         let small = height < 20
         Text(text)
-            .font(.system(size: small ? 10.5 : 11, weight: .medium, design: mono ? .monospaced : .default))
+            .font(mono ? Island.chip : Island.caption)
             .foregroundColor(tint ?? Color.white.opacity(0.8))
             .lineLimit(1)
             .fixedSize()
@@ -122,9 +220,9 @@ struct BranchLabel: View {
     var body: some View {
         HStack(spacing: 4) {
             Image(systemName: "arrow.triangle.branch")
-                .font(.system(size: 10, weight: .medium))
+                .font(Island.glyph)
             Text(branch)
-                .font(.system(size: 11.5, design: .monospaced))
+                .font(Island.chip)
                 .lineLimit(1)
                 .truncationMode(.middle)
         }

@@ -9,6 +9,23 @@ final class NotificationPhase: ObservableObject {
     var intoPill: NotchNotificationView.PillFrame?
 }
 
+/// The cards waiting behind the one on screen, oldest first: the deck that
+/// peeks out under a waiting card, so you can see who else needs you.
+final class WaitingDeck: ObservableObject {
+    struct Entry: Identifiable, Equatable {
+        let id: String          // its permission request id
+        let agent: AgentSource
+        let name: String
+        /// What it asks: the tool ("Bash"), "Plan" or "Question".
+        let kind: String
+        let since: Date
+    }
+
+    @Published var entries: [Entry] = []
+    /// Bring a waiting card forward (the one on screen goes back in line).
+    var onPick: ((String) -> Void)?
+}
+
 /// A card that drops out of the notch. It is the open pill's exact shape and
 /// top strip (character on the left, runway on the right), so a card reads as
 /// the pill opening rather than something new arriving.
@@ -35,6 +52,7 @@ struct NotchNotificationView: View {
     var onTourNext: (() -> Void)? = nil
     var onTourSkip: (() -> Void)? = nil
     @ObservedObject var phase: NotificationPhase
+    @ObservedObject var deck: WaitingDeck
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ObservedObject private var limits = UsageLimitsStore.shared
@@ -50,6 +68,9 @@ struct NotchNotificationView: View {
     /// The pill this card opens out of (or folds back into): the island starts
     /// and ends as its exact shape, and the character rides between the two spots.
     @State private var pill: PillFrame?
+    /// The deck's height as drawn. The panel resizes at once when a card joins
+    /// the line; the island springs to meet it instead of jumping.
+    @State private var shownDeck: CGFloat
 
     private let session: NotificationManager.SessionInfo?
     private let branch: String?
@@ -77,6 +98,7 @@ struct NotchNotificationView: View {
         onTourNext: (() -> Void)? = nil,
         onTourSkip: (() -> Void)? = nil,
         phase: NotificationPhase = NotificationPhase(),
+        deck: WaitingDeck = WaitingDeck(),
         session: NotificationManager.SessionInfo? = nil,
         fromPill: PillFrame? = nil,
         appearImmediately: Bool = false
@@ -94,9 +116,11 @@ struct NotchNotificationView: View {
         self.onTourNext = onTourNext
         self.onTourSkip = onTourSkip
         self.phase = phase
+        self.deck = deck
         self.session = session
         self.branch = GitBranch.current(in: session?.cwd)
         _pill = State(initialValue: fromPill)
+        _shownDeck = State(initialValue: notification.isInteractivePermission ? Metrics.deckHeight(waiting: deck.entries.count) : 0)
         if appearImmediately {
             _expanded = State(initialValue: true)
             _contentAppeared = State(initialValue: true)
@@ -148,11 +172,26 @@ struct NotchNotificationView: View {
         static func optionHeight(_ option: AgentQuestion.Option) -> CGFloat { option.description.isEmpty ? 34 : 44 }
         static let otherHeight: CGFloat = 34
 
+        /// The next waiting card's edge, showing below this one: who it is.
+        static let deckStrip: CGFloat = 32
+        /// How far it tucks up under this card (its corners stay hidden).
+        static let deckTuck: CGFloat = Island.cardRadius
+        /// A second edge behind it when more than one is waiting.
+        static let deckEdge: CGFloat = 6
+        /// Each card behind is this much narrower on each side.
+        static let deckStep: CGFloat = 10
+
+        /// What the deck adds under a waiting card.
+        static func deckHeight(waiting: Int) -> CGFloat {
+            waiting == 0 ? 0 : deckStrip + (waiting > 1 ? deckEdge : 0)
+        }
+
         static var monoLine: CGFloat { lineHeight(NSFont.monospacedSystemFont(ofSize: Island.monoSize, weight: .regular)) }
         static var bodyLine: CGFloat { lineHeight(NSFont.systemFont(ofSize: Island.bodySize)) + 2 }
 
-        /// Height of everything below the header strip.
-        static func contentHeight(for notification: NotchNotification, panelWidth: CGFloat) -> CGFloat {
+        /// Height of everything below the header strip, with `waiting` more
+        /// cards in the deck under a waiting one.
+        static func contentHeight(for notification: NotchNotification, panelWidth: CGFloat, waiting: Int = 0) -> CGFloat {
             let tour = notification.tour != nil
             if let interaction = notification.interaction {
                 // A practice question has no session line; a practice command keeps its tool chip.
@@ -162,21 +201,21 @@ struct NotchNotificationView: View {
                 switch interaction {
                 case .permission(let always):
                     let well = 2*wellPadding + CGFloat(commandLines(notification, panelWidth: panelWidth).shown)*monoLine
-                    card = top + (hasDescription(notification) ? 6 + bodyLine : 0) + 10 + well + 12 + buttonHeight
+                    card = top + (hasDescription(notification) ? rowGap + bodyLine : 0) + 10 + well + 12 + buttonHeight
                     if always != nil { card += 8 + captionRow }
                 case .plan:
                     let lines = planLines(notification, panelWidth: panelWidth).shown
-                    card = top + 6 + bodyLine + (lines > 0 ? 10 + 2*wellPadding + CGFloat(lines)*bodyLine : 0) + 12 + buttonHeight
+                    card = top + rowGap + bodyLine + (lines > 0 ? 10 + 2*wellPadding + CGFloat(lines)*bodyLine : 0) + 12 + buttonHeight
                 case .question(let questions):
                     // Sized for the tallest question, so stepping through never resizes the card.
                     let tallest = questions.map { q -> CGFloat in
                         let lines = CGFloat(questionLines(q.question, panelWidth: panelWidth))
                         let options = q.options.map(optionHeight).reduce(0, +) + CGFloat(q.options.count)*optionGap + (tour ? -optionGap : otherHeight)
-                        return 8 + lines*bodyLine + 10 + options + (q.multiSelect ? 12 + buttonHeight : (tour ? 0 : 10 + captionRow))
+                        return rowGap + lines*bodyLine + 10 + options + (q.multiSelect ? 12 + buttonHeight : (tour ? 0 : 10 + captionRow))
                     }.max() ?? 0
                     card = top + tallest
                 }
-                return headerGap + card + Island.cardPadding + Island.inset
+                return headerGap + card + Island.cardPadding + deckHeight(waiting: waiting) + Island.inset
             }
             let lines = messageLines(notification, panelWidth: panelWidth)
             return headerGap + 4 + titleRow + (tour ? 0 : 6 + metaRow) + 8 + CGFloat(lines)*bodyLine + 16
@@ -290,7 +329,8 @@ struct NotchNotificationView: View {
             let panelWidth = geo.size.width
             let width = Metrics.islandWidth(panelWidth)
             let height = geo.size.height
-            let size = islandSize(panelWidth: panelWidth, height: height)
+            let deckLag = isPermission ? Metrics.deckHeight(waiting: deck.entries.count) - shownDeck : 0
+            let size = islandSize(panelWidth: panelWidth, height: height - deckLag)
 
             ZStack(alignment: .top) {
                 // Only the black shape grows out of the notch; text and the
@@ -312,8 +352,14 @@ struct NotchNotificationView: View {
                     header(width: width)
                     Group {
                         if isPermission {
-                            waitingCard(panelWidth: panelWidth)
-                                .padding(.horizontal, Island.inset)
+                            VStack(spacing: -Metrics.deckTuck) {
+                                waitingCard(panelWidth: panelWidth).zIndex(1)
+                                if !deck.entries.isEmpty {
+                                    deckView.transition(.opacity.combined(with: .offset(y: -6)))
+                                }
+                            }
+                            .animation(Island.spring, value: deck.entries.map(\.id))
+                            .padding(.horizontal, Island.inset)
                                 .padding(.top, Metrics.headerGap)
                         } else {
                             summary(panelWidth: panelWidth)
@@ -349,6 +395,10 @@ struct NotchNotificationView: View {
             .accessibilityHint(accessibilityHint)
         }
         .onAppear(perform: animateIn)
+        .onChange(of: deck.entries.count) { _, count in
+            guard isPermission else { return }
+            withAnimation(reduceMotion ? .easeOut(duration: 0.2) : Island.spring) { shownDeck = Metrics.deckHeight(waiting: count) }
+        }
         .onChange(of: phase.dismissing) { _, dismissing in
             guard dismissing else { return }
             pill = phase.intoPill
@@ -431,14 +481,75 @@ struct NotchNotificationView: View {
             }
         }
         .padding(Island.cardPadding)
-        .background(
-            RoundedRectangle(cornerRadius: Island.cardRadius, style: .continuous)
-                .fill(Island.card)
-                .overlay(
-                    RoundedRectangle(cornerRadius: Island.cardRadius, style: .continuous)
-                        .strokeBorder(Island.hairline, lineWidth: 1)
-                )
-        )
+        .background(deckCard)
+    }
+
+    /// The inner card's surface. Laid on black, as the island is, so a card
+    /// tucked behind it in the deck doesn't show through.
+    private var deckCard: some View {
+        RoundedRectangle(cornerRadius: Island.cardRadius, style: .continuous)
+            .fill(Color.black)
+            // Lifted off the cards under it: the shadow falls across their tops.
+            .shadow(color: .black.opacity(deck.entries.isEmpty ? 0 : 0.9), radius: 6, y: 4)
+            .overlay(RoundedRectangle(cornerRadius: Island.cardRadius, style: .continuous).fill(Island.card))
+            .overlay(
+                RoundedRectangle(cornerRadius: Island.cardRadius, style: .continuous)
+                    .strokeBorder(Island.hairline, lineWidth: 1)
+            )
+    }
+
+    // MARK: - The deck (who else is waiting)
+
+    /// The next waiting card's edge, tucked under this one: who it is, what it
+    /// asks and how long it's waited. More behind it show as a second edge and
+    /// their agents' marks.
+    private var deckView: some View {
+        let entries = deck.entries
+        return ZStack(alignment: .top) {
+            if entries.count > 1 {
+                deckLayer(depth: 2)
+                    .frame(height: Metrics.deckTuck + Metrics.deckStrip + Metrics.deckEdge)
+                    .padding(.horizontal, 2*Metrics.deckStep)
+            }
+            if let next = entries.first {
+                HStack(spacing: 8) {
+                    DeckChip(entry: next) { deck.onPick?(next.id) }
+                    Spacer(minLength: 4)
+                    HStack(spacing: 0) {
+                        ForEach(entries.dropFirst().prefix(4)) { entry in
+                            DeckDot(entry: entry) { deck.onPick?(entry.id) }
+                        }
+                        if entries.count > 5 {
+                            Text("+\(entries.count - 5)").font(Island.numeric).foregroundColor(Island.tertiary)
+                                .padding(.leading, 2)
+                        }
+                    }
+                    Text("⌃⌥N")
+                        .font(Island.caption)
+                        .foregroundColor(Island.tertiary)
+                        .help("Next waiting card (⌃⌥N)")
+                        .accessibilityHidden(true)
+                }
+                .padding(.leading, Island.cardPadding - Metrics.deckStep)
+                .padding(.trailing, Island.cardPadding - 2)
+                .frame(height: Metrics.deckStrip)
+                .padding(.top, Metrics.deckTuck)
+                .background(deckLayer(depth: 1))
+                .padding(.horizontal, Metrics.deckStep)
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(entries.count == 1 ? "1 more waiting" : "\(entries.count) more waiting")
+    }
+
+    /// A card further back: narrower with each step, edged like the front
+    /// card, opaque so the one behind it doesn't show through. The first sits a
+    /// shade lighter than the island so the front card's shadow reads on it.
+    private func deckLayer(depth: Int) -> some View {
+        let shape = RoundedRectangle(cornerRadius: Island.cardRadius, style: .continuous)
+        return shape.fill(Color.black)
+            .overlay(shape.fill(Color.white.opacity(depth == 1 ? 0.12 : 0.065)))
+            .overlay(shape.strokeBorder(Color.white.opacity(depth == 1 ? 0.12 : 0.08), lineWidth: 1))
     }
 
     /// What's being asked, and how long it's been waiting. No status mark:
@@ -452,7 +563,7 @@ struct NotchNotificationView: View {
                 .lineLimit(1)
             if isDestructive {
                 Text("Destructive")
-                    .font(.system(size: 10.5, weight: .semibold))
+                    .font(Island.caption.weight(.semibold))
                     .foregroundColor(Color(hex: "FF8A80"))
                     .padding(.horizontal, 7)
                     .frame(height: 18)
@@ -483,11 +594,9 @@ struct NotchNotificationView: View {
     private var metaRow: some View {
         HStack(spacing: 8) {
             if let session {
-                Circle().fill(session.color).frame(width: 7, height: 7)
-                    .padding(.trailing, -2)
+                AgentMark(agent: session.agentSource, size: 11).padding(.horizontal, -2)
             }
             if let toolChip, case .permission = notification.interaction { Chip(text: toolChip) }
-            if let session, session.agentSource != .claude { Chip(text: session.agentSource.displayName, mono: false) }
             if let projectName {
                 Text(session?.taskTitle ?? projectName)
                     .font(Island.meta)
@@ -532,7 +641,7 @@ struct NotchNotificationView: View {
                 .foregroundColor(Island.secondary)
                 .lineLimit(1)
                 .frame(height: Metrics.bodyLine, alignment: .leading)
-                .padding(.top, 6)
+                .padding(.top, Metrics.rowGap)
         }
         well(lines: lines.shown, lineHeight: Metrics.monoLine, scrolls: lines.overflows, danger: isDestructive) {
             Text(Self.commandText(notification.detail ?? notification.message, isEdit: isFileChange))
@@ -606,7 +715,7 @@ struct NotchNotificationView: View {
             .foregroundColor(Island.primary)
             .lineLimit(1)
             .frame(height: Metrics.bodyLine, alignment: .leading)
-            .padding(.top, 6)
+            .padding(.top, Metrics.rowGap)
         let lines = Metrics.planLines(notification, panelWidth: panelWidth)
         if lines.shown > 0, let plan = notification.detail {
             well(lines: lines.shown, lineHeight: Metrics.bodyLine, scrolls: lines.overflows) {
@@ -638,7 +747,7 @@ struct NotchNotificationView: View {
             .lineSpacing(2)
             .lineLimit(Metrics.maxQuestionLines)
             .fixedSize(horizontal: false, vertical: true)
-            .padding(.top, 8)
+            .padding(.top, Metrics.rowGap)
         VStack(spacing: Metrics.optionGap) {
             ForEach(Array(question.options.enumerated()), id: \.offset) { offset, option in
                 OptionRow(option: option, multiSelect: question.multiSelect, selected: selected.contains(offset),
@@ -746,17 +855,17 @@ struct NotchNotificationView: View {
             .frame(height: Metrics.titleRow)
 
             if !isTour { HStack(spacing: 8) {
-                // Title first; the project, agent and branch join only when they
-                // fit whole, so nothing is ever cut to a stub.
+                // Title first; the project and branch join only when they fit
+                // whole, so nothing is ever cut to a stub.
                 ViewThatFits(in: .horizontal) {
-                    summaryMeta(project: true, agent: true, branch: true)
-                    summaryMeta(project: true, agent: true, branch: false)
-                    summaryMeta(project: false, agent: false, branch: false)
+                    summaryMeta(project: true, branch: true)
+                    summaryMeta(project: true, branch: false)
+                    summaryMeta(project: false, branch: false)
                 }
                 Spacer(minLength: 0)
                 if session != nil {
                     Image(systemName: "arrow.up.right")
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(Island.glyph)
                         .foregroundColor(hovered ? Island.primary : Island.tertiary)
                         .frame(width: 20, height: 20)
                         .background(Circle().fill(Color.white.opacity(hovered ? 0.14 : 0.07)))
@@ -796,11 +905,10 @@ struct NotchNotificationView: View {
         }
     }
 
-    private func summaryMeta(project: Bool, agent: Bool, branch showBranch: Bool) -> some View {
+    private func summaryMeta(project: Bool, branch showBranch: Bool) -> some View {
         HStack(spacing: 8) {
             if let session {
-                Circle().fill(session.color).frame(width: 7, height: 7)
-                    .padding(.trailing, -2)
+                AgentMark(agent: session.agentSource, size: 11).padding(.horizontal, -2)
             }
             Text(session?.taskTitle ?? projectName ?? "Claude Code")
                 .font(Island.meta)
@@ -812,9 +920,6 @@ struct NotchNotificationView: View {
                     .foregroundColor(Island.tertiary)
                     .lineLimit(1)
                     .fixedSize()
-            }
-            if agent, let session, session.agentSource != .claude {
-                Chip(text: session.agentSource.displayName, mono: false)
             }
             if showBranch, let branch {
                 BranchLabel(branch: branch).fixedSize()
@@ -882,6 +987,74 @@ struct IslandButton: View {
     }
 }
 
+/// The next waiting card in the deck: its session, what it asks, how long
+/// it's waited. Click to bring it forward.
+struct DeckChip: View {
+    let entry: WaitingDeck.Entry
+    let action: () -> Void
+
+    /// Its hover fill reaches this far past the dot.
+    static let inset: CGFloat = 6
+
+    @State private var hovered = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 7) {
+                AgentMark(agent: entry.agent, size: 11).padding(.horizontal, -2)
+                Text(entry.name)
+                    .font(Island.meta)
+                    .foregroundColor(Island.primary.opacity(0.86))
+                    .lineLimit(1)
+                Text(entry.kind)
+                    .font(Island.caption)
+                    .foregroundColor(Island.tertiary)
+                    .lineLimit(1)
+                    .fixedSize()
+                TimelineView(.periodic(from: .now, by: 1)) { ctx in
+                    Text(NotchNotificationView.waitLabel(ctx.date.timeIntervalSince(entry.since)))
+                        .font(Island.numeric)
+                        .foregroundColor(Island.tertiary)
+                }
+                .fixedSize()
+            }
+            .padding(.horizontal, Self.inset)
+            .frame(height: 24)
+            .background(Capsule(style: .continuous).fill(hovered ? Island.controlHover : Color.clear))
+            .contentShape(Capsule())
+        }
+        .buttonStyle(IslandPressStyle())
+        .onHover { hovered = $0 }
+        .animation(Island.press, value: hovered)
+        .help("Show \(entry.name)'s \(entry.kind.lowercased()) now")
+        .accessibilityLabel("Next: \(entry.name), \(entry.kind)")
+        .accessibilityHint("Shows it now")
+    }
+}
+
+/// Another card further back in the deck: its agent's mark.
+struct DeckDot: View {
+    let entry: WaitingDeck.Entry
+    let action: () -> Void
+
+    @State private var hovered = false
+
+    var body: some View {
+        Button(action: action) {
+            AgentMark(agent: entry.agent, size: 10, color: Island.tertiary)
+                .frame(width: 20, height: 20)
+                .background(Circle().fill(hovered ? Island.controlHover : Color.clear))
+                .contentShape(Circle())
+        }
+        .buttonStyle(IslandPressStyle())
+        .onHover { hovered = $0 }
+        .animation(Island.press, value: hovered)
+        .help("\(entry.name) · \(entry.kind)")
+        .accessibilityLabel("\(entry.name), \(entry.kind)")
+        .accessibilityHint("Shows it now")
+    }
+}
+
 /// One answer to a question: its label, what it means, and (multi-select) a tick.
 struct OptionRow: View {
     let option: AgentQuestion.Option
@@ -903,17 +1076,17 @@ struct OptionRow: View {
             HStack(spacing: 10) {
                 if multiSelect {
                     Image(systemName: selected ? "checkmark.circle.fill" : "circle")
-                        .font(.system(size: 14, weight: .medium))
+                        .font(.system(size: Island.bodySize + 1, weight: .medium))
                         .foregroundColor(selected ? Island.primary : Island.tertiary)
                 }
                 VStack(alignment: .leading, spacing: 2) {
                     Text(option.label)
-                        .font(.system(size: 12.5, weight: .semibold))
+                        .font(Island.heading)
                         .foregroundColor(Island.primary)
                         .lineLimit(1)
                     if !option.description.isEmpty {
                         Text(option.description)
-                            .font(.system(size: 11.5))
+                            .font(Island.detail)
                             .foregroundColor(Island.tertiary)
                             .lineLimit(1)
                     }
@@ -956,7 +1129,7 @@ struct TurnStats: View {
                 let passed = tests == "passed"
                 HStack(spacing: 4) {
                     Image(systemName: passed ? "checkmark" : "xmark")
-                        .font(.system(size: 9.5, weight: .bold))
+                        .font(Island.glyph)
                     Text(passed ? "Tests pass" : "Tests fail")
                         .font(Island.numeric)
                 }
@@ -981,26 +1154,26 @@ struct OtherAnswerField: View {
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: icon)
-                .font(.system(size: 11, weight: .semibold))
+                .font(Island.caption.weight(.semibold))
                 .foregroundColor(Island.tertiary)
             // macOS ignores a placeholder's colour, so draw it ourselves.
             ZStack(alignment: .leading) {
                 if text.isEmpty {
                     Text(placeholder)
-                        .font(.system(size: 12.5, weight: .medium))
+                        .font(Island.body.weight(.medium))
                         .foregroundColor(Island.secondary.opacity(0.8))
                         .allowsHitTesting(false)
                 }
                 TextField("", text: $text)
                     .textFieldStyle(.plain)
-                    .font(.system(size: 12.5, weight: .medium))
+                    .font(Island.body.weight(.medium))
                     .foregroundColor(Island.primary)
                     .focused($focused)
                     .onSubmit(onSubmit)
             }
             if !text.isEmpty {
                 Image(systemName: "return")
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(Island.glyph)
                     .foregroundColor(Island.tertiary)
             }
         }

@@ -43,7 +43,11 @@ class NotchWindowController {
     private var notificationPhase: NotificationPhase?
 
     // Permission queue — when multiple tools need approval simultaneously
-    private var permissionQueue: [NotchNotification] = []
+    private var permissionQueue: [NotchNotification] = [] {
+        didSet { publishDeck() }
+    }
+    /// The queue as the card on screen shows it, under itself.
+    private let deck = WaitingDeck()
     private var permissionQueueMeta: [(sourceBundleId: String?, cwd: String?, sourcePid: pid_t?)] = []
     /// Finished / error / heads-up cards that arrived while a waiting card was
     /// up: shown once it's answered, newest few only, instead of being lost.
@@ -63,6 +67,12 @@ class NotchWindowController {
     // Pill sizing — shared with SessionPillView via PillLayout
     private let wingExpanded = PillLayout.wingExpanded
     private let wingCollapsed = PillLayout.wingCollapsed
+
+    init() {
+        deck.onPick = { [weak self] requestId in
+            MainActor.assumeIsolated { self?.bringForward(requestId) }
+        }
+    }
 
     // MARK: - Session Pill
 
@@ -265,10 +275,7 @@ class NotchWindowController {
                 NSScreen.screens.first { $0.displayID == screen.displayID }
             }
             if let geo = resolveGeometry(stillAttached) {
-                let panelWidth = NotchNotificationView.Metrics.panelWidth(notchWidth: geo.notchWidth, hasNotch: geo.hasNotch)
-                let contentHeight = NotchNotificationView.Metrics.contentHeight(for: activeNotification, panelWidth: panelWidth)
-                let panelHeight = NotchNotificationView.Metrics.headerHeight(notchHeight: geo.barHeight, hasNotch: geo.hasNotch) + contentHeight
-                let frame = calculateFrame(panelWidth: panelWidth, panelHeight: panelHeight, geo: geo)
+                let frame = cardFrame(for: activeNotification, geo: geo)
                 panel.setFrame(frame, display: true)
                 notifHoverMonitor.contentScreenRect = frame
             }
@@ -342,14 +349,8 @@ class NotchWindowController {
         let notchH = geo.barHeight
         let notchW = geo.notchWidth
 
-        // The card is sized to its content: a one-line command gets a shorter
-        // card than a three-line one.
         let isPermission = notification.isInteractivePermission
-        let panelWidth = NotchNotificationView.Metrics.panelWidth(notchWidth: notchW, hasNotch: hasNotch)
-        let contentHeight = NotchNotificationView.Metrics.contentHeight(for: notification, panelWidth: panelWidth)
-        let panelHeight = NotchNotificationView.Metrics.headerHeight(notchHeight: notchH, hasNotch: hasNotch) + contentHeight
-
-        let frame = calculateFrame(panelWidth: panelWidth, panelHeight: panelHeight, geo: geo)
+        let frame = cardFrame(for: notification, geo: geo)
 
         if panel == nil {
             panel = NotchPanel(contentRect: frame)
@@ -440,6 +441,7 @@ class NotchWindowController {
             },
             onTourSkip: { MainActor.assumeIsolated { Tour.shared.skip() } },
             phase: phase,
+            deck: deck,
             // Always called on the main thread (UI entry points only).
             session: MainActor.assumeIsolated {
                 NotificationManager.shared.activeSessions.first { $0.id == notification.sessionId }
@@ -671,6 +673,56 @@ class NotchWindowController {
         showNextQueuedPermission()
     }
 
+    /// A card in the deck was clicked: it comes forward, and the one on screen
+    /// goes back in line, next up.
+    @MainActor func bringForward(_ requestId: String) {
+        guard activePermissionRequestId != nil, let current = activeNotification,
+              let index = permissionQueue.firstIndex(where: { $0.permissionRequestId == requestId }) else { return }
+        let picked = permissionQueue[index], meta = permissionQueueMeta[index]
+        permissionQueueMeta.remove(at: index)
+        permissionQueueMeta.insert(activeMeta, at: 0)
+        var queue = permissionQueue
+        queue.remove(at: index)
+        queue.insert(current, at: 0)
+        permissionQueue = queue
+        activePermissionRequestId = nil
+        showNotification(picked, sessionSourceBundleId: meta.sourceBundleId, sessionCwd: meta.cwd, sessionSourcePid: meta.sourcePid)
+    }
+
+    /// The queue changed: the deck under the card on screen follows, and the
+    /// card grows or shrinks to fit it.
+    private func publishDeck() {
+        let entries = MainActor.assumeIsolated {
+            let sessions = NotificationManager.shared.activeSessions
+            return permissionQueue.compactMap { n -> WaitingDeck.Entry? in
+                guard let id = n.permissionRequestId else { return nil }
+                return Self.deckEntry(id: id, notification: n, session: sessions.first { $0.id == n.sessionId })
+            }
+        }
+        guard entries != deck.entries else { return }
+        deck.entries = entries
+        guard isNotificationActive, !isDismissing, let panel, let activeNotification,
+              activeNotification.isInteractivePermission else { return }
+        let screen = notificationScreen.flatMap { s in NSScreen.screens.first { $0.displayID == s.displayID } }
+        guard let geo = resolveGeometry(screen) else { return }
+        let frame = cardFrame(for: activeNotification, geo: geo)
+        guard panel.frame != frame else { return }
+        panel.setFrame(frame, display: true)
+        notifHoverMonitor.contentScreenRect = frame
+    }
+
+    static func deckEntry(id: String, notification: NotchNotification, session: NotificationManager.SessionInfo?) -> WaitingDeck.Entry {
+        let kind: String
+        switch notification.interaction {
+        case .plan: kind = "Plan"
+        case .question: kind = "Question"
+        default: kind = notification.toolName.map { SessionStatus.mcpServer($0) ?? $0 } ?? "Approval"
+        }
+        // The last part of "parent / project": Conductor's workspace, or the folder.
+        let name = session.map { $0.projectName.components(separatedBy: " / ").last ?? $0.projectName } ?? "Claude Code"
+        return WaitingDeck.Entry(id: id, agent: session?.agentSource ?? .claude, name: name, kind: kind, since: notification.timestamp)
+    }
+
     /// ⌃⌥O: go to where the session runs. A waiting card is handed back there,
     /// so the agent asks in its own prompt.
     @MainActor func openActiveCard() {
@@ -822,6 +874,16 @@ class NotchWindowController {
                 )
             }
         }
+    }
+
+    /// A card's panel, sized to its content (a one-line command gets a shorter
+    /// card than a three-line one) and, under a waiting card, the deck.
+    private func cardFrame(for notification: NotchNotification, geo: NotchGeometry) -> NSRect {
+        let panelWidth = NotchNotificationView.Metrics.panelWidth(notchWidth: geo.notchWidth, hasNotch: geo.hasNotch)
+        let waiting = notification.isInteractivePermission ? deck.entries.count : 0
+        let contentHeight = NotchNotificationView.Metrics.contentHeight(for: notification, panelWidth: panelWidth, waiting: waiting)
+        let panelHeight = NotchNotificationView.Metrics.headerHeight(notchHeight: geo.barHeight, hasNotch: geo.hasNotch) + contentHeight
+        return calculateFrame(panelWidth: panelWidth, panelHeight: panelHeight, geo: geo)
     }
 
     /// Centre horizontally on the target display and hang down from its top —

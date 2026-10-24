@@ -14,9 +14,9 @@ enum Panel {
     static let rowPadding: CGFloat = 14
     static let iconColumn: CGFloat = 22
 
-    static let title = Font.system(size: 13, weight: .medium)
-    static let subtitle = Font.system(size: 11.5)
-    static let sectionTitle = Font.system(size: 12, weight: .medium)
+    static let title = Island.body.weight(.medium)
+    static let subtitle = Island.detail
+    static let sectionTitle = Island.meta
 
     static let primary = Color.white.opacity(0.94)
     static let secondary = Color.white.opacity(0.55)
@@ -157,7 +157,7 @@ struct PanelSegmented<Value: Hashable>: View {
                     withAnimation(Island.spring) { selection = value }
                 } label: {
                     Text(label)
-                        .font(.system(size: 12, weight: selected ? .semibold : .medium))
+                        .font(Island.meta.weight(selected ? .semibold : .medium))
                         .foregroundColor(selected ? .black : Panel.secondary)
                         .padding(.horizontal, 12)
                         .frame(height: 26)
@@ -186,7 +186,7 @@ struct PanelButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 12.5, weight: .medium))
+            .font(Island.body.weight(.medium))
             .foregroundColor(kind == .primary ? .black : (kind == .quiet && !hovered ? Panel.secondary : Panel.primary))
             .padding(.horizontal, 14)
             .frame(height: 30)

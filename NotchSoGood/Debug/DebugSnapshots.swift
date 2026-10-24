@@ -31,6 +31,8 @@ enum DebugSnapshots {
         badgeSheet(to: dir.appendingPathComponent("badge.png"))
         iconMaster(to: dir.appendingPathComponent("icon-1024.png"))
         cardSheet(to: dir.appendingPathComponent("cards.png"))
+        deckSheet(to: dir.appendingPathComponent("deck.png"))
+        groupSheet(to: dir.appendingPathComponent("groups.png"))
         settingsSheet(to: dir.appendingPathComponent("settings.png"))
         popoverSheet(to: dir.appendingPathComponent("popover.png"))
         menuBarSheet(to: dir.appendingPathComponent("menubar.png"))
@@ -185,7 +187,6 @@ enum DebugSnapshots {
             session("d", "docs", .running, mode: .acceptEdits),
         ]
         sessions[0].taskTitle = "Fix the flaky websocket reconnect"
-        for i in sessions.indices { sessions[i].colorIndex = i }
         sessions[2].taskTitle = "Rewrite the getting started guide"
         sessions[1].context = ContextUsage(used: 164_000, window: 200_000, known: false)
         sessions[3].context = ContextUsage(used: 930_000, window: 1_000_000, known: true)
@@ -238,7 +239,6 @@ enum DebugSnapshots {
         let repo = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().path
         var session = NotificationManager.SessionInfo(id: "s", startTime: Date(), projectName: "api", status: .needsPermission, cwd: repo)
         session.taskTitle = "Fix the flaky websocket reconnect"
-        session.colorIndex = 1
         session.turnEdited = ["a.swift", "b.swift", "c.swift"]
         session.turnTests = "passed"
         let always = CardInteraction.AlwaysRule(label: "Bash(git push origin fix/ws-reconnect)", destination: "localSettings")
@@ -310,6 +310,117 @@ enum DebugSnapshots {
         write(ctx.makeImage(), url)
     }
 
+    /// The open pill with five sessions over three repos, three of them
+    /// Conductor workspaces of one repo: grouped by folder, then by repo.
+    static func groupSheet(to url: URL) {
+        let notchH: CGFloat = 37, notchW: CGFloat = 185, s: CGFloat = 2
+        let now = Date()
+        func session(_ id: String, _ project: String, repo: String, _ status: SessionStatus, title: String, tool: String? = nil, detail: String? = nil,
+                     agent: AgentSource = .claude, minutes: Double) -> NotificationManager.SessionInfo {
+            var info = NotificationManager.SessionInfo(id: id, startTime: now.addingTimeInterval(-minutes*60), projectName: project, status: status,
+                                                       activeToolName: tool, activeToolDetail: detail)
+            info.repoName = repo
+            info.taskTitle = title
+            info.agentSource = agent
+            return info
+        }
+        let sessions = [
+            session("a", "notch-so-good / dar-es-salaam", repo: "notch-so-good", .needsPermission, title: "Deck under waiting cards", tool: "Bash", minutes: 12),
+            session("b", "api", repo: "api", .needsInput, title: "Fix the flaky websocket reconnect", minutes: 31),
+            session("c", "notch-so-good / tokyo", repo: "notch-so-good", .running, title: "Remote bridge reconnects", tool: "Edit",
+                    detail: "/Users/me/notch-so-good/Remote/bridge.mjs", minutes: 8),
+            session("d", "notch-so-good / lima", repo: "notch-so-good", .running, title: "Landing hero copy", tool: "Bash", detail: "npm run dev", agent: .codex, minutes: 4),
+            session("e", "tist-site", repo: "tist-site", .running, title: "Case study grid", tool: "Read", detail: "src/pages/work.tsx", agent: .gemini, minutes: 19),
+        ]
+        UsageLimitsStore.shared.windows = [UsageLimitsStore.LimitWindow(label: "Session", percentLeft: 62, resetsAt: now.addingTimeInterval(2*3600 + 14*60))]
+        let maxW = notchW + PillLayout.wingExpanded*2
+        var images: [(CGImage, CGSize)] = []
+        for byRepo in [false, true] {
+            let list = byRepo ? sessions : sessions.map { var s = $0; s.repoName = nil; return s }
+            let source = PillDataSource()
+            source.sessions = list
+            source.showsRunway = true
+            let monitor = PillHoverMonitor()
+            monitor.isHovered = true
+            let h = PillLayout.expandedHeight(for: list, notchHeight: notchH, runway: true) + 4
+            let full = notchH + PillLayout.maxContentHeight
+            let view = SessionPillView(dataSource: source, notchWidth: notchW, notchHeight: notchH, onTap: { _ in }, hoverMonitor: monitor, appearImmediately: true)
+                .frame(width: maxW, height: full, alignment: .top)
+            guard let base = bitmap(NSHostingView(rootView: view), size: CGSize(width: maxW, height: full), scale: s, settle: 0.9) else { continue }
+            let ctx = canvas(Int(maxW*s), Int(h*s))
+            ctx.draw(base, in: CGRect(x: 0, y: (h - full)*s, width: maxW*s, height: full*s))
+            if let ch = render(kind: CharacterSettings.shared.kind, state: CharacterState(session: list.first), framing: .pill,
+                               sizePt: CGSize(width: PillLayout.wingCollapsed, height: notchH), scale: s, t: 1.6, gaze: SIMD2<Float>(0.03, -0.09)) {
+                ctx.draw(ch, in: CGRect(x: (9 + Island.inset + Island.cardPadding - 17)*s, y: (h - notchH)*s, width: PillLayout.wingCollapsed*s, height: notchH*s))
+            }
+            ctx.setFillColor(CGColor(gray: 0.16, alpha: 1))
+            ctx.fill(CGRect(x: (maxW - notchW)/2*s, y: (h - notchH)*s, width: notchW*s, height: notchH*s))
+            if let img = ctx.makeImage() { images.append((img, CGSize(width: maxW*s, height: h*s))) }
+        }
+        let W = Int(images.reduce(CGFloat(20)) { $0 + $1.1.width + 20 })
+        let H = Int((images.map(\.1.height).max() ?? 100) + 40)
+        let ctx = canvas(W, H)
+        ctx.setFillColor(CGColor(red: 0.13, green: 0.15, blue: 0.22, alpha: 1)); ctx.fill(CGRect(x: 0, y: 0, width: W, height: H))
+        var x: CGFloat = 20
+        for (img, size) in images { ctx.draw(img, in: CGRect(x: x, y: CGFloat(H) - 20 - size.height, width: size.width, height: size.height)); x += size.width + 20 }
+        write(ctx.makeImage(), url)
+    }
+
+    /// Waiting cards with others queued behind them: none, one, and several
+    /// sessions across projects.
+    static func deckSheet(to url: URL) {
+        let notchW: CGFloat = 185, notchH: CGFloat = 37, s: CGFloat = 2
+        let panelW = NotchNotificationView.Metrics.panelWidth(notchWidth: notchW, hasNotch: true)
+        let repo = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().path
+        var session = NotificationManager.SessionInfo(id: "s", startTime: Date(), projectName: "api", status: .needsPermission, cwd: repo)
+        session.taskTitle = "Fix the flaky websocket reconnect"
+        func entry(_ id: String, _ name: String, _ kind: String, agent: AgentSource = .claude, waited: TimeInterval) -> WaitingDeck.Entry {
+            WaitingDeck.Entry(id: id, agent: agent, name: name, kind: kind, since: Date().addingTimeInterval(-waited))
+        }
+        let push = NotchNotification(type: .permission, message: "Push the fix branch", title: "Run command", permissionRequestId: "x", toolName: "Bash",
+                                     detail: "git push origin fix/ws-reconnect", interaction: .permission(always: nil))
+        let questions = [AgentQuestion(question: "Which cache should back the session store?", header: "Cache", multiSelect: false, options: [
+            .init(label: "Redis", description: "Shared across instances; needs a server"),
+            .init(label: "In-memory LRU", description: "Fastest; lost on restart"),
+        ])]
+        let ask = NotchNotification(type: .permission, message: questions[0].question, title: "Cache", permissionRequestId: "q", toolName: "AskUserQuestion",
+                                    interaction: .question(questions))
+        let cases: [(NotchNotification, [WaitingDeck.Entry])] = [
+            (push, []),
+            (push, [entry("1", "dar-es-salaam", "Question", waited: 42)]),
+            (push, [entry("1", "dar-es-salaam", "Question", waited: 42), entry("2", "site", "Edit", agent: .codex, waited: 18),
+                    entry("3", "tokyo", "Plan", waited: 7)]),
+            (ask, [entry("1", "landing", "Bash", agent: .codex, waited: 95), entry("2", "site", "Edit", agent: .codex, waited: 18)]),
+        ]
+        var images: [(CGImage, CGSize)] = []
+        for (n, entries) in cases {
+            let deck = WaitingDeck()
+            deck.entries = entries
+            let h = notchH + NotchNotificationView.Metrics.contentHeight(for: n, panelWidth: panelW, waiting: entries.count)
+            let view = NotchNotificationView(notification: n, hasNotch: true, notchWidth: notchW, notchHeight: notchH, onTap: {}, onDismiss: {},
+                                             onRespond: { _ in }, deck: deck, session: session, appearImmediately: true)
+                .frame(width: panelW, height: h)
+            guard let base = bitmap(NSHostingView(rootView: view), size: CGSize(width: panelW, height: h), scale: s, settle: 0.9) else { continue }
+            let ctx = canvas(Int(panelW*s), Int(h*s))
+            ctx.draw(base, in: CGRect(x: 0, y: 0, width: panelW*s, height: h*s))
+            let slot = NotchNotificationView.Metrics.characterSlot
+            if let ch = render(kind: CharacterSettings.shared.kind, state: CharacterState(notification: n), framing: .pill, sizePt: slot.size, scale: s, t: 1.6) {
+                ctx.draw(ch, in: CGRect(x: (slot.minX + NotchNotificationView.Metrics.wall)*s, y: (h - slot.height)*s, width: slot.width*s, height: slot.height*s))
+            }
+            ctx.setFillColor(CGColor(gray: 0.16, alpha: 1))
+            ctx.fill(CGRect(x: (panelW - notchW)/2*s, y: (h - notchH)*s, width: notchW*s, height: notchH*s))
+            if let img = ctx.makeImage() { images.append((img, CGSize(width: panelW*s, height: h*s))) }
+        }
+        // Side by side, tops aligned, as they'd hang from the notch.
+        let W = Int(images.reduce(CGFloat(20)) { $0 + $1.1.width + 20 })
+        let H = Int((images.map(\.1.height).max() ?? 100) + 40)
+        let ctx = canvas(W, H)
+        ctx.setFillColor(CGColor(red: 0.13, green: 0.15, blue: 0.22, alpha: 1)); ctx.fill(CGRect(x: 0, y: 0, width: W, height: H))
+        var x: CGFloat = 20
+        for (img, size) in images { ctx.draw(img, in: CGRect(x: x, y: CGFloat(H) - 20 - size.height, width: size.width, height: size.height)); x += size.width + 20 }
+        write(ctx.makeImage(), url)
+    }
+
     /// The Settings window's three panes, in dark and light.
     static func settingsSheet(to url: URL) {
         let updater = SPUStandardUpdaterController(startingUpdater: false, updaterDelegate: nil, userDriverDelegate: nil).updater
@@ -353,10 +464,8 @@ enum DebugSnapshots {
         ]
         var a = NotificationManager.SessionInfo(id: "p1", startTime: now.addingTimeInterval(-29), projectName: "notch-so-good / dar-es-salaam", status: .running)
         a.taskTitle = "Polish the menu bar menu"
-        a.colorIndex = 0
         a.activeToolName = nil
         var b = NotificationManager.SessionInfo(id: "p2", startTime: now.addingTimeInterval(-312), projectName: "api", status: .needsPermission)
-        b.colorIndex = 3
         NotificationManager.shared.activeSessions = [a, b]
         defer { NotificationManager.shared.activeSessions = [] }
         var images: [(CGImage, CGFloat)] = []

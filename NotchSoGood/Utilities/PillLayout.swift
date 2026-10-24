@@ -12,7 +12,8 @@ enum PillLayout {
     static let dropBottomPad: CGFloat = 10
     static let sessionRow: CGFloat = 46
     static let groupHeader: CGFloat = 26
-    static let subSessionRow: CGFloat = 36
+    /// A session under its repo's header: the same two lines, naming its workspace.
+    static let subSessionRow: CGFloat = sessionRow
     static let subagentRow: CGFloat = 26
     /// "5-hour window · 62% left · resets in 2h 14m" with its bar.
     static let runwayFooter: CGFloat = 46

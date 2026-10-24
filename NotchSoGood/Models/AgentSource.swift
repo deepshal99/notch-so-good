@@ -16,15 +16,6 @@ enum AgentSource: String, Codable, CaseIterable {
         }
     }
 
-    var accentColor: Color {
-        switch self {
-        case .claude: return .orange
-        case .codex: return Color(red: 0.063, green: 0.639, blue: 0.498) // #10A37F OpenAI green
-        case .gemini: return Color(red: 0.278, green: 0.588, blue: 0.890) // #4796E3 Gemini blue
-        case .unknown: return .gray
-        }
-    }
-
     /// Detect agent source from event metadata
     static func detect(sourceApp: String?, model: String?) -> AgentSource {
         if let app = sourceApp?.lowercased() {
