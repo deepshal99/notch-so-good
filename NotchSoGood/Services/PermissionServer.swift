@@ -458,6 +458,9 @@ class PermissionServer {
                 lock.unlock()
             }
             let message = json["last_assistant_message"] as? String ?? "Task completed"
+            // A helper another agent launched (codex exec under Claude) isn't
+            // the job finishing: its parent will say when that's done.
+            if json["delegated"] as? Bool == true { return }
             DispatchQueue.main.async {
                 // Adopt first: handleNotification consults the session's mode, and
                 // an unknown session would read as "standard" and prompt anyway.

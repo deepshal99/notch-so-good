@@ -273,6 +273,7 @@ enum DebugSnapshots {
             (NotchNotification(type: .permission, message: questions[0].question, title: "Cache", permissionRequestId: "q", toolName: "AskUserQuestion",
                                interaction: .question(questions)), 1.6),
             (NotchNotification(type: .complete, message: "Fixed the reconnect race. The socket now backs off before retrying, and all 76 tests pass."), 0.45),
+            (NotchNotification(type: .complete, message: "**Done.** Saved [n06-type.png](/Users/you/code/api/.context/concepts3/n06-type.png) and `notes.md`"), 0.45),
             (NotchNotification(type: .complete, message: "Added the backoff and its tests. Want me to remove the old retry flag too?", sessionId: "s", canReply: true), 0.45),
             (NotchNotification(type: .general, message: "store.ts is being edited by api and web. One may undo the other.", title: NotchNotification.radarTitle), 1.2),
             (NotchNotification(type: .general, message: "91% used · compacts soon", title: NotchNotification.contextTitle, sessionId: "s"), 1.2),

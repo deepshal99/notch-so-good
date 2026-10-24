@@ -42,7 +42,8 @@ struct NotchNotification: Identifiable {
     ) {
         self.canReply = canReply
         self.type = type
-        self.message = Self.clean(message, limit: Self.messageLimit) ?? type.defaultTitle
+        // Markdown goes before the length clamp, or a link could be cut in half.
+        self.message = Self.clean(type == .complete ? PlainText.fromMarkdown(message) : message, limit: Self.messageLimit) ?? type.defaultTitle
         self.title = Self.clean(title, limit: Self.titleLimit)
         self.sessionId = Self.nonEmpty(sessionId)
         self.sourceBundleId = Self.nonEmpty(sourceBundleId)

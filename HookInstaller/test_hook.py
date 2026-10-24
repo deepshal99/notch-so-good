@@ -482,6 +482,36 @@ class PayloadShaping(unittest.TestCase):
         _, _, _, events = run_hook("Stop", {"session_id": "s", "cwd": "/tmp"})
         self.assertEqual(events[0]["last_assistant_message"], "Task completed")
 
+    def rollout(self, **meta):
+        with tempfile.NamedTemporaryFile("w", suffix=".jsonl", delete=False) as handle:
+            handle.write(json.dumps({"type": "session_meta", "payload": meta}) + "\n")
+        self.addCleanup(os.unlink, handle.name)
+        return handle.name
+
+    def test_codex_exec_under_claude_is_delegated(self):
+        path = self.rollout(originator="codex_exec", source="exec")
+        _, _, _, events = run_hook("Stop", {"session_id": "s", "cwd": "/tmp", "transcript_path": path,
+                                            "last_assistant_message": "ok"},
+                                   agent="codex", claude={"CLAUDECODE": "1"})
+        self.assertIs(events[0].get("delegated"), True)
+
+    def test_gemini_under_claude_is_delegated(self):
+        _, _, _, events = run_hook("AfterAgent", {"session_id": "s", "cwd": "/tmp", "prompt_response": "ok"},
+                                   agent="gemini", claude={"CLAUDECODE": "1"})
+        self.assertIs(events[0].get("delegated"), True)
+
+    def test_codex_exec_by_hand_still_reports(self):
+        path = self.rollout(originator="codex_exec", source="exec")
+        _, _, _, events = run_hook("Stop", {"session_id": "s", "cwd": "/tmp", "transcript_path": path},
+                                   agent="codex", claude={})
+        self.assertNotIn("delegated", events[0])
+
+    def test_interactive_codex_under_claude_still_reports(self):
+        path = self.rollout(originator="codex-tui", source="cli")
+        _, _, _, events = run_hook("Stop", {"session_id": "s", "cwd": "/tmp", "transcript_path": path},
+                                   agent="codex", claude={"CLAUDECODE": "1"})
+        self.assertNotIn("delegated", events[0])
+
     def test_stop_failure_carries_the_error(self):
         _, _, _, events = run_hook("StopFailure", {
             "session_id": "s", "cwd": "/tmp", "error": "rate_limit",
