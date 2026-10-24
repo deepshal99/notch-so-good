@@ -105,7 +105,7 @@ export const T = {
       <div class="ttl"><h4>${a.title}</h4>${a.badge ? `<i class="badge">${a.badge}</i>` : ''}<span class="time" data-timer>0:04</span></div>
       <div class="meta">${chip(a.tool || 'Bash')}${dot(a.c || C.work)}<span class="task">${a.task}</span><span class="proj">${a.proj}</span>${a.agent === 'Codex' ? chip('Codex', C.codex) : ''}</div>
       ${a.diff || `<code class="well">${a.code}</code>`}
-      <div class="bt"><button class="b" data-act="deny">Deny</button><button class="b" data-act="session">This session</button><button class="b w" data-act="allow">Allow</button></div></div></div>`,
+      <div class="bt"><button class="b" data-act="deny">Deny</button><button class="b" data-act="session">${typeof innerWidth !== 'undefined' && innerWidth <= 720 ? 'Session' : 'This session'}</button><button class="b w" data-act="allow">Allow</button></div></div></div>`,
   question: ({ faceC } = {}) => `<div class="cd">${strip(faceC ? face(faceC) : '')}<div class="cb">
       <div class="ttl"><h4>Cache</h4><span class="sub">1 of 1</span><span class="time" data-timer>0:08</span></div>
       <div class="meta">${dot('#FF8FB1')}<span class="task">Settings page</span><span class="proj">web</span></div>

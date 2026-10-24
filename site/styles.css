@@ -845,3 +845,17 @@ html.own-swipe, html.own-swipe body { touch-action: none; overscroll-behavior: n
 /* notch buttons: a label always sits on one line, clear of the edges, however narrow the card */
 .b { min-width: 0; padding: 0 calc(10px * var(--s)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .b .lbl { display: block; overflow: hidden; text-overflow: ellipsis; }
+
+/* phones: the hero notch's type at the app's own size (desktop shrinks it a step to sit like the app's) */
+@media (max-width: 720px) { #island { --f: 1; } }
+/* the middle button's label is the longest, so it gets a little more of the row */
+.bt .b[data-act=session] { flex: 1.3; }
+@media (max-width: 720px) { .b { padding: 0 calc(6px * var(--s)); } }
+/* phones: the hero starts below the notch's tallest moment (the sessions card, with Peek under it), not centred */
+@media (max-width: 720px) {
+  .hero { justify-content: flex-start; padding-top: 326px !important; min-height: 0; }
+  #island .srow:nth-child(n+4) { display: none; }
+}
+/* phones: the hero's question card shows just the choices, no descriptions, so it stays compact */
+@media (max-width: 720px) { #island .opt span { display: none; } #island .opt { padding-top: calc(9px * var(--s)); padding-bottom: calc(9px * var(--s)); } }
+@media (max-width: 720px) { #island .cb:has(.opts) .meta { display: none; } }

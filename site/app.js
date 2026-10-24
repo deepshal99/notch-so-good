@@ -56,7 +56,8 @@ function layout() {
   vw = innerWidth; vh = innerHeight;
   const cs = getComputedStyle(document.documentElement);
   BZ = (parseFloat(cs.getPropertyValue('--bz')) || 0) + (parseFloat(cs.getPropertyValue('--gap')) || 0);
-  isl.setScale(clamp(vw / 1200, 0.9, 1.16));
+  // phones get the notch at the app's own size; the card narrows to the screen instead of shrinking
+  isl.setScale(vw <= 720 ? 1 : clamp(vw / 1200, 0.9, 1.16));
   U = clamp(Math.min(vw * 0.04, vh * 0.062), 38, 58);
   view.resize(UNITS_W * U, UNITS_H * U, Math.min(devicePixelRatio || 1, 2) * 2.4);
   canvas.style.setProperty('--grip', (NOTCH_Y * U) + 'px');
@@ -689,7 +690,8 @@ const approve = { isl: null, view: null, U: 40, visible: false };
   const m = approve.isl = new Island($('.mn', t), 0.85);
   const v = approve.view = new PeekView(cv, { finish, unitsW: 4.4, unitsH: 3.4, notchY: 0.12, state: 'need' });
   const fitIt = () => {
-    m.setScale(Math.min(1.02, (box.clientWidth - 8) / PANEL));
+    // on a phone the card keeps its natural type size and narrows to the tile, rather than shrinking whole
+    m.setScale(vw <= 720 ? 0.96 : Math.min(1.02, (box.clientWidth - 8) / PANEL));
     approve.U = clamp(box.clientWidth * 0.15, 44, 66);
     v.resize(4.4 * approve.U, 3.4 * approve.U, Math.min(devicePixelRatio || 1, 2));
     if (m.cur) { m.remeasure(); }
@@ -708,7 +710,7 @@ const approve = { isl: null, view: null, U: 40, visible: false };
   ];
   let n = 0, busy = false;
   const ask = () => {
-    const el = m.set(T.approve(ASK[n % ASK.length]), { kind: 'card' });
+    const el = m.set(T.approve(ASK[n % ASK.length]), { kind: 'card', w: Math.min(PANEL, (box.clientWidth - 8) / m.s) });
     requestAnimationFrame(() => { box.style.height = (m.tgt.h + 2.15 * approve.U) + 'px'; });
     $('.b.w', el).classList.add('go');
     v.puppet.setState('need', now());
