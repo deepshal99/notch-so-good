@@ -959,3 +959,27 @@ html.own-swipe, html.own-swipe body { touch-action: none; overscroll-behavior: n
 /* the suggested button's pulse stays a soft, tight halo inside the inner card */
 @keyframes glow2 { 0%, 100% { box-shadow: 0 0 0 0 rgba(255,255,255,0); } 40% { box-shadow: 0 0 0 calc(3px * var(--s)) rgba(255,255,255,0.12); } }
 .b.w.go { animation: glow2 2.2s ease-out infinite; }
+/* One content column, measured from the island's VISIBLE edge (the layer already starts there, past the top fillet),
+   as the app does it: the inner card sits 10pt in on every side; everything else (the strip, card content, rows)
+   sits 24pt in, so text lines up across every card type. */
+.strip { padding: 0 calc(24px * var(--s)); }
+.cb { padding: calc(2px * var(--s)) calc(24px * var(--s)) calc(20px * var(--s)); }
+.cb.inner { margin: calc(2px * var(--s)) calc(10px * var(--s)) 0; padding: calc(14px * var(--s)); }
+.cd:has(> .cb.inner) { padding-bottom: calc(10px * var(--s)); }
+@media (max-width: 720px) {
+  #island .cb.inner { padding: calc(12px * var(--s)) calc(14px * var(--s)) calc(13px * var(--s)); }
+}
+
+/* phones: the hero starts below Peek (app.js sets --hero-top from Peek's size); short phones tighten the words a little */
+@media (max-width: 720px) {
+  .hero { padding-top: var(--hero-top, 344px) !important; }
+}
+@media (max-width: 720px) and (max-height: 720px) {
+  .lede { font-size: 15.5px; margin-top: 12px; }
+  .hero .ctas { margin-top: 18px; }
+  .hero .fine { margin-top: 12px; }
+}
+
+/* phones: the sound hint is a line in the hero, not pinned over the page */
+.sound-hint.inline { position: static; margin: 14px auto 0; right: auto; bottom: auto; }
+.sound-hint.inline.past { opacity: 1; pointer-events: auto; }

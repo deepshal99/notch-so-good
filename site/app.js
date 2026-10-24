@@ -58,7 +58,10 @@ function layout() {
   BZ = (parseFloat(cs.getPropertyValue('--bz')) || 0) + (parseFloat(cs.getPropertyValue('--gap')) || 0);
   // phones get the notch at the app's own size; the card narrows to the screen instead of shrinking
   isl.setScale(vw <= 720 ? 1 : clamp(vw / 1200, 0.9, 1.16));
-  U = clamp(Math.min(vw * 0.04, vh * 0.062), 38, 58);
+  // phones size Peek from the screen's height (the width-based desktop size left it at its minimum), and the
+  // hero's words start just below Peek's lowest reach, whatever the card above it
+  U = vw <= 720 ? clamp(vh * 0.058, 40, 50) : clamp(Math.min(vw * 0.04, vh * 0.062), 38, 58);
+  if (vw <= 720) document.documentElement.style.setProperty('--hero-top', Math.round(344 + (U - 38) * 1.75) + 'px');
   view.resize(UNITS_W * U, UNITS_H * U, Math.min(devicePixelRatio || 1, 2) * 2.4);
   canvas.style.setProperty('--grip', (NOTCH_Y * U) + 'px');
   $$('[data-shape]').forEach(el => { const [t, b] = el.dataset.shape.split(',').map(Number); shapeStatic(el, t, b); });
@@ -1047,6 +1050,8 @@ voiced(view2.puppet, () => panelVisible);
   const hint = $('#soundHint');
   if (hint && sound.on && !audioReady()) {
     $('span', hint).textContent = matchMedia('(hover: none)').matches ? 'Tap for sound' : 'Click for sound';
+    // on a phone a corner of the screen is part of the content, so the hint sits in the hero, under the small print
+    if (vw <= 720) { $('.hero').append(hint); hint.classList.add('inline'); }
     const t = setTimeout(() => { if (!audioReady() && sound.on) { hint.hidden = false; requestAnimationFrame(() => requestAnimationFrame(() => hint.classList.add('in'))); } }, 2000);
     onAudio(() => { clearTimeout(t); hint.classList.remove('in'); hint.classList.add('gone'); setTimeout(() => hint.remove(), 450); });
     // plain text has no backdrop, so it steps aside once the bento scrolls under it
