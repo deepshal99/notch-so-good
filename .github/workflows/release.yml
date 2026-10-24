@@ -5,16 +5,18 @@ name: Release
 # certificate, signed update feed, GitHub release, main, Homebrew tap, npm.
 #
 # Actions → Release → Run workflow, with the version (release-notes/<version>.md
-# must already be on main). "Rehearse" is on by default: everything up to
-# publishing, with the signed zip kept as an artifact. Untick it to ship.
+# must already be on main to ship). "Rehearse" is on by default: everything up
+# to publishing, with the signed zip kept as an artifact. Untick it to ship.
 #
-# Secrets live in the "release" environment (Settings → Environments):
+# Secrets live in the "release" environment (Settings → Environments), which
+# only main can use:
 #   SPARKLE_PRIVATE_KEY     contents of sparkle-private-key.txt (update signing)
 #   RELEASE_CERT_P12        release-certificate.p12, base64
 #   RELEASE_CERT_PASSWORD   its password
-#   TAP_TOKEN               fine-grained token, Contents read/write on homebrew-tap
+#   TAP_DEPLOY_KEY          SSH deploy key with write access to homebrew-tap only
 #   APTABASE_APP_KEY        optional: anonymous counts
-#   NPM_TOKEN               optional: npm publish
+# npm takes no secret: the package trusts this workflow (npmjs.com → package
+# settings → Trusted Publisher: this repo, release.yml, environment "release").
 
 on:
   workflow_dispatch:
@@ -31,6 +33,7 @@ concurrency: release
 
 permissions:
   contents: write
+  id-token: write   # npm trusted publishing
 
 jobs:
   release:
@@ -46,9 +49,18 @@ jobs:
           fetch-depth: 0
 
       - name: Check the version and its notes
+        env:
+          REHEARSE: ${{ inputs.rehearse }}
         run: |
           [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::version should look like 4.12.0"; exit 1; }
-          [ -f "release-notes/$VERSION.md" ] || { echo "::error::release-notes/$VERSION.md isn't on main"; exit 1; }
+          NOTES="release-notes/$VERSION.md"
+          if [ ! -f "$NOTES" ]; then
+            # A rehearsal can borrow the latest notes; a release can't.
+            [ "$REHEARSE" = true ] || { echo "::error::$NOTES isn't on main"; exit 1; }
+            NOTES="release-notes/$(ls release-notes | sort -V | tail -1)"
+            echo "::notice::rehearsing with $NOTES"
+          fi
+          echo "NOTES=$NOTES" >> "$GITHUB_ENV"
 
       - name: Signing keychain (this run only)
         env:
@@ -75,22 +87,30 @@ jobs:
           printf '%s' "$SPARKLE_PRIVATE_KEY" > "$RUNNER_TEMP/sparkle-private-key.txt"
           echo "SPARKLE_KEY_FILE=$RUNNER_TEMP/sparkle-private-key.txt" >> "$GITHUB_ENV"
 
+      - name: Homebrew tap key
+        env:
+          TAP_DEPLOY_KEY: ${{ secrets.TAP_DEPLOY_KEY }}
+        run: |
+          printf '%s\n' "$TAP_DEPLOY_KEY" > "$RUNNER_TEMP/tap-key"
+          chmod 600 "$RUNNER_TEMP/tap-key"
+          echo "GIT_SSH_COMMAND=ssh -i $RUNNER_TEMP/tap-key -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new" >> "$GITHUB_ENV"
+          echo "TAP_REMOTE=git@github.com:deepshal99/homebrew-tap.git" >> "$GITHUB_ENV"
+
+      # Trusted publishing needs npm 11.5.1 or later.
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
-          registry-url: https://registry.npmjs.org
+          node-version: 24
+      - run: npm install -g npm@latest >/dev/null && npm --version
 
       - name: Release
         env:
           GH_TOKEN: ${{ github.token }}
-          TAP_TOKEN: ${{ secrets.TAP_TOKEN }}
           APTABASE_APP_KEY: ${{ secrets.APTABASE_APP_KEY }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           DRY_RUN: ${{ inputs.rehearse && '1' || '0' }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          bash release.sh "$VERSION" "release-notes/$VERSION.md"
+          bash release.sh "$VERSION" "$NOTES"
 
       - name: Keep the signed zip
         if: always()
@@ -112,4 +132,4 @@ jobs:
         if: always()
         run: |
           security delete-keychain "$RUNNER_TEMP/notchsogood-release.keychain-db" 2>/dev/null || true
-          rm -f "$RUNNER_TEMP/sparkle-private-key.txt"
+          rm -f "$RUNNER_TEMP/sparkle-private-key.txt" "$RUNNER_TEMP/tap-key"

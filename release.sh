@@ -27,7 +27,9 @@
 # The same script runs in GitHub Actions (.github/workflows/release.yml),
 # which hands it the keys instead:
 #   SPARKLE_KEY_FILE, RELEASE_KEYCHAIN, RELEASE_KEYCHAIN_PASSWORD,
-#   APTABASE_APP_KEY, TAP_TOKEN (push to the tap), GH_TOKEN (gh)
+#   APTABASE_APP_KEY, TAP_REMOTE (the tap over SSH, with its deploy key),
+#   GH_TOKEN (gh). npm needs no token there: GitHub vouches for the workflow
+#   (npm trusted publishing).
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -53,7 +55,7 @@ step "Checking"
 [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "version should look like 4.12.0, not $VERSION"
 gh auth status >/dev/null 2>&1 || fail "gh isn't signed in (gh auth login)"
 # In CI the tap can only be pushed with a token: find out now, not after main is live.
-[ -z "${CI:-}" ] || [ "${DRY_RUN:-0}" = 1 ] || [ -n "${TAP_TOKEN:-}" ] || fail "TAP_TOKEN missing (Homebrew tap)"
+[ -z "${CI:-}" ] || [ "${DRY_RUN:-0}" = 1 ] || [ -n "${TAP_REMOTE:-}" ] || fail "TAP_REMOTE missing (Homebrew tap)"
 [ "${DRY_RUN:-0}" = 1 ] || { git diff --quiet && git diff --cached --quiet; } || fail "commit or stash your changes first"
 gh release view "v$VERSION" -R "$REPO" >/dev/null 2>&1 && fail "v$VERSION already exists"
 KC_PASS="${RELEASE_KEYCHAIN_PASSWORD:-$(security find-generic-password -a "$USER" -s "NotchSoGood release keychain" -w)}"
@@ -170,13 +172,17 @@ git push -q origin HEAD:main
 echo "  main updated: installed apps will pick it up within the hour"
 
 TMP=$(mktemp -d)
-git clone -q "https://${TAP_TOKEN:+x-access-token:$TAP_TOKEN@}github.com/$TAP" "$TMP/tap"
+git clone -q "${TAP_REMOTE:-https://github.com/$TAP}" "$TMP/tap"
 cp Casks/notch-so-good.rb "$TMP/tap/Casks/notch-so-good.rb"
 ( cd "$TMP/tap" && git add -A && git commit -q -m "notch-so-good $VERSION" && git push -q )
 rm -rf "$TMP"
 echo "  Homebrew tap"
 
-if npm whoami >/dev/null 2>&1; then
+if [ -n "${CI:-}" ]; then
+    # Last, and never fatal: everything users install from is already out.
+    ( cd npm && npm publish >/dev/null ) && echo "  npm" \
+        || echo "  npm failed: is the trusted publisher set up on npmjs.com?"
+elif npm whoami >/dev/null 2>&1; then
     ( cd npm && npm publish >/dev/null ) && echo "  npm"
 else
     echo "  npm skipped (run: npm login, then cd npm && npm publish)"
