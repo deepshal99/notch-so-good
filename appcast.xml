@@ -5,14 +5,14 @@
         <link>https://github.com/deepshal99/notch-so-good</link>
         <language>en</language>
         <item>
-            <title>Version 4.10.0</title>
-            <pubDate>Tue, 20 Oct 2026 09:08:25 +0000</pubDate>
-            <sparkle:version>32</sparkle:version>
-            <sparkle:shortVersionString>4.10.0</sparkle:shortVersionString>
-            <description><![CDATA[<h2>Notch So Good 4.10.0</h2><ul><li>Peek comes in colours: pick a finish, then a colour, in Settings → Character</li><li>New Balloon finish: satin bubble letters in hot pink, sky, lemon and lilac</li><li>Gummy looks like real jelly now, in cherry, lime, tangerine and a new grape</li><li>Obsidian in black, midnight, plum and forest, Porcelain in white, sage, blush and sky, and Gold in gold, rose and white gold, with a warmer, cleaner shine</li><li>Chrome, Holo and Frosted are retired: if you used one, Peek switches to Neon</li></ul>
+            <title>Version 4.11.0</title>
+            <pubDate>Sat, 24 Oct 2026 07:49:17 +0000</pubDate>
+            <sparkle:version>33</sparkle:version>
+            <sparkle:shortVersionString>4.11.0</sparkle:shortVersionString>
+            <description><![CDATA[<h2>Notch So Good 4.11.0</h2><ul><li>When several sessions need you, the cards stack: the next one peeks out under the card on screen, with who it is and how long it&#x27;s waited. Click it to bring it forward, or press ⌃⌥N</li><li>Every session wears its agent&#x27;s own mark: Claude Code&#x27;s ✻, Codex&#x27;s &gt;_, Gemini&#x27;s ✦, moving while the agent works. The colour dots are gone, so Peek is the only colour in the notch</li><li>Sessions in the same repo group together, Conductor workspaces and worktrees included, and the group says how many need you</li><li>One type scale across the notch, the menu and Settings: a touch larger, and easier to read at a glance</li></ul>
             <p><b>Install this one by hand</b>: run <code>brew upgrade notch-so-good</code>, or download it from the release page.
-            From 4.10.0 on, updates install themselves.</p>]]></description>
-            <link>https://github.com/deepshal99/notch-so-good/releases/tag/v4.10.0</link>
+            From 4.11.0 on, updates install themselves.</p>]]></description>
+            <link>https://github.com/deepshal99/notch-so-good/releases/tag/v4.11.0</link>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
         </item>
     </channel>

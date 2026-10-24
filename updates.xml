@@ -5,6 +5,15 @@
         <link>https://github.com/deepshal99/notch-so-good</link>
         <language>en</language>
         <item>
+            <title>Version 4.11.0</title>
+            <pubDate>Sat, 24 Oct 2026 07:49:17 +0000</pubDate>
+            <sparkle:version>33</sparkle:version>
+            <sparkle:shortVersionString>4.11.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[<ul><li>When several sessions need you, the cards stack: the next one peeks out under the card on screen, with who it is and how long it&#x27;s waited. Click it to bring it forward, or press ⌃⌥N</li><li>Every session wears its agent&#x27;s own mark: Claude Code&#x27;s ✻, Codex&#x27;s &gt;_, Gemini&#x27;s ✦, moving while the agent works. The colour dots are gone, so Peek is the only colour in the notch</li><li>Sessions in the same repo group together, Conductor workspaces and worktrees included, and the group says how many need you</li><li>One type scale across the notch, the menu and Settings: a touch larger, and easier to read at a glance</li></ul>]]></description>
+            <enclosure url="https://github.com/deepshal99/notch-so-good/releases/download/v4.11.0/NotchSoGood-4.11.0.zip" sparkle:edSignature="gT1basjBNPRk4DsvoZ7SBj8qBytUw4ruYkYsPJq6ARwKPZByox5nsumtpmerUVeweXHrrFnn4ewTqUoA1eUyDg==" length="4145609" type="application/octet-stream"/>
+        </item>
+        <item>
             <title>Version 4.10.0</title>
             <pubDate>Tue, 20 Oct 2026 09:08:25 +0000</pubDate>
             <sparkle:version>32</sparkle:version>
@@ -39,15 +48,6 @@
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <description><![CDATA[<ul><li>A 30-second practice run on first launch: allow one, answer one, reply to one (Settings → General to replay)</li><li>Context meter: sessions past half full show how full, and one heads-up before a known window fills</li><li>Ghostty: jump straight to the session&#x27;s terminal (Ghostty 1.3+)</li><li>Cleaner cards: less text, no &quot;just now&quot;</li></ul>]]></description>
             <enclosure url="https://github.com/deepshal99/notch-so-good/releases/download/v4.9.0/NotchSoGood-4.9.0.zip" sparkle:edSignature="qyYXXOVH4g4ZGbqXGodb2SOlnhcAYw/RQW9vh4iqQni6T9ZKnblzfa3pAQZxBeRl8PJPPuZklGgpXvz6cdIzBA==" length="4002966" type="application/octet-stream"/>
-        </item>
-        <item>
-            <title>Version 4.8.1</title>
-            <pubDate>Sat, 17 Oct 2026 10:32:45 +0000</pubDate>
-            <sparkle:version>28</sparkle:version>
-            <sparkle:shortVersionString>4.8.1</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <description><![CDATA[<ul><li>Fixed: `claude -p` scripts no longer wait for a reply from the notch</li><li>Reply from the notch only where it can reach the session (each app&#x27;s own Claude Code version is checked)</li><li>Cards answered in Conductor, VS Code or Claude&#x27;s desktop app now close in the notch too</li><li>Hooks put themselves back if Claude Code or another tool removes them</li></ul>]]></description>
-            <enclosure url="https://github.com/deepshal99/notch-so-good/releases/download/v4.8.1/NotchSoGood-4.8.1.zip" sparkle:edSignature="UuY2KAcehurcGmbLlxinBJ85m1U2QD5JkoKahPuWYXI04A7KFD21VS75xf7QBnU3W7GpM4bbpx7XUHYMcL37CQ==" length="3951895" type="application/octet-stream"/>
         </item>
     </channel>
 </rss>
