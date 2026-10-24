@@ -5,7 +5,7 @@
 
 import Lenis from './vendor/lenis.mjs?v=1792437316';
 import { PeekView } from './peek.js?v=1792437316';
-import { Island, T, C, mmss, shapeStatic, notchPath, PANEL, NOTCH, SESSIONS } from './island.js?v=1792437316';
+import { Island, T, C, mmss, shapeStatic, notchPath, PANEL, NOTCH, SESSIONS, mark, agentOf } from './island.js?v=1792437316';
 import { sound, sfx, onUnlock, onAudio, audioReady } from './sound.js?v=1792437316';
 
 const $ = (s, r = document) => r.querySelector(s);
@@ -145,12 +145,12 @@ function shownScene() {
   if (stagePhase !== 'up') return { name: 'notch', data: {} };
   if (override) return override;
   if (atEnd()) return { name: 'notch', data: {} };
-  if (dressing()) return { name: 'pill', data: { text: `Peek · <em>${FINISH_NAMES[window.nsgLook || finish]}</em>`, c: C.work, live: false, w: 320 } };
+  if (dressing()) return { name: 'pill', data: { text: `Peek · <em>${FINISH_NAMES[window.nsgLook || finish]}</em>`, agent: null, live: false, w: 320 } };
   if (!heroVisible()) {
     // past the hero the notch keeps quiet and Peek tucks in; it still says which agent is waiting
     const who = main.name === 'approve' && ASKS[main.data.i % ASKS.length].agent === 'Codex' ? 'Codex' : 'Claude';
     return main.name === 'approve' || main.name === 'question'
-      ? { name: 'pill', data: { text: `${who} needs you`, c: C.need, peek: 'warn', w: 300 } }
+      ? { name: 'pill', data: { text: `${who} needs you`, agent: agentOf(who), live: false, peek: 'warn', w: 300 } }
       : { name: 'notch', data: {} };
   }
   return main;
@@ -180,7 +180,7 @@ const script = {
     const a = ASKS[ask % ASKS.length]; ask++;
     usage = Math.max(1, usage - 8);
     peek.hush = true; peek.play('pullUp', now());
-    go('pill', { text: a.title === 'Edit file' ? 'Editing <em>redirect.ts</em>' : `Running <em>${a.code.split(' ').slice(0, 2).join(' ')}</em>`, c: a.agent === 'Codex' ? '#B79CFF' : C.work });
+    go('pill', { text: a.title === 'Edit file' ? 'Editing <em>redirect.ts</em>' : `Running <em>${a.code.split(' ').slice(0, 2).join(' ')}</em>`, agent: agentOf(a.agent) });
     after(2.2, () => { go('done'); after(7, () => { if (!typing) script.work('Adding a test for the redirect'); }); });
   },
   deny() {
@@ -195,11 +195,11 @@ const script = {
   },
   pick(v) { ask++; go('pill', { text: `Using ${v} <em>for sessions</em>` }); after(4.5, () => script.approve()); },
   question() { go('question'); after(8, () => script.pick('Redis')); },
-  heads() { go('pill', { text: 'Running low <em>· 15% of 5 hours left</em>', c: C.warn, peek: 'warn', live: false, w: 370 }); after(2.6, () => script.work('Wrapping up the redirect fix', 9)); },
+  heads() { go('pill', { text: 'Running low <em>· 15% of 5 hours left</em>', agent: null, peek: 'warn', live: false, w: 370 }); after(2.6, () => script.work('Wrapping up the redirect fix', 9)); },
   out() { usage = 0; go('out'); after(7, () => script.back()); },
   back() {
     usage = 100; warned = false;
-    go('pill', { text: 'Usage is back', c: C.done, peek: 'done', live: false });
+    go('pill', { text: 'Usage is back', agent: null, peek: 'done', live: false });
     after(2.6, () => script.work('Picking up where it left off'));
   },
 };
@@ -260,7 +260,7 @@ $$('[data-copy]').forEach(b => b.addEventListener('click', async () => {
   clearTimeout(b._t);
   b._t = setTimeout(() => { b.classList.remove('copied'); if (lbl) swapText(lbl, lbl.dataset.was); }, 1800);
   clearTimeout(releaseTimer);
-  override = { name: 'pill', data: { text: 'Copied. <em>Paste it in Terminal</em>', c: C.done, peek: 'done', live: false, w: 330 } };
+  override = { name: 'pill', data: { text: 'Copied. <em>Paste it in Terminal</em>', agent: null, peek: 'done', live: false, w: 330 } };
   render();
   release(2400);
 }));
@@ -476,7 +476,7 @@ function panelGrow(dt) {
     const p = view2.puppet;
     p.setState('need', now()); p.nudge(0, 2.4);
     endTimer = setTimeout(() => {
-      endIsl.set(T.pill({ text: 'Ready when you are', c: C.done, live: false }), { kind: 'pill', w: 360 });
+      endIsl.set(T.pill({ text: 'Ready when you are', agent: null, live: false }), { kind: 'pill', w: 360 });
       p.setState('done', now()); p.hush = true; p.play('twirl', now()); sfx.sparkle();
       endTimer = setTimeout(() => { endRest(); p.setState('work', now()); }, 3800);
     }, 380);
@@ -519,7 +519,7 @@ class Flo {
     return f;
   }
 }
-const head = (c, label, right = '') => `<div class="ttl" style="min-height:0"><i class="dot live" style="--c:${c}"></i><span style="font-size:calc(12px * var(--s));font-weight:500;color:rgba(255,255,255,.5)">${label}</span><span class="time">${right}</span></div>`;
+const head = (c, label, right = '') => `<div class="ttl" style="min-height:0">${mark('claude', true)}<span style="font-size:calc(12px * var(--s));font-weight:500;color:rgba(255,255,255,.5)">${label}</span><span class="time">${right}</span></div>`;
 
 // the answer card is an expanded notch: the app's NotchShape, re-traced whenever its size changes
 {
@@ -541,7 +541,7 @@ const head = (c, label, right = '') => `<div class="ttl" style="min-height:0"><i
       <form class="rp" data-reply><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M6.5 3.5L2.5 7.5l4 4M2.8 7.5h6.7a4 4 0 0 1 4 4v1" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><input placeholder="Reply to Claude…" aria-label="Reply to Claude" maxlength="80"><button class="send" disabled aria-label="Send"><svg viewBox="0 0 16 16"><path d="M12.5 3.5v4.5a2 2 0 0 1-2 2H3.5M6 7.2L3.3 10 6 12.8" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button></form></div>`;
   const sent = v => `<div class="cb">${head(C.work, 'Claude Code · web', '0:00')}
       <div class="ttl" style="margin-top:calc(12px * var(--s))"><h4>On it</h4></div>
-      <div class="msg">“${v.replace(/[<>&]/g, '')}”</div><div class="sent"><i class="dot live" style="--c:${C.work}"></i>Sent. Claude picked up where it left off.</div></div>`;
+      <div class="msg">“${v.replace(/[<>&]/g, '')}”</div><div class="sent">${mark('claude', true)}Sent. Claude picked up where it left off.</div></div>`;
   let phase = 'ask', busy = false;
   const toAsk = () => { phase = 'ask'; wireAsk(flo.show(ask())); };
   const toDone = v => { phase = 'done'; wireDone(flo.show(done(v))); };
@@ -605,10 +605,10 @@ const visible = el => { const o = { on: false }; new IntersectionObserver(([e]) 
 {
   const box = $('#sessions'), t = tile('sessions');
   let ROW = 56; const GAP = 2;
-  // the app's session row: colour dot, task, chips, project · activity, context meter, timer
+  // the app's session row: agent mark, task, mode chip, project · activity, context meter, timer
   const S = [
     { id: 'a', c: '#4FD1C5', t: 'Login redirect', chips: ['bypass'], proj: 'api', app: 'Ghostty', st: 'need', s: 'Needs approval', ctx: 65, el: 754 },
-    { id: 'b', c: '#FF8FB1', t: 'Migration tests', chips: ['Codex'], proj: 'db', app: 'iTerm2', st: 'work', s: 'Step 2 of 4', el: 95 },
+    { id: 'b', c: '#FF8FB1', t: 'Migration tests', agent: 'codex', chips: [], proj: 'db', app: 'iTerm2', st: 'work', s: 'Step 2 of 4', el: 95 },
     { id: 'c', c: '#FFD45C', t: 'Header redesign', chips: [], proj: 'web', app: 'Terminal', st: 'work', s: 'Editing Header.tsx', ctx: 82, el: 31 },
   ];
   const ORDER = { need: 0, think: 1, work: 2, done: 3 };
@@ -617,7 +617,7 @@ const visible = el => { const o = { on: false }; new IntersectionObserver(([e]) 
   const make = r => {
     const d = document.createElement('div');
     d.className = 'srow2 enter'; d.tabIndex = 0;
-    d.innerHTML = `<i class="sd" style="--c:${r.c}"></i><div class="sm"><div class="t"><span class="tt">${r.t}</span>${r.chips.map(chip).join('')}</div><div class="s"><span class="sl1"><span class="pj">${r.proj}</span> · <span class="sa"></span></span><span class="go">Opening in ${r.app} →</span></div></div>
+    d.innerHTML = `<i class="sd">${mark(r.agent || 'claude', r.st !== 'need')}</i><div class="sm"><div class="t"><span class="tt">${r.t}</span>${r.chips.map(chip).join('')}</div><div class="s"><span class="sl1"><span class="pj">${r.proj}</span> · <span class="sa"></span></span><span class="go">Opening in ${r.app} →</span></div></div>
       <div class="r"><span class="cx"><i class="cxb"><b></b></i><span class="cxn"></span></span><span class="tm"></span></div>`;
     const go = () => { d.classList.add('jumped'); setTimeout(() => d.classList.remove('jumped'), 1400); };
     d.addEventListener('click', go); d.addEventListener('keydown', e => { if (e.key === 'Enter') go(); });

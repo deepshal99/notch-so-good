@@ -96,25 +96,37 @@ export const runway = () => `<span class="runway" data-u><i class="ring"></i><b 
 // the strip level with the notch: the usage ring on the right, and on the left (in tiles) a placeholder face
 const strip = (face = '') => `<div class="strip">${face}${runway()}</div>`;
 export const face = c => `<i class="sk-face" style="--c:${c}"></i>`;
+// Which agent a session is, in the mark its own terminal shows (the app's AgentMark): Claude Code's ✻, Codex's >_,
+// Gemini's ✦, drawn at one weight in one quiet tone, so Peek stays the only colour in the notch. While the agent
+// works the mark moves: the spark turns, the cursor blinks, the sparkle breathes.
+const MARKS = {
+  claude: '<g class="spark">' + [0, 1, 2, 3, 4, 5].map(i => { const a = i * Math.PI / 3 - Math.PI / 2, c = Math.cos(a), n = Math.sin(a);
+    return `<line x1="${(8 + c * 2.4).toFixed(2)}" y1="${(8 + n * 2.4).toFixed(2)}" x2="${(8 + c * 7).toFixed(2)}" y2="${(8 + n * 7).toFixed(2)}"/>`; }).join('') + '</g>',
+  codex: '<polyline points="1.6,3.8 6.4,8 1.6,12.2"/><line class="cursor" x1="8.6" y1="12.5" x2="14.7" y2="12.5"/>',
+  gemini: '<path class="sparkle" d="M8 0 Q8 8 16 8 Q8 8 8 16 Q8 8 0 8 Q8 8 8 0 Z"/>',
+};
+export const agentOf = name => /codex/i.test(name || '') ? 'codex' : /gemini/i.test(name || '') ? 'gemini' : 'claude';
+export const mark = (agent = 'claude', working = false) =>
+  `<i class="mk mk-${agent}${working ? ' live' : ''}" aria-hidden="true"><svg viewBox="0 0 16 16">${MARKS[agent] || MARKS.claude}</svg></i>`;
 
 export const T = {
-  pill: ({ text = '', c = C.work, live = true, skeleton = false, faceC }) => skeleton
+  pill: ({ text = '', agent = 'claude', live = true, skeleton = false, faceC }) => skeleton
     ? `<div class="pl sk">${face(faceC || '#5E5E63')}<i class="sk-bar"></i><span class="runway"><i class="ring"></i></span></div>`
-    : `<div class="pl"><span class="pl-task">${dot(c, live)}<span>${text}</span></span>${runway()}</div>`,
-  approve: (a, { faceC } = {}) => `<div class="cd">${strip(faceC ? face(faceC) : '')}<div class="cb">
+    : `<div class="pl"><span class="pl-task">${agent ? mark(agent, live) : ''}<span>${text}</span></span>${runway()}</div>`,
+  approve: (a, { faceC } = {}) => `<div class="cd">${strip(faceC ? face(faceC) : '')}<div class="cb inner">
       <div class="ttl"><h4>${a.title}</h4>${a.badge ? `<i class="badge">${a.badge}</i>` : ''}<span class="time" data-timer>0:04</span></div>
-      <div class="meta">${chip(a.tool || 'Bash')}${dot(a.c || C.work)}<span class="task">${a.task}</span><span class="proj">${a.proj}</span>${a.agent === 'Codex' ? chip('Codex', C.codex) : ''}</div>
+      <div class="meta">${mark(agentOf(a.agent))}${chip(a.tool || 'Bash')}<span class="task">${a.task}</span><span class="proj">${a.proj}</span></div>
       ${a.diff || `<code class="well">${a.code}</code>`}
       <div class="bt"><button class="b" data-act="deny">Deny</button><button class="b" data-act="session">${typeof innerWidth !== 'undefined' && innerWidth <= 720 ? 'Session' : 'This session'}</button><button class="b w" data-act="allow">Allow</button></div></div></div>`,
-  question: ({ faceC } = {}) => `<div class="cd">${strip(faceC ? face(faceC) : '')}<div class="cb">
+  question: ({ faceC } = {}) => `<div class="cd">${strip(faceC ? face(faceC) : '')}<div class="cb inner">
       <div class="ttl"><h4>Cache</h4><span class="sub">1 of 1</span><span class="time" data-timer>0:08</span></div>
-      <div class="meta">${dot('#FF8FB1')}<span class="task">Settings page</span><span class="proj">web</span></div>
+      <div class="meta">${mark('claude')}<span class="task">Settings page</span><span class="proj">web</span></div>
       <div class="msg">Which cache should back the session store?</div>
       <div class="opts"><button class="opt" data-act="pick" data-v="Redis"><b>Redis</b><span>Shared across instances</span></button><button class="opt" data-act="pick" data-v="an LRU"><b>In-memory LRU</b><span>Fastest, lost on restart</span></button><button class="opt" data-act="pick" data-v="SQLite"><b>SQLite</b><span>Persistent, single file</span></button></div></div></div>`,
   done: ({ title = 'Finished', msg = 'Fixed the login redirect. The session now survives a refresh, and all 76 tests pass.', reply = 'input', faceC } = {}) =>
     `<div class="cd">${strip(faceC ? face(faceC) : '')}<div class="cb">
       <div class="ttl"><h4>${title}</h4><span class="files">4 files</span><span class="pass">✓ Tests pass</span></div>
-      <div class="meta">${dot(C.work)}<span class="task">Fix the login redirect</span><span class="proj">api</span></div>
+      <div class="meta">${mark('claude')}<span class="task">Fix the login redirect</span><span class="proj">api</span></div>
       <div class="msg">${msg}</div>
       ${reply === 'input' ? `<form class="rp" data-reply><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M6.5 3.5L2.5 7.5l4 4M2.8 7.5h6.7a4 4 0 0 1 4 4v1" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><input placeholder="Reply to Claude…" aria-label="Reply to Claude" maxlength="80"><button class="send" disabled aria-label="Send"><svg viewBox="0 0 16 16"><path d="M12.5 3.5v4.5a2 2 0 0 1-2 2H3.5M6 7.2L3.3 10 6 12.8" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button></form>`
         : reply === 'typed' ? `<div class="rp"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M6.5 3.5L2.5 7.5l4 4M2.8 7.5h6.7a4 4 0 0 1 4 4v1" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="typed"></span><span class="send off"><svg viewBox="0 0 16 16"><path d="M12.5 3.5v4.5a2 2 0 0 1-2 2H3.5M6 7.2L3.3 10 6 12.8" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div>` : ''}</div></div>`,
@@ -122,7 +134,7 @@ export const T = {
       <div class="ttl"><h4>Out of usage</h4><span class="time">Claude Code</span></div>
       <div class="msg">The 5-hour window is used up. It resets in 4h 58m, and Claude picks up where it left off.</div></div></div>`,
   sessions: ({ faceC, footer = true } = {}) => `<div class="cd">${strip(faceC ? face(faceC) : '')}<div class="cb list">${SESSIONS.map((r, i) => `
-      <div class="srow" style="--i:${i}">${dot(r.c)}<div class="sl"><div class="st"><span>${r.t}</span>${r.agent ? chip(r.agent, C.codex) : ''}</div><div class="ss">${r.s}</div></div>
+      <div class="srow" style="--i:${i}">${mark(agentOf(r.agent), !/need/i.test(r.s))}<div class="sl"><div class="st"><span>${r.t}</span></div><div class="ss">${r.s}</div></div>
         <div class="sr">${r.ctx ? `<i class="ctx" style="--p:${r.ctx};--c:${r.ctx > 90 ? C.error : C.warn}"></i><b style="color:${r.ctx > 90 ? C.error : C.warn}">${r.ctx}%</b>` : ''}${r.plan ? `<span class="plan">${r.plan}</span>` : ''}<span data-up="${r.el}">${mmss(r.el)}</span></div></div>`).join('')}
       ${footer ? `<div class="foot5"><div><span>5-hour window</span><span><b data-ut>62% left</b> · resets in 2h 13m</span></div><i class="meter"><i data-ub style="width:62%"></i></i></div>` : ''}</div></div>`,
 };

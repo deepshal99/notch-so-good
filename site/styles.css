@@ -902,3 +902,48 @@ html.own-swipe, html.own-swipe body { touch-action: none; overscroll-behavior: n
 
 /* touch screens: text fields at 16px, so iOS doesn't zoom the page in when you tap one */
 @media (pointer: coarse) { .rp input, .flo input, input { font-size: 16px !important; } }
+
+/* ============================================================ the notch, as the current app draws it
+   Agent marks instead of colour dots (Peek is the only colour in the notch), request cards on an inner card,
+   and the app's type scale: 11 captions · 12 meta and second lines · 13 body and rows · 15 titles. */
+.mk { width: calc(14px * var(--s)); height: calc(14px * var(--s)); flex: none; display: inline-grid; place-items: center; color: rgba(255,255,255,0.6); }
+.mk svg { width: calc(11px * var(--s)); height: calc(11px * var(--s)); overflow: visible; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.mk .sparkle { fill: currentColor; stroke: none; }
+.mk .spark, .mk .sparkle { transform-box: view-box; transform-origin: 8px 8px; }
+.mk.live .spark { animation: mk-turn 4s linear infinite; }
+.mk.live .cursor { animation: mk-blink 1s steps(1, end) infinite; }
+.mk.live .sparkle { animation: mk-breathe 2.1s ease-in-out infinite; }
+@keyframes mk-turn { to { rotate: 360deg; } }
+@keyframes mk-blink { 50% { opacity: 0.15; } }
+@keyframes mk-breathe { 50% { scale: 0.86; } }
+@media (prefers-reduced-motion: reduce) { .mk * { animation: none !important; } }
+.pl-task .mk { margin-right: calc(1px * var(--s)); }
+.srow > .mk { width: calc(16px * var(--s)); }
+/* the inner card: request cards sit on it, 10pt in from the island's edge, padded 14, radius 20 (concentric) */
+.cb.inner { margin: calc(2px * var(--s)) calc(1px * var(--s)) calc(1px * var(--s)); padding: calc(14px * var(--s));
+  background: rgba(255,255,255,0.06); border-radius: calc(20px * var(--s)); box-shadow: inset 0 0 0 1px rgba(255,255,255,0.085); }
+.cb.inner .ttl { margin-top: 0; }
+/* the app's type scale */
+.ttl h4 { font-size: calc(15px * var(--s) * var(--f, 1)); font-weight: 600; }
+.pl-task, .st, .opt b, .b, .msg { font-size: calc(13px * var(--s) * var(--f, 1)); }
+.meta, .ss, .ttl .time, .ttl .sub, .ttl .files, .runway .n, .rp input, .rp .typed { font-size: calc(12px * var(--s) * var(--f, 1)); }
+.chip, .badge, .opt span { font-size: calc(11px * var(--s) * var(--f, 1)); }
+.meta { margin-top: calc(8px * var(--s)); gap: calc(7px * var(--s)); }
+.meta .task { color: rgba(255,255,255,0.96); }
+.meta .proj, .ttl .time { color: rgba(255,255,255,0.38); }
+.ss { color: rgba(255,255,255,0.6); }
+/* the sessions tile: the mark in place of the dot */
+.srow2 .sd { width: 16px; height: 16px; background: none !important; display: grid; place-items: center; --s: 1.1; }
+.srow2 .sd .mk { color: var(--ink-3); }
+.panel-dark .srow2 .sd .mk { color: rgba(255,255,255,0.6); }
+
+/* touch screens: the reply field is sized for its 16px text (no zoom on tap), not just bigger text in a small box */
+@media (pointer: coarse) {
+  .rp { height: auto; min-height: calc(42px * var(--s)); padding: calc(6px * var(--s)) calc(8px * var(--s)) calc(6px * var(--s)) calc(14px * var(--s)); gap: calc(10px * var(--s)); }
+  .rp input { font-size: 16px !important; line-height: 1.25; padding: 0; height: auto; }
+  .rp .ico { width: calc(15px * var(--s)); height: calc(15px * var(--s)); }
+  .rp .send { width: calc(30px * var(--s)); height: calc(30px * var(--s)); }
+}
+/* the app's controls: capsule buttons, and code in a darker well with a hairline edge */
+.b { border-radius: 999px; }
+.well { background: rgba(0,0,0,0.5); box-shadow: inset 0 0 0 1px rgba(255,255,255,0.085); }
