@@ -42,6 +42,8 @@ REWAKE_SINCE = (2, 1, 287)
 
 MAX_SUMMARY = 200
 MAX_MESSAGE = 300
+# A closing message is cut after the app has read its markdown, so a link isn't halved.
+MAX_CLOSING = 1200
 # Shown in full on the card: the user must see exactly what they're approving.
 MAX_COMMAND = 4000
 MAX_PLAN = 4000
@@ -778,6 +780,28 @@ def classify_notification(payload):
     return "general"
 
 
+def delegated(payload, agent):
+    """Whether this is a headless run another agent started to do part of its
+    job: `codex exec` (or `gemini -p`) inside a Claude Code session. The parent is the one that
+    finishes, so the helper's Stop shouldn't announce itself as done. Both
+    signs are needed: the env says who launched it, the rollout's first line
+    says it's headless, so a `codex exec` you run by hand still reports."""
+    if agent not in ("codex", "gemini") or not (os.environ.get("CLAUDECODE") or os.environ.get("CLAUDE_CODE_SESSION_ID")):
+        return False
+    if agent == "gemini":
+        # Claude's shell has no terminal, so whatever Gemini does there is headless.
+        return True
+    path = payload.get("transcript_path")
+    if not isinstance(path, str) or not path:
+        return False
+    try:
+        with open(path) as handle:
+            meta = json.loads(handle.readline()).get("payload", {})
+        return meta.get("originator") == "codex_exec" or meta.get("source") == "exec"
+    except Exception:
+        return False
+
+
 def subagent_id(payload):
     for key in ("subagent_id", "agent_id", "task_id"):
         value = payload.get(key)
@@ -822,8 +846,10 @@ def handle_simple(event_name, payload, agent):
         # startup, resume, clear or compact: a compact means compaction is over.
         event["source"] = str(payload.get("source") or "")[:20]
     elif event_name == "Stop":
-        event["last_assistant_message"] = (last_assistant_message(payload) or "Task completed")[:MAX_MESSAGE]
+        event["last_assistant_message"] = (last_assistant_message(payload) or "Task completed")[:MAX_CLOSING]
         event["can_reply"] = can_reply(agent)
+        if delegated(payload, agent):
+            event["delegated"] = True
         context = context_usage(payload) if agent == "claude" else None
         if context:
             event["context"] = context
