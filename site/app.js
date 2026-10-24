@@ -88,7 +88,8 @@ const SCENES = {
 let current = null;
 function show(name, data = {}) {
   const S = SCENES[name](data);
-  const el = isl.set(S.html, { kind: S.kind, w: S.w, h: S.h });
+  // a pill or card never runs wider than the screen (an iPhone SE is only 320 wide)
+  const el = isl.set(S.html, { kind: S.kind, w: S.w && Math.min(S.w, (vw - 16) / isl.s), h: S.h });
   current = { name, data, el, S, at: now() };
   if (S.kind === 'card') $('.b.w', el)?.classList.add('go');
   paintUsage();
@@ -410,11 +411,19 @@ peeks.push({ view, live: () => !stage.classList.contains('gone'), rect: () => {
   // the ring is centred on Peek's body as it hangs, enlarged, under the notch
   const place = () => {
     // two wide arcs framing the section, centred a little above its middle
-    const H = custom.clientHeight;
-    const R = clamp(Math.min(vw * 0.215, H * 0.44), 260, 360), py = H * 0.37;
+    custom.style.height = '';
+    const H = custom.clientHeight, tall = vw > 720 && vh > vw * 1.05;
+    // the arcs never run off the screen: room is kept either side for the finish names and the colour's name
+    const R = clamp(Math.min(vw * 0.215, H * 0.44, vw / 2 - 150), 180, 360);
+    // On a tall screen (a tablet held upright) a share of the height would put the arcs far below Peek: they're
+    // placed where they sit on a desktop, just under Peek's body as it hangs enlarged, and the section is only as
+    // tall as its contents, so there's no empty half-screen under the copy.
+    const body = isl.nh + (1.02 * 2.4 - 0.12) * U;
+    const py = tall ? body + 2.55 * U : H * 0.37, copy = py + R * 0.6 + 44;
     custom.style.setProperty('--py', py + 'px');
     looks.style.setProperty('--R', R + 'px');
-    custom.style.setProperty('--copy', (py + R * 0.6 + 44) + 'px');
+    custom.style.setProperty('--copy', copy + 'px');
+    if (tall) custom.style.height = Math.round(copy + 140) + 'px';
   };
   place(); addEventListener('resize', place);
   apply(finish);
@@ -732,7 +741,13 @@ const approve = { isl: null, view: null, U: 40, visible: false };
       n++; busy = false; ask();
     });
   };
-  fitIt(); addEventListener('resize', fitIt);
+  // a resize (a window dragged narrower, a tablet turned) rebuilds the card at the new width, once it settles,
+  // unless a button press is mid-animation
+  let lastW = innerWidth, rsT = 0;
+  fitIt(); addEventListener('resize', () => {
+    fitIt(); clearTimeout(rsT);
+    rsT = setTimeout(() => { if (innerWidth !== lastW && !busy && m.cur) { lastW = innerWidth; ask(); } }, 180);
+  });
   ask(); m.snap();
 }
 
@@ -747,7 +762,8 @@ const orbit = { view: null, visible: false };
   const g = hangPeek(cv, v, el, { size: 0.16, min: 44, max: 58, at: 0.34 });
   let R = 120;
   // a wide, tilted orbit that fills the visual and runs past the tile's edges, centred a little below Peek
-  orbit.fit = () => { g.fit(); R = el.clientWidth * (vw > 720 ? 0.6 : 0.4); for (const r of rings) { r.style.setProperty('--cy', (el.clientHeight * 0.38) + 'px'); r.style.setProperty('--r', R + 'px'); } };
+  // wide desktops let the ring run past the tile's edges; on tablets and phones it stays inside the tile
+  orbit.fit = () => { g.fit(); R = el.clientWidth * (vw > 1080 ? 0.6 : vw > 720 ? 0.4 : 0.46); for (const r of rings) { r.style.setProperty('--cy', (el.clientHeight * 0.38) + 'px'); r.style.setProperty('--r', R + 'px'); } };
   orbit.fit(); addEventListener('resize', orbit.fit);
   const vis = visible(t);
   peeks.push({ view: v, live: () => vis.on, rect: g.rect });
@@ -773,13 +789,18 @@ const orbit = { view: null, visible: false };
     tilt += ((0.42 - ty * 0.05) - tilt) * ease(4);
     const slant = SLANT + tx * 0.02;
     orbs.forEach((o, i) => { grow[i] += ((o === hover ? 1.1 : 1) - grow[i]) * ease(14); });
-    const turn = `rotateZ(${slant.toFixed(4)}rad) rotateX(${(-tilt).toFixed(4)}rad) rotateY(${spin.toFixed(4)}rad)`;
-    for (const r of rings) r.style.transform = turn;
+    // The 3D is worked out here and drawn in 2D: each icon's place on the tilted, slanted ring, smaller and
+    // dimmer round the back, and in front of or behind Peek by depth. Same picture in every browser, with no
+    // reliance on CSS 3D (Safari flattens it in some setups).
+    const st = Math.sin(tilt), ct = Math.cos(tilt), ss = Math.sin(slant), cs = Math.cos(slant), P = 1100;
+    for (const r of rings) r.style.setProperty('--ring', `rotate(${slant.toFixed(4)}rad) scaleY(${st.toFixed(4)})`);
     orbs.forEach((o, i) => {
-      const a = phi[i];
-      o.style.transform = `rotateY(${a.toFixed(4)}rad) translateZ(${R}px) rotateY(${(-a - spin).toFixed(4)}rad) rotateX(${tilt.toFixed(4)}rad) rotateZ(${(-slant).toFixed(4)}rad) scale(${grow[i].toFixed(4)})`;
-      // round the back of the ring an icon recedes a little: depth, not a flat sticker
-      o.style.setProperty('--back', ((1 - Math.cos(a + spin)) / 2).toFixed(3));
+      const a = phi[i] + spin, X = R * Math.sin(a), Z = R * Math.cos(a);          // Z > 0: the front of the ring
+      const depth = Z * ct, k = P / (P - depth), x = X * k, y = Z * st * k;
+      const sx = x * cs - y * ss, sy = x * ss + y * cs;
+      o.style.transform = `translate(${sx.toFixed(2)}px, ${sy.toFixed(2)}px) scale(${(k * grow[i]).toFixed(4)})`;
+      o.style.zIndex = Z > 0 ? 3 : 1;                                                  // Peek sits at 2
+      o.style.setProperty('--back', ((1 - Math.cos(a)) / 2).toFixed(3));
     });
     if (hover) {
       const r = hover.getBoundingClientRect(), c = cv.getBoundingClientRect();

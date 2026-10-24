@@ -757,7 +757,7 @@ body.dressing #peek { scale: 2.4; }
   .foot nav { gap: 20px; }
 }
 @media (max-width: 720px) {
-  [data-tile=agents] .vis.orbit { min-height: 220px !important; }
+  [data-tile=agents] .vis.orbit { min-height: 240px !important; }
   [data-tile=agents] .orbname { display: none; }
   .tile.wide .vis.hangs.states { min-height: 200px !important; }
 }
@@ -859,3 +859,43 @@ html.own-swipe, html.own-swipe body { touch-action: none; overscroll-behavior: n
 /* phones: the hero's question card shows just the choices, no descriptions, so it stays compact */
 @media (max-width: 720px) { #island .opt span { display: none; } #island .opt { padding-top: calc(9px * var(--s)); padding-bottom: calc(9px * var(--s)); } }
 @media (max-width: 720px) { #island .cb:has(.opts) .meta { display: none; } }
+
+/* ============================================================ tablets (721–1080px): their own layout, not a squeezed desktop
+   Wide cards stack (the visual on top at its natural size, the words underneath); "Know at a glance" and the
+   usage card share a row; the bento keeps two columns for the small cards. */
+@media (min-width: 721px) and (max-width: 1080px) {
+  .features { padding-left: 28px; padding-right: 28px; }
+  .bento { grid-template-columns: 1fr 1fr; gap: 16px; }
+  .tile.wide { grid-column: 1 / -1; display: flex !important; flex-direction: column; gap: 22px; }
+  .tile.wide .vis { order: -1; width: 100%; min-height: 0 !important; }
+  .tile.wide .txt { max-width: 560px; align-self: flex-start; }
+  [data-tile=approve] .txt { align-self: flex-start; }
+  [data-tile=sessions] .vis { justify-content: center; }
+  .panel-dark { max-width: 520px; margin: 0 auto; }
+  /* states and usage side by side, each a normal card */
+  [data-tile=states] { grid-column: auto !important; }
+  [data-tile=states] .vis.hangs.states { min-height: 230px !important; margin-bottom: 0 !important; }
+  [data-tile=states] .morph { width: 42% !important; margin-left: 9%; }
+  [data-tile=states] .dial { left: 22% !important; }
+  [data-tile=limits] { grid-column: auto; }
+  .tile h3, .tile.wide h3 { font-size: 20px; }
+}
+
+/* the agents orbit is projected in app.js and drawn flat: no CSS 3D anywhere in it */
+.scene { perspective: none !important; transform-style: flat !important; }
+.ring { transform: none !important; transform-style: flat !important; }
+.ring .track { transform: var(--ring, scaleY(0.4)) !important; }
+.orb { transform-style: flat !important; backface-visibility: visible !important; }
+#peek5 { z-index: 2 !important; }
+
+/* large phones and small tablets (561–720px) use the phone layout, kept to a comfortable column instead of
+   stretching every button and card across the screen */
+@media (min-width: 561px) and (max-width: 720px) {
+  .hero .ctas, .panel .ctas { max-width: 440px; margin-left: auto; margin-right: auto; }
+  .features > h2, .bento { max-width: 560px; margin-left: auto; margin-right: auto; }
+  .custom-copy, .looks { max-width: 520px; margin-left: auto; margin-right: auto; }
+  .lede { max-width: 520px !important; }
+}
+/* very narrow phones (iPhone SE): the state words stay inside the card */
+@media (max-width: 360px) { .tile.wide .morph { width: 40%; margin-left: 24px; } .dial { left: 11% !important; } .dial span { font-size: 16px !important; } }
+@media (min-width: 361px) and (max-width: 440px) { .tile.wide .morph { width: 44%; margin-left: 12px; } .dial { left: 15% !important; } .dial span { font-size: 18px !important; } }
