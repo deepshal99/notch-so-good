@@ -23,6 +23,13 @@
 #   ~/Documents/NotchSoGood-signing/sparkle-private-key.txt   (update signing key)
 #   the "notchsogood-release" keychain with the release certificate
 #   optional: ~/Documents/NotchSoGood-signing/aptabase-key.txt (anonymous counts)
+#
+# The same script runs in GitHub Actions (.github/workflows/release.yml),
+# which hands it the keys instead:
+#   SPARKLE_KEY_FILE, RELEASE_KEYCHAIN, RELEASE_KEYCHAIN_PASSWORD,
+#   APTABASE_APP_KEY, TAP_REMOTE (the tap over SSH, with its deploy key),
+#   GH_TOKEN (gh). npm needs no token there: GitHub vouches for the workflow
+#   (npm trusted publishing).
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -31,8 +38,8 @@ NOTES_FILE="${2:?usage: bash release.sh <version> <notes.md>}"
 REPO="deepshal99/notch-so-good"
 TAP="deepshal99/homebrew-tap"
 SIGNING="$HOME/Documents/NotchSoGood-signing"
-KEY_FILE="$SIGNING/sparkle-private-key.txt"
-KEYCHAIN="$HOME/Library/Keychains/notchsogood-release.keychain-db"
+KEY_FILE="${SPARKLE_KEY_FILE:-$SIGNING/sparkle-private-key.txt}"
+KEYCHAIN="${RELEASE_KEYCHAIN:-$HOME/Library/Keychains/notchsogood-release.keychain-db}"
 CERT_SHA="5A286731FBC829D46BBFF9AC10FE938BAA55B24E"
 SIGN_UPDATE=".build/artifacts/sparkle/Sparkle/bin/sign_update"
 ZIP="NotchSoGood-$VERSION.zip"
@@ -45,10 +52,13 @@ step "Checking"
 [ -f "$NOTES_FILE" ] || fail "no notes file at $NOTES_FILE"
 [ -f "$KEY_FILE" ] || fail "update signing key missing: $KEY_FILE"
 [ -f "$KEYCHAIN" ] || fail "release keychain missing: $KEYCHAIN"
+[[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "version should look like 4.12.0, not $VERSION"
 gh auth status >/dev/null 2>&1 || fail "gh isn't signed in (gh auth login)"
+# In CI the tap can only be pushed with a token: find out now, not after main is live.
+[ -z "${CI:-}" ] || [ "${DRY_RUN:-0}" = 1 ] || [ -n "${TAP_REMOTE:-}" ] || fail "TAP_REMOTE missing (Homebrew tap)"
 [ "${DRY_RUN:-0}" = 1 ] || { git diff --quiet && git diff --cached --quiet; } || fail "commit or stash your changes first"
 gh release view "v$VERSION" -R "$REPO" >/dev/null 2>&1 && fail "v$VERSION already exists"
-KC_PASS=$(security find-generic-password -a "$USER" -s "NotchSoGood release keychain" -w)
+KC_PASS="${RELEASE_KEYCHAIN_PASSWORD:-$(security find-generic-password -a "$USER" -s "NotchSoGood release keychain" -w)}"
 security unlock-keychain -p "$KC_PASS" "$KEYCHAIN"
 security list-keychains -d user | grep -q notchsogood-release || \
     security list-keychains -d user -s $(security list-keychains -d user | tr -d '"') "$KEYCHAIN"
@@ -70,7 +80,7 @@ echo "  $VERSION (build $BUILD)"
 
 # 3. Build --------------------------------------------------------------------
 step "Building (universal, release certificate)"
-APTABASE_APP_KEY=$(cat "$SIGNING/aptabase-key.txt" 2>/dev/null || true) \
+APTABASE_APP_KEY="${APTABASE_APP_KEY:-$(cat "$SIGNING/aptabase-key.txt" 2>/dev/null || true)}" \
 RELEASE_IDENTITY="$CERT_SHA" bash build-universal.sh >/tmp/nsg-release-build.log 2>&1 || fail "build failed (see /tmp/nsg-release-build.log)"
 [ -f "$ZIP" ] || fail "no $ZIP"
 codesign -d -r- NotchSoGood.app 2>&1 | grep -qi "$CERT_SHA" || fail "the app isn't signed with the release certificate"
@@ -162,13 +172,17 @@ git push -q origin HEAD:main
 echo "  main updated: installed apps will pick it up within the hour"
 
 TMP=$(mktemp -d)
-git clone -q "https://github.com/$TAP" "$TMP/tap"
+git clone -q "${TAP_REMOTE:-https://github.com/$TAP}" "$TMP/tap"
 cp Casks/notch-so-good.rb "$TMP/tap/Casks/notch-so-good.rb"
 ( cd "$TMP/tap" && git add -A && git commit -q -m "notch-so-good $VERSION" && git push -q )
 rm -rf "$TMP"
 echo "  Homebrew tap"
 
-if npm whoami >/dev/null 2>&1; then
+if [ -n "${CI:-}" ]; then
+    # Last, and never fatal: everything users install from is already out.
+    ( cd npm && npm publish >/dev/null ) && echo "  npm" \
+        || echo "  npm failed: is the trusted publisher set up on npmjs.com?"
+elif npm whoami >/dev/null 2>&1; then
     ( cd npm && npm publish >/dev/null ) && echo "  npm"
 else
     echo "  npm skipped (run: npm login, then cd npm && npm publish)"

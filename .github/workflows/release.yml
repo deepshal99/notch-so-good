@@ -1,0 +1,135 @@
+name: Release
+
+# Publishes a release with the same script as a release from the Mac
+# (release.sh): tests, version bump, universal build signed with the release
+# certificate, signed update feed, GitHub release, main, Homebrew tap, npm.
+#
+# Actions → Release → Run workflow, with the version (release-notes/<version>.md
+# must already be on main to ship). "Rehearse" is on by default: everything up
+# to publishing, with the signed zip kept as an artifact. Untick it to ship.
+#
+# Secrets live in the "release" environment (Settings → Environments), which
+# only main can use:
+#   SPARKLE_PRIVATE_KEY     contents of sparkle-private-key.txt (update signing)
+#   RELEASE_CERT_P12        release-certificate.p12, base64
+#   RELEASE_CERT_PASSWORD   its password
+#   TAP_DEPLOY_KEY          SSH deploy key with write access to homebrew-tap only
+#   APTABASE_APP_KEY        optional: anonymous counts
+# npm takes no secret: the package trusts this workflow (npmjs.com → package
+# settings → Trusted Publisher: this repo, release.yml, environment "release").
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version, e.g. 4.12.0"
+        required: true
+      rehearse:
+        description: "Rehearse: build, sign and feed, publish nothing"
+        type: boolean
+        default: true
+
+concurrency: release
+
+permissions:
+  contents: write
+  id-token: write   # npm trusted publishing
+
+jobs:
+  release:
+    runs-on: macos-15
+    timeout-minutes: 45
+    environment: release
+    env:
+      VERSION: ${{ inputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Check the version and its notes
+        env:
+          REHEARSE: ${{ inputs.rehearse }}
+        run: |
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::version should look like 4.12.0"; exit 1; }
+          NOTES="release-notes/$VERSION.md"
+          if [ ! -f "$NOTES" ]; then
+            # A rehearsal can borrow the latest notes; a release can't.
+            [ "$REHEARSE" = true ] || { echo "::error::$NOTES isn't on main"; exit 1; }
+            NOTES="release-notes/$(ls release-notes | sort -V | tail -1)"
+            echo "::notice::rehearsing with $NOTES"
+          fi
+          echo "NOTES=$NOTES" >> "$GITHUB_ENV"
+
+      - name: Signing keychain (this run only)
+        env:
+          RELEASE_CERT_P12: ${{ secrets.RELEASE_CERT_P12 }}
+          RELEASE_CERT_PASSWORD: ${{ secrets.RELEASE_CERT_PASSWORD }}
+        run: |
+          KEYCHAIN="$RUNNER_TEMP/notchsogood-release.keychain-db"
+          KC_PASS=$(openssl rand -hex 24)
+          echo "::add-mask::$KC_PASS"
+          security create-keychain -p "$KC_PASS" "$KEYCHAIN"
+          security set-keychain-settings -lut 3600 "$KEYCHAIN"
+          security unlock-keychain -p "$KC_PASS" "$KEYCHAIN"
+          printf '%s' "$RELEASE_CERT_P12" | base64 --decode > "$RUNNER_TEMP/release.p12"
+          security import "$RUNNER_TEMP/release.p12" -k "$KEYCHAIN" -P "$RELEASE_CERT_PASSWORD" -T /usr/bin/codesign
+          rm -f "$RUNNER_TEMP/release.p12"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KC_PASS" "$KEYCHAIN" >/dev/null
+          echo "RELEASE_KEYCHAIN=$KEYCHAIN" >> "$GITHUB_ENV"
+          echo "RELEASE_KEYCHAIN_PASSWORD=$KC_PASS" >> "$GITHUB_ENV"
+
+      - name: Update signing key
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          printf '%s' "$SPARKLE_PRIVATE_KEY" > "$RUNNER_TEMP/sparkle-private-key.txt"
+          echo "SPARKLE_KEY_FILE=$RUNNER_TEMP/sparkle-private-key.txt" >> "$GITHUB_ENV"
+
+      - name: Homebrew tap key
+        env:
+          TAP_DEPLOY_KEY: ${{ secrets.TAP_DEPLOY_KEY }}
+        run: |
+          printf '%s\n' "$TAP_DEPLOY_KEY" > "$RUNNER_TEMP/tap-key"
+          chmod 600 "$RUNNER_TEMP/tap-key"
+          echo "GIT_SSH_COMMAND=ssh -i $RUNNER_TEMP/tap-key -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new" >> "$GITHUB_ENV"
+          echo "TAP_REMOTE=git@github.com:deepshal99/homebrew-tap.git" >> "$GITHUB_ENV"
+
+      # Trusted publishing needs npm 11.5.1 or later.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm install -g npm@latest >/dev/null && npm --version
+
+      - name: Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APTABASE_APP_KEY: ${{ secrets.APTABASE_APP_KEY }}
+          DRY_RUN: ${{ inputs.rehearse && '1' || '0' }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          bash release.sh "$VERSION" "$NOTES"
+
+      - name: Keep the signed zip
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: NotchSoGood-${{ inputs.version }}
+          path: NotchSoGood-*.zip
+          if-no-files-found: ignore
+
+      - name: Logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-logs
+          path: /tmp/nsg-release-*.log
+          if-no-files-found: ignore
+
+      - name: Remove the keys
+        if: always()
+        run: |
+          security delete-keychain "$RUNNER_TEMP/notchsogood-release.keychain-db" 2>/dev/null || true
+          rm -f "$RUNNER_TEMP/sparkle-private-key.txt" "$RUNNER_TEMP/tap-key"
