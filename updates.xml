@@ -5,6 +5,15 @@
         <link>https://github.com/deepshal99/notch-so-good</link>
         <language>en</language>
         <item>
+            <title>Version 4.11.1</title>
+            <pubDate>Sat, 24 Oct 2026 19:44:16 +0000</pubDate>
+            <sparkle:version>34</sparkle:version>
+            <sparkle:shortVersionString>4.11.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[<ul><li>Helpers no longer cry &quot;Finished&quot;: when Claude Code hands a job to Codex or Gemini in the background, you hear about it once, when Claude itself is done</li><li>A finished card reads as plain words: links, bold and file paths in an agent&#x27;s last message no longer show their markdown</li></ul>]]></description>
+            <enclosure url="https://github.com/deepshal99/notch-so-good/releases/download/v4.11.1/NotchSoGood-4.11.1.zip" sparkle:edSignature="7e87RxbSced9NRN45l8qWdramOXFCRjhCHfc+KJY7srb33nw1fsB2tlRxjG8locOfU2x7/oMKWNxxHJpQlf3CQ==" length="4149977" type="application/octet-stream"/>
+        </item>
+        <item>
             <title>Version 4.11.0</title>
             <pubDate>Sat, 24 Oct 2026 07:49:17 +0000</pubDate>
             <sparkle:version>33</sparkle:version>
@@ -39,15 +48,6 @@
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <description><![CDATA[<ul><li>Peek no longer gets clipped at the bottom while swinging for you in the notch</li></ul>]]></description>
             <enclosure url="https://github.com/deepshal99/notch-so-good/releases/download/v4.9.1/NotchSoGood-4.9.1.zip" sparkle:edSignature="xCrDms/GWTuAWisjwXAmY7TIV2Qslh6mcOAZFq9QoSxJmwaOov+2j2SNLu6TAZGMI0GSopMX/PHm8iZUqb5VDg==" length="4007764" type="application/octet-stream"/>
-        </item>
-        <item>
-            <title>Version 4.9.0</title>
-            <pubDate>Sat, 17 Oct 2026 10:50:57 +0000</pubDate>
-            <sparkle:version>29</sparkle:version>
-            <sparkle:shortVersionString>4.9.0</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <description><![CDATA[<ul><li>A 30-second practice run on first launch: allow one, answer one, reply to one (Settings → General to replay)</li><li>Context meter: sessions past half full show how full, and one heads-up before a known window fills</li><li>Ghostty: jump straight to the session&#x27;s terminal (Ghostty 1.3+)</li><li>Cleaner cards: less text, no &quot;just now&quot;</li></ul>]]></description>
-            <enclosure url="https://github.com/deepshal99/notch-so-good/releases/download/v4.9.0/NotchSoGood-4.9.0.zip" sparkle:edSignature="qyYXXOVH4g4ZGbqXGodb2SOlnhcAYw/RQW9vh4iqQni6T9ZKnblzfa3pAQZxBeRl8PJPPuZklGgpXvz6cdIzBA==" length="4002966" type="application/octet-stream"/>
         </item>
     </channel>
 </rss>
