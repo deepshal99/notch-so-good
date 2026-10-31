@@ -30,4 +30,4 @@ The installer adds hooks to Claude Code, Codex and Gemini CLI, and keeps any hoo
 - Source code: https://github.com/deepshal99/notch-so-good
 - Releases and changelog: https://github.com/deepshal99/notch-so-good/releases
 - Feedback and bugs: https://github.com/deepshal99/notch-so-good/issues
-- Made by Deepak Maurya: https://github.com/deepshal99
+- Made by Deepak Maurya: https://x.com/deepshal99 (GitHub: https://github.com/deepshal99)
