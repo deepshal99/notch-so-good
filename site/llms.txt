@@ -1,0 +1,33 @@
+# Notch So Good
+
+> A free, open-source macOS app that puts your coding agents in your Mac's notch. See what Claude Code, Codex and Gemini CLI are doing, and approve commands, answer questions or reply without opening the terminal.
+
+Notch So Good is for developers who start an agent task, switch to something else, and keep checking back to see if the agent is waiting on them. The notch does the checking instead: when an agent needs a decision, the notch opens into a card and Peek, a small 3D character, climbs out.
+
+- Approve or deny commands in one click. You see exactly what the agent wants to run or change, and nothing runs until you say so.
+- Answer an agent's questions, and reply to Claude Code when it's done so it keeps going.
+- See every session at once: what each agent is doing, which one needs you and how far along it is. Click one to jump to its terminal.
+- Know at a glance whether an agent is working, waiting on you or done.
+- See how much of your 5-hour and weekly usage is left, with a heads-up before you run out.
+- Works with Claude Code and Codex, plus Gemini CLI in beta, in whatever terminal or editor you run them.
+- Peek comes in six finishes and many colours.
+
+## Install
+
+- Homebrew: `brew install --cask deepshal99/tap/notch-so-good`
+- npm: `npx notch-so-good`
+- Download: https://github.com/deepshal99/notch-so-good/releases/latest
+
+Requires macOS 14 (Sonoma) or later. Free, MIT licensed.
+
+## How it works
+
+The installer adds hooks to Claude Code, Codex and Gemini CLI, and keeps any hooks you already have. The hooks talk to the app over a per-user Unix socket, so nothing leaves your Mac. Notch So Good only answers "allow" after you click; anything it wouldn't ask you about gets no decision, so the agent's own permission rules still decide. The app is signed with its own certificate rather than notarized, so a direct download shows the usual Gatekeeper warning; Homebrew handles it for you.
+
+## Links
+
+- Website: https://notchsogood.com/
+- Source code: https://github.com/deepshal99/notch-so-good
+- Releases and changelog: https://github.com/deepshal99/notch-so-good/releases
+- Feedback and bugs: https://github.com/deepshal99/notch-so-good/issues
+- Made by Deepak Maurya: https://github.com/deepshal99
